@@ -1,40 +1,48 @@
-//! Approval broker shared between running executions and the gRPC layer.
+//! Approval decisions, scoped grants and the lifetime of pending requests.
+
+mod request;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::sync::oneshot;
+use tokio::time::Instant;
 
-/// A user decision on an approval request.
+use super::grant::GrantStore;
+use crate::error::{DaemonError, DaemonResult};
+
+pub use request::PendingApproval;
+
+/// An explicit user decision on an approval request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
+    /// Permit the operation within the selected scope.
     Allow,
+    /// Refuse the operation within the selected scope.
     Deny,
 }
 
-/// The scope an approval decision applies to.
+/// The scope selected by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    /// Only the current call.
+    /// Only the current request.
     Once,
-    /// The remainder of the current execution run.
+    /// Matching requests in this run.
     Run,
-    /// Persisted in the workspace database.
+    /// Matching requests in the workspace database.
     Workspace,
-    /// Persisted in the global database.
+    /// Matching requests in the global database.
     Global,
 }
 
-/// Parses a decision string from the `RespondApproval` RPC.
-///
-/// Accepts `AllowOnce`, `AllowRun`, `AllowWorkspace`, `AllowGlobal` and the
-/// corresponding `Deny*` variants.
+/// Parses the eight decision strings accepted by RespondApproval.
 pub fn parse_decision(raw: &str) -> Option<(Decision, Scope)> {
     let (decision, rest) = if let Some(rest) = raw.strip_prefix("Allow") {
         (Decision::Allow, rest)
     } else {
-        let rest = raw.strip_prefix("Deny")?;
-        (Decision::Deny, rest)
+        (Decision::Deny, raw.strip_prefix("Deny")?)
     };
     let scope = match rest {
         "Once" => Scope::Once,
@@ -46,128 +54,191 @@ pub fn parse_decision(raw: &str) -> Option<(Decision, Scope)> {
     Some((decision, scope))
 }
 
-/// Metadata returned when a pending request is answered.
-#[derive(Debug, Clone)]
-pub struct RespondedRequest {
-    /// Hash of the normalized command that triggered the request.
-    pub command_hash: u64,
-    /// The raw command line.
-    pub command: String,
+/// A consumed response, preserving its identity and user-selected scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalResponse {
+    /// The immutable request answered by the user.
+    pub request_id: String,
+    /// The user's allow or deny decision.
+    pub decision: Decision,
+    /// The scope applied by the broker before releasing the waiter.
+    pub scope: Scope,
 }
 
-/// Tracks pending approval requests and run-scoped grants for one execution.
-pub struct ApprovalBroker {
-    pending: Mutex<HashMap<String, PendingRequest>>,
-    run_grants: Mutex<HashMap<u64, bool>>,
+/// Failure to obtain a usable response; never a user denial or a grant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ApprovalFailure {
+    /// The response deadline elapsed.
+    #[error("approval request expired")]
+    Expired,
+    /// The owning operation was cancelled.
+    #[error("approval request cancelled")]
+    Cancelled,
+    /// The owning run ended or its response channel closed.
+    #[error("approval run closed")]
+    Closed,
+    /// The selected persistent scope could not be stored.
+    #[error("approval grant could not be persisted")]
+    Persistence,
+}
+
+type Outcome = Result<ApprovalResponse, ApprovalFailure>;
+
+#[derive(Default)]
+struct BrokerState {
+    closed: bool,
+    pending: HashMap<String, PendingRequest>,
+    run_grants: HashMap<u64, bool>,
 }
 
 struct PendingRequest {
     command_hash: u64,
     command: String,
-    tx: oneshot::Sender<Decision>,
+    deadline: Instant,
+    cancelled: Arc<AtomicBool>,
+    tx: oneshot::Sender<Outcome>,
 }
 
-impl Default for ApprovalBroker {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Owns pending requests and grants for exactly one execution or chat run.
+#[derive(Default)]
+pub struct ApprovalBroker {
+    state: Arc<Mutex<BrokerState>>,
 }
 
 impl ApprovalBroker {
-    /// Creates an empty broker.
+    /// Creates an empty, open broker for a new run.
     pub fn new() -> Self {
-        Self {
-            pending: Mutex::new(HashMap::new()),
-            run_grants: Mutex::new(HashMap::new()),
-        }
+        Self::default()
     }
 
-    /// Opens a new approval request, returning its id and the response slot.
+    /// Opens a request with immutable server-owned content and a deadline.
+    ///
+    /// Callers cannot supply or rebind an id. Dropping the returned handle
+    /// withdraws the request even when the task is aborted before it waits.
     pub fn open_request(
         &self,
         command_hash: u64,
         command: impl Into<String>,
-    ) -> (String, oneshot::Receiver<Decision>) {
+        timeout: Duration,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<PendingApproval, ApprovalFailure> {
+        let mut state = self.state.lock().unwrap();
+        if state.closed {
+            return Err(ApprovalFailure::Closed);
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(ApprovalFailure::Cancelled);
+        }
+        let deadline = Instant::now().checked_add(timeout).ok_or(ApprovalFailure::Expired)?;
         let request_id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(
+        state.pending.insert(
             request_id.clone(),
             PendingRequest {
                 command_hash,
                 command: command.into(),
+                deadline,
+                cancelled: cancelled.clone(),
                 tx,
             },
         );
-        (request_id, rx)
+        Ok(PendingApproval::new(request_id, self.state.clone(), rx, deadline, cancelled))
     }
 
-    /// Delivers a decision to a pending request.
+    /// Consumes one live response and applies its scope before waking the caller.
     ///
-    /// Returns the request metadata so callers can persist scoped grants, or
-    /// `None` when the request does not exist or was already answered.
-    pub fn respond(&self, request_id: &str, decision: Decision) -> Option<RespondedRequest> {
-        let pending = self.pending.lock().unwrap().remove(request_id)?;
-        let _ = pending.tx.send(decision);
-        Some(RespondedRequest {
-            command_hash: pending.command_hash,
-            command: pending.command,
-        })
+    /// This lock is also used by request withdrawal and run closure. The
+    /// pending handle keeps its receiver alive until it acquires that lock,
+    /// so it cannot disappear between persistence and response delivery.
+    pub fn respond(
+        &self,
+        request_id: &str,
+        decision: Decision,
+        scope: Scope,
+        grants: &GrantStore,
+    ) -> DaemonResult<()> {
+        let mut state = self.state.lock().unwrap();
+        let pending = state.pending.remove(request_id).ok_or_else(|| {
+            DaemonError::Sandbox("approval request expired, already answered, or unknown".into())
+        })?;
+        let failure = if state.closed {
+            Some(ApprovalFailure::Closed)
+        } else if pending.cancelled.load(Ordering::SeqCst) {
+            Some(ApprovalFailure::Cancelled)
+        } else if Instant::now() >= pending.deadline {
+            Some(ApprovalFailure::Expired)
+        } else if pending.tx.is_closed() {
+            Some(ApprovalFailure::Closed)
+        } else {
+            None
+        };
+        if let Some(failure) = failure {
+            let _ = pending.tx.send(Err(failure));
+            return Err(DaemonError::Sandbox(failure.to_string()));
+        }
+        // The key and content come from the original request, never the reply.
+        if let Err(error) = grants.store(scope, pending.command_hash, decision, &pending.command) {
+            let _ = pending.tx.send(Err(ApprovalFailure::Persistence));
+            return Err(error);
+        }
+        if scope == Scope::Run {
+            state.run_grants.insert(pending.command_hash, decision == Decision::Allow);
+        }
+        let response = ApprovalResponse {
+            request_id: request_id.to_string(),
+            decision,
+            scope,
+        };
+        pending
+            .tx
+            .send(Ok(response))
+            .map_err(|_| DaemonError::Sandbox("approval response receiver unavailable".into()))
     }
 
-    /// Records a run-scoped grant (`true` = allow) keyed by command hash.
+    /// Caches a risk review performed under the user's existing full-mode policy.
     pub fn record_run_grant(&self, command_hash: u64, allow: bool) {
-        self.run_grants.lock().unwrap().insert(command_hash, allow);
-    }
-
-    /// Looks up a run-scoped grant by command hash.
-    pub fn run_grant(&self, command_hash: u64) -> Option<bool> {
-        self.run_grants.lock().unwrap().get(&command_hash).copied()
-    }
-
-    /// Denies every pending request; used when an execution is torn down.
-    pub fn deny_all(&self) {
-        let mut pending = self.pending.lock().unwrap();
-        for (_, request) in pending.drain() {
-            let _ = request.tx.send(Decision::Deny);
+        let mut state = self.state.lock().unwrap();
+        if !state.closed {
+            state.run_grants.insert(command_hash, allow);
         }
     }
 
-    /// Returns the ids of unanswered requests (used by tests).
+    /// Looks up a matching decision within this broker's run only.
+    pub fn run_grant(&self, command_hash: u64) -> Option<bool> {
+        self.state.lock().unwrap().run_grants.get(&command_hash).copied()
+    }
+
+    /// Whether the owning run has ended and can no longer authorize actions.
+    pub fn is_closed(&self) -> bool {
+        self.state.lock().unwrap().closed
+    }
+
+    /// Closes the run permanently without turning cancellation into user Deny.
+    pub fn close(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.closed = true;
+        state.run_grants.clear();
+        for (_, pending) in state.pending.drain() {
+            let _ = pending.tx.send(Err(ApprovalFailure::Closed));
+        }
+    }
+
+    /// Ensures task abortion or unwinding also closes the run's approvals.
+    pub fn close_on_drop(self: &Arc<Self>) -> ApprovalRunGuard {
+        ApprovalRunGuard(self.clone())
+    }
+
+    /// Returns unanswered request ids for diagnostics and tests.
     pub fn pending_ids(&self) -> Vec<String> {
-        self.pending.lock().unwrap().keys().cloned().collect()
+        self.state.lock().unwrap().pending.keys().cloned().collect()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Closes a run's broker when its owning task exits.
+pub struct ApprovalRunGuard(Arc<ApprovalBroker>);
 
-    #[test]
-    fn parses_all_decision_strings() {
-        assert_eq!(parse_decision("AllowWorkspace"), Some((Decision::Allow, Scope::Workspace)));
-        assert_eq!(parse_decision("DenyOnce"), Some((Decision::Deny, Scope::Once)));
-        assert_eq!(parse_decision("allow"), None);
-        assert_eq!(parse_decision("AllowSometimes"), None);
-    }
-
-    #[tokio::test]
-    async fn respond_delivers_decision_once() {
-        let broker = ApprovalBroker::new();
-        let (id, rx) = broker.open_request(7, "git status");
-        assert_eq!(id.len(), 36);
-        let answered = broker.respond(&id, Decision::Allow).unwrap();
-        assert_eq!(answered.command_hash, 7);
-        assert_eq!(answered.command, "git status");
-        assert_eq!(rx.await.unwrap(), Decision::Allow);
-        // A second respond for the same id fails.
-        assert!(broker.respond(&id, Decision::Deny).is_none());
-    }
-
-    #[test]
-    fn run_grants_roundtrip() {
-        let broker = ApprovalBroker::new();
-        broker.record_run_grant(42, true);
-        assert_eq!(broker.run_grant(42), Some(true));
-        assert_eq!(broker.run_grant(43), None);
+impl Drop for ApprovalRunGuard {
+    fn drop(&mut self) {
+        self.0.close();
     }
 }

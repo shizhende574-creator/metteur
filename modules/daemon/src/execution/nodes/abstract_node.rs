@@ -230,7 +230,7 @@ async fn expand_blueprint(ctx: &mut ExecutionContext, blueprint: Blueprint) -> D
         interpreter = interpreter.with_lsp(lsp.clone());
     }
     if let Some(approvals) = &ctx.approvals {
-        interpreter = interpreter.with_approvals(approvals.clone());
+        interpreter = interpreter.with_inherited_approvals(approvals.clone());
     }
     if let Some(vm) = &ctx.version_manager {
         interpreter = interpreter.with_version_manager(vm.clone());

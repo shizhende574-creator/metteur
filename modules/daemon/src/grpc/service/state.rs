@@ -359,6 +359,8 @@ pub(crate) async fn spawn_execution(
     let (err_tx, err_rx) = tokio::sync::oneshot::channel();
 
     let interp_tx = event_tx.clone();
+    let stream_broker = broker.clone();
+    let stream_cancel = cancel_flag.clone();
     tokio::spawn(async move {
         let mut interpreter =
             crate::execution::Interpreter::new(registry, llm_factory, workspace_root)
@@ -419,8 +421,22 @@ pub(crate) async fn spawn_execution(
     let (out_tx, out_rx) = tokio::sync::mpsc::channel(64);
     let state = state.clone();
     tokio::spawn(async move {
-        while let Some(event) = event_rx.recv().await {
+        loop {
+            let event = tokio::select! {
+                biased;
+                _ = out_tx.closed() => {
+                    stream_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                    stream_broker.close();
+                    break;
+                }
+                event = event_rx.recv() => match event {
+                    Some(event) => event,
+                    None => break,
+                },
+            };
             if out_tx.send(Ok(proto_event(event))).await.is_err() {
+                stream_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                stream_broker.close();
                 break;
             }
         }
@@ -648,7 +664,8 @@ mod tests {
         let root = temp_root();
         std::fs::write(root.join("a.txt"), "x").unwrap();
 
-        let abs = resolve_ws_path(&root, "C:/Windows/System32");
+        let absolute = root.join("a.txt");
+        let abs = resolve_ws_path(&root, &absolute.to_string_lossy());
         assert!(abs.is_err());
 
         let meta = resolve_ws_path(&root, ".metteur/db");

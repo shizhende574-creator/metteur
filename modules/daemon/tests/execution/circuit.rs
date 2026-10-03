@@ -4,7 +4,7 @@ use crate::common::*;
 
 #[tokio::test]
 async fn circuit_breaker_aborts_when_user_denies() {
-    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision};
+    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision, Scope};
     use metteur_shared::config::{Config, ExecutionConfig};
 
     let broker = Arc::new(ApprovalBroker::new());
@@ -105,7 +105,7 @@ async fn circuit_breaker_aborts_when_user_denies() {
     loop {
         let ids = broker.pending_ids();
         if !ids.is_empty() {
-            broker.respond(&ids[0], Decision::Deny);
+            broker.respond(&ids[0], Decision::Deny, Scope::Once, &Default::default()).unwrap();
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;

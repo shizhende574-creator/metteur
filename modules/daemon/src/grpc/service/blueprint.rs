@@ -169,7 +169,7 @@ impl DaemonService {
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(broker) = &entry.approvals {
-            broker.deny_all();
+            broker.close();
         }
         Ok(Response::new(Empty {}))
     }

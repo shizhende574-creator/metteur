@@ -247,7 +247,7 @@ async fn validator_retry_rolls_back_and_reruns_segment() {
 
 #[tokio::test]
 async fn validator_retry_exhaustion_trips_circuit_breaker() {
-    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision};
+    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision, Scope};
     use metteur_shared::config::{Config, ExecutionConfig};
 
     let workspace = std::env::temp_dir().join(format!("metteur-retry-{}", Uuid::new_v4()));
@@ -282,7 +282,7 @@ async fn validator_retry_exhaustion_trips_circuit_breaker() {
     loop {
         let ids = broker.pending_ids();
         if !ids.is_empty() {
-            broker.respond(&ids[0], Decision::Deny);
+            broker.respond(&ids[0], Decision::Deny, Scope::Once, &Default::default()).unwrap();
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;

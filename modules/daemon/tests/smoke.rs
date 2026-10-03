@@ -3325,17 +3325,20 @@ async fn smoke_kill_job_terminates_a_running_command() {
         .unwrap();
 
     // A run that starts a long command and stays alive long enough to kill it.
-    let source = r#"blueprint "KillMe"
+    let command = if cfg!(windows) { "ping -n 30 127.0.0.1 > nul" } else { "sleep 30" };
+    let source = format!(
+        r#"blueprint "KillMe"
 entry start: Start
-run: StartCommand(command = "ping -n 30 127.0.0.1 > nul")
+run: StartCommand(command = "{command}")
 pause: Delay(Ms = 4000)
 stop: End
 start -> run
 run -> pause
 pause -> stop
-"#;
+"#
+    );
     let blueprint =
-        metteur_shared::dsl::compile(source).expect("the job tools must compile from the DSL");
+        metteur_shared::dsl::compile(&source).expect("the job tools must compile from the DSL");
     let mut run_client = client.clone();
     let run_ws_path = ws_path.clone();
     let run = tokio::spawn(async move {

@@ -46,6 +46,11 @@ impl Interpreter {
         pause_requested: Arc<std::sync::atomic::AtomicBool>,
         cancel_requested: Arc<std::sync::atomic::AtomicBool>,
     ) -> DaemonResult<Vec<super::ExecutionEvent>> {
+        let _approval_lifetime = self
+            .approvals
+            .as_ref()
+            .filter(|_| self.owns_approvals)
+            .map(|broker| broker.close_on_drop());
         // Reject blueprints whose execution graph contains a cycle.
         if has_exec_cycle(&blueprint.read()) {
             return Err(DaemonError::Execution(
@@ -74,6 +79,11 @@ impl Interpreter {
         pause_requested: Arc<std::sync::atomic::AtomicBool>,
         cancel_requested: Arc<std::sync::atomic::AtomicBool>,
     ) -> DaemonResult<Vec<super::ExecutionEvent>> {
+        let _approval_lifetime = self
+            .approvals
+            .as_ref()
+            .filter(|_| self.owns_approvals)
+            .map(|broker| broker.close_on_drop());
         if !resume.status.resumable() {
             return Err(DaemonError::Interrupted(format!(
                 "run {} is not resumable",

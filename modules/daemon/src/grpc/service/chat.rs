@@ -147,6 +147,7 @@ impl DaemonService {
         let options_json = req.options_json.clone();
 
         tokio::spawn(async move {
+            let approval_lifetime = broker.close_on_drop();
             let mut ctx = ExecutionContext::new(registry, llm_factory, root.clone())
                 .with_run(run_id, now)
                 .with_user(user)
@@ -440,9 +441,24 @@ impl DaemonService {
                 }
             };
 
-            let outcome =
-                run_react_streaming(&mut ctx, context, &opts, Some(&mut on_delta), &mut on_event)
-                    .await;
+            let stream_broker = ctx.approvals.as_ref().unwrap().clone();
+            let stream_cancel = ctx.cancel_requested.clone();
+            let outcome = {
+                let run = run_react_streaming(
+                    &mut ctx, context, &opts, Some(&mut on_delta), &mut on_event,
+                );
+                tokio::pin!(run);
+                tokio::select! {
+                    biased;
+                    _ = event_tx.closed() => {
+                        stream_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                        stream_broker.close();
+                        run.await
+                    }
+                    outcome = &mut run => outcome,
+                }
+            };
+            drop(approval_lifetime);
             // The task list lives on the execution context; carry it into the
             // persisted record so a resumed session remembers the plan.
             let todos = ctx.todos.clone();
@@ -551,6 +567,9 @@ impl DaemonService {
         let chats = self.state.chats.read().await;
         let entry = chats.get(&ws_key).ok_or_else(|| Status::not_found("no active chat"))?;
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(broker) = &entry.approvals {
+            broker.close();
+        }
         if let Some(bus) = &entry.interrupt_bus {
             bus.send(Interrupt {
                 priority: InterruptPriority::Emergency,
@@ -651,6 +670,9 @@ impl DaemonService {
                     return Err(Status::failed_precondition("another conversation is running"));
                 }
                 run.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(broker) = &run.approvals {
+                    broker.close();
+                }
             }
         }
         // Keep admission blocked until the old task has persisted and killed its
@@ -723,6 +745,9 @@ impl DaemonService {
             if abort && let Some(chat) = self.state.chats.write().await.get_mut(&ws_key) {
                 chat.persist.store(false, std::sync::atomic::Ordering::SeqCst);
                 chat.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(broker) = &chat.approvals {
+                    broker.close();
+                }
                 if let Some(bus) = &chat.interrupt_bus {
                     bus.send(Interrupt {
                         priority: InterruptPriority::Emergency,

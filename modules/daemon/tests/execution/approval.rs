@@ -155,7 +155,7 @@ fn approval_blueprint() -> (Blueprint, PathBuf) {
 
 #[tokio::test]
 async fn request_approval_routes_both_outcomes() {
-    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision};
+    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision, Scope};
     for (decision, expected) in [(Decision::Allow, "approved"), (Decision::Deny, "denied")] {
         let (blueprint, workspace) = approval_blueprint();
         let broker = Arc::new(ApprovalBroker::new());
@@ -170,12 +170,14 @@ async fn request_approval_routes_both_outcomes() {
         loop {
             let ids = broker.pending_ids();
             if !ids.is_empty() {
-                broker.respond(&ids[0], decision);
+                broker.respond(&ids[0], decision, Scope::Once, &Default::default()).unwrap();
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         task.await.unwrap().unwrap();
+        assert!(broker.is_closed());
+        assert!(broker.pending_ids().is_empty());
         assert_eq!(std::fs::read_to_string(workspace.join("hit.txt")).unwrap(), expected);
     }
 }

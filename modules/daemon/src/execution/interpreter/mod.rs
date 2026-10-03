@@ -71,6 +71,7 @@ pub struct Interpreter {
     /// Live event sink; when set, events stream out instead of buffering.
     pub(crate) event_tx: Option<tokio::sync::mpsc::UnboundedSender<ExecutionEvent>>,
     pub(crate) approvals: Option<Arc<ApprovalBroker>>,
+    pub(crate) owns_approvals: bool,
     pub(crate) metrics: Option<Arc<Metrics>>,
     pub(crate) transaction_log: Option<TransactionLog>,
     pub(crate) workspace_db: Option<Db>,
@@ -120,6 +121,7 @@ impl Interpreter {
             started_at: 0,
             event_tx: None,
             approvals: None,
+            owns_approvals: false,
             metrics: None,
             transaction_log: None,
             workspace_db: None,
@@ -171,8 +173,17 @@ impl Interpreter {
     }
 
     /// Attaches the sandbox approval broker shared with the control RPCs.
+    /// Each execution requires a fresh broker; ending a run closes it.
     pub fn with_approvals(mut self, approvals: Arc<ApprovalBroker>) -> Self {
         self.approvals = Some(approvals);
+        self.owns_approvals = true;
+        self
+    }
+
+    /// Shares the outer run's broker without ending it when a subgraph returns.
+    pub(crate) fn with_inherited_approvals(mut self, approvals: Arc<ApprovalBroker>) -> Self {
+        self.approvals = Some(approvals);
+        self.owns_approvals = false;
         self
     }
 

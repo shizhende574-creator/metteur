@@ -1,6 +1,6 @@
 //! Persistent storage for sandbox grants.
 
-use crate::error::DaemonResult;
+use crate::error::{DaemonError, DaemonResult};
 use crate::storage::persistence::{Db, cf};
 
 use super::approval::{Decision, Scope};
@@ -48,15 +48,13 @@ impl GrantStore {
         decision: Decision,
         command: &str,
     ) -> DaemonResult<()> {
-        let (db, _scope_name) = match scope {
+        let (db, scope_name) = match scope {
             Scope::Workspace => (&self.workspace, "workspace"),
             Scope::Global => (&self.global, "global"),
             Scope::Once | Scope::Run => return Ok(()),
         };
         let Some(db) = db else {
-            // Persisting without the corresponding database silently degrades
-            // to a run-scoped grant.
-            return Ok(());
+            return Err(DaemonError::Sandbox(format!("{scope_name} approval storage unavailable")));
         };
         let value = serde_json::json!({
             "decision": if decision == Decision::Allow { "allow" } else { "deny" },
@@ -102,9 +100,9 @@ mod tests {
     }
 
     #[test]
-    fn missing_databases_degrade_to_none() {
+    fn missing_databases_reject_persistent_grants() {
         let store = GrantStore::new(None, None);
         assert_eq!(store.lookup(1), None);
-        store.store(Scope::Workspace, 1, Decision::Allow, "x").unwrap();
+        assert!(store.store(Scope::Workspace, 1, Decision::Allow, "x").is_err());
     }
 }
