@@ -71,10 +71,9 @@ impl ConfigLayer {
         }
         // Oversight is an extension section until its runtime is introduced.
         if let Some(values) = self.fields.get("oversight").and_then(Value::as_object) {
-            let mut section =
-                inherited.get("oversight").and_then(Value::as_object).cloned().unwrap_or_default();
-            section.extend(values.clone());
-            merged["oversight"] = Value::Object(section);
+            let mut section = inherited.get("oversight").cloned().unwrap_or(Value::Object(Map::new()));
+            merge_presence(&mut section, &Value::Object(values.clone()));
+            merged["oversight"] = section;
         }
         serde_json::from_value(merged)
     }
@@ -135,5 +134,15 @@ impl ConfigLayer {
             config_version: Some(2),
             fields,
         })
+    }
+}
+
+fn merge_presence(base: &mut Value, overrides: &Value) {
+    if let (Some(base), Some(overrides)) = (base.as_object_mut(), overrides.as_object()) {
+        for (key, value) in overrides {
+            merge_presence(base.entry(key.clone()).or_insert(Value::Null), value);
+        }
+    } else {
+        *base = overrides.clone();
     }
 }

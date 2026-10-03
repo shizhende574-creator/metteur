@@ -18,6 +18,7 @@ impl DaemonService {
     ) -> Result<Response<WorkspaceInfo>, Status> {
         let subject = subject_from_request(&request).unwrap_or_else(|| "local".to_string());
         let req = request.into_inner();
+        let _config_guard = self.state.config_gate.lock().await;
         let ws = self.state.workspaces.open(&PathBuf::from(req.path)).await.map_err(to_status)?;
         // Register this workspace's function library into the shared registry,
         // remembering the names so only this workspace's set is retired later.
@@ -28,7 +29,11 @@ impl DaemonService {
             Err(err) => tracing::warn!("failed to load workspace functions: {err}"),
         }
         // A newly opened workspace may declare MCP servers of its own.
-        self.state.resync_mcp().await;
+        if let Err(error) = self.state.resync_mcp().await {
+            // Opening/closing the workspace succeeded. MCP status remains
+            // available through ListMcpServers; SetConfig reports this failure.
+            tracing::warn!("workspace MCP reload failed: {error}");
+        }
         record_global_audit(
             &self.state,
             &subject,
@@ -51,6 +56,7 @@ impl DaemonService {
     ) -> Result<Response<Empty>, Status> {
         let subject = subject_from_request(&request).unwrap_or_else(|| "local".to_string());
         let req = request.into_inner();
+        let _config_guard = self.state.config_gate.lock().await;
         // Resolve the workspace first: its `root()` is the normalized key used
         // when its functions were registered.
         let root = self
@@ -91,7 +97,11 @@ impl DaemonService {
             }
         }
         // Servers declared only by the closed workspace are shut down here.
-        self.state.resync_mcp().await;
+        if let Err(error) = self.state.resync_mcp().await {
+            // Opening/closing the workspace succeeded. MCP status remains
+            // available through ListMcpServers; SetConfig reports this failure.
+            tracing::warn!("workspace MCP reload failed: {error}");
+        }
         record_global_audit(&self.state, &subject, "workspace.close", serde_json::json!({}));
         self.state.metrics.workspaces_active.store(
             self.state.workspaces.list().await.len() as u64,

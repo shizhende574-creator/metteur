@@ -265,6 +265,8 @@ pub struct ExecutionContext {
     pub metrics: Option<Arc<crate::observability::metrics::Metrics>>,
     /// Language-server manager for this workspace, when LSP is enabled.
     pub lsp: Option<Arc<crate::integration::lsp::LspManager>>,
+    /// Live workspace slot, preferred over the standalone manager.
+    pub lsp_source: Option<crate::integration::lsp::SharedLsp>,
     /// Addon prompt fragments injected into fresh CallLLM contexts.
     pub addon_fragments: Vec<metteur_shared::llm::SystemFragment>,
     /// Shared handle to the executing root blueprint (replan hot-apply).
@@ -388,6 +390,7 @@ impl ExecutionContext {
             depth: 0,
             metrics: None,
             lsp: None,
+            lsp_source: None,
             addon_fragments: Vec::new(),
             blueprint: None,
             variables: vec![HashMap::new()],
@@ -450,7 +453,15 @@ impl ExecutionContext {
         self.variables.iter()
     }
 
-    /// Attaches the workspace language-server manager.
+    /// Resolves the current workspace manager for each LSP operation.
+    pub fn lsp_manager(&self) -> Option<Arc<crate::integration::lsp::LspManager>> {
+        match &self.lsp_source {
+            Some(source) => source.read().clone(),
+            None => self.lsp.clone(),
+        }
+    }
+
+    /// Attaches a standalone manager when there is no live workspace slot.
     pub fn with_lsp(mut self, lsp: Arc<crate::integration::lsp::LspManager>) -> Self {
         self.lsp = Some(lsp);
         self
@@ -488,6 +499,7 @@ impl ExecutionContext {
         child.global_db = self.global_db.clone();
         child.metrics = self.metrics.clone();
         child.lsp = self.lsp.clone();
+        child.lsp_source = self.lsp_source.clone();
         child.addon_fragments = self.addon_fragments.clone();
         child.blueprint = self.blueprint.clone();
         child.version_manager = self.version_manager.clone();

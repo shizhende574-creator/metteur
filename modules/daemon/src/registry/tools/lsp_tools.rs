@@ -64,8 +64,8 @@ async fn open_document(
     })
 }
 
-fn require_manager(ctx: &ExecutionContext) -> DaemonResult<&Arc<LspManager>> {
-    ctx.lsp.as_ref().ok_or_else(|| {
+fn require_manager(ctx: &ExecutionContext) -> DaemonResult<Arc<LspManager>> {
+    ctx.lsp_manager().ok_or_else(|| {
         DaemonError::Lsp("LSP integration is not enabled for this workspace".to_string())
     })
 }
@@ -193,7 +193,7 @@ impl Tool for CheckDiagnostics {
     async fn call(&self, args: &[Value], ctx: &mut ExecutionContext) -> DaemonResult<Value> {
         let empty = || Value::Json(serde_json::json!({"diagnostics": []}));
         // No LSP manager (integration disabled) behaves like "no diagnostics".
-        let Some(manager) = ctx.lsp.as_ref() else {
+        let Some(manager) = ctx.lsp_manager() else {
             return Ok(empty());
         };
         let path = string_input(args, "path")?;
@@ -269,7 +269,7 @@ impl Tool for GetHover {
         let line = u32_input(args, "line")?;
         let character = u32_input(args, "character")?;
         let fs = WorkspaceFs::new(ctx.workspace_root.clone());
-        let target = open_document(manager, &fs, &path).await?;
+        let target = open_document(&manager, &fs, &path).await?;
         let hover = target.client.hover(&target.uri, line, character).await?;
         Ok(Value::Json(serde_json::json!({
             "content": hover_text(&hover),
@@ -319,10 +319,10 @@ impl Tool for FindDefinition {
         let line = u32_input(args, "line")?;
         let character = u32_input(args, "character")?;
         let fs = WorkspaceFs::new(ctx.workspace_root.clone());
-        let target = open_document(manager, &fs, &path).await?;
+        let target = open_document(&manager, &fs, &path).await?;
         let result = target.client.definition(&target.uri, line, character).await?;
         Ok(Value::Json(
-            serde_json::json!({ "definitions": normalize_definitions(&result, manager) }),
+            serde_json::json!({ "definitions": normalize_definitions(&result, &manager) }),
         ))
     }
 }

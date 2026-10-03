@@ -37,3 +37,38 @@ test('presence overrides survive form saves, TOML and reset without pinning inhe
   expect(result.reset.llm.thinking_budget_tokens).toBe(4096)
   expect(result.raw.llm.thinking_budget_tokens).toBeUndefined()
 })
+
+test('settings show saved-but-unapplied errors and retain the edited layer', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Workspace path').fill('D:/metteur-demo/metrics')
+  await page.getByRole('button', { name: 'Open', exact: true }).click()
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    const corePath = '/src/core/index.ts', storePath = '/src/stores/config.ts'
+    const { gateway } = await import(corePath)
+    const { useConfigStore } = await import(storePath)
+    const store = useConfigStore()
+    await store.load()
+    store.user.mcp = { servers: { broken: { enabled: true, command: ['missing'] } } }
+    gateway.setConfig = async () => ({ ok: false, error: 'Configuration saved, but not fully applied: MCP broken failed to connect' })
+  })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('p[role="alert"]')).toContainText('not fully applied: MCP broken failed to connect')
+  expect(await page.evaluate(async () => {
+    const path = '/src/stores/config.ts'
+    return (await import(path)).useConfigStore().user.mcp.servers.broken.command
+  })).toEqual(['missing'])
+})
+
+test('nested oversight overlays retain inherited siblings', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const path = '/src/stores/config.ts'
+    const { mergeConfig } = await import(path)
+    return mergeConfig({ oversight: { triggers: { interval_ms: 500, on_validation_failed: true } } },
+      { oversight: { triggers: { interval_ms: 0 } } })
+  })
+  expect(result.oversight.triggers).toEqual({ interval_ms: 0, on_validation_failed: true })
+})

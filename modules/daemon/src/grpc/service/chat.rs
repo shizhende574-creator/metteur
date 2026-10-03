@@ -135,7 +135,7 @@ impl DaemonService {
         let llm_factory = self.state.llm_factory.clone();
         let root = ws.root().to_path_buf();
         let ws_config = ws.config.clone();
-        let lsp = ws.lsp();
+        let lsp_source = ws.lsp_manager.clone();
         let version_manager = ws.version_manager.clone();
         let jobs = ws.jobs();
         let user = subject.clone();
@@ -154,7 +154,7 @@ impl DaemonService {
             ctx.cancel_requested = cancel_flag.clone();
             ctx.approvals = Some(broker);
             ctx.workspace_db = Some(ws_db.clone());
-            ctx.lsp = lsp;
+            ctx.lsp_source = Some(lsp_source);
             ctx.version_manager = Some(version_manager);
             ctx.jobs = Arc::clone(&jobs);
             ctx.todos = existing_todos;

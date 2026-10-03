@@ -58,10 +58,13 @@ pub(crate) struct ChatRun {
 pub struct AppState {
     /// The workspace manager.
     pub workspaces: WorkspaceManager,
+    pub(crate) config_gate: tokio::sync::Mutex<()>,
+    mcp_sync_gate: tokio::sync::Mutex<()>,
     /// The resource registry.
     pub registry: Arc<Registry>,
     /// The global configuration.
     pub global_config: RwLock<Config>,
+    pub(crate) startup_config: Config,
     /// The LLM client factory.
     pub llm_factory: LlmClientFactory,
     /// The global database (global audit), when enabled.
@@ -99,7 +102,10 @@ impl AppState {
         spawn_config_reloader(config_rx, acl_store.clone());
         Self {
             workspaces,
+            config_gate: tokio::sync::Mutex::new(()),
+            mcp_sync_gate: tokio::sync::Mutex::new(()),
             registry,
+            startup_config: global_config.clone(),
             global_config: RwLock::new(global_config),
             llm_factory: LlmClientFactory::new(),
             global_db: None,
@@ -155,13 +161,17 @@ impl AppState {
     /// workspace definition winning on an alias collision (the more specific
     /// scope). Section-level timeouts keep the global value, since one host
     /// carries only one.
-    pub async fn merged_mcp_config(&self) -> metteur_shared::config::McpConfig {
+    pub async fn merged_mcp_config(&self) -> crate::error::DaemonResult<metteur_shared::config::McpConfig> {
         let global = self.global_config.read().await.mcp.clone();
         let mut workspace_configs = Vec::new();
-        for ws in self.workspaces.list().await {
-            workspace_configs.push(ws.config.read().await.mcp.clone());
+        let mut workspaces = self.workspaces.list().await;
+        workspaces.sort_by(|a, b| a.root().cmp(b.root()));
+        for ws in workspaces {
+            // Only explicit workspace servers may shadow global definitions.
+            // Inherited global aliases from another workspace must not win.
+            workspace_configs.push(crate::config::load_workspace_config(ws.root())?.mcp);
         }
-        crate::integration::mcp::merge_servers(&global, &workspace_configs)
+        Ok(crate::integration::mcp::merge_servers(&global, &workspace_configs))
     }
 
     /// Pushes the effective MCP configuration to the host.
@@ -170,12 +180,20 @@ impl AppState {
     /// workspace config write, and workspace open/close. `McpHost::sync` is
     /// incremental (unchanged servers keep their connection, vanished ones are
     /// shut down), so this stays cheap when nothing relevant changed.
-    pub async fn resync_mcp(&self) {
+    pub async fn resync_mcp(&self) -> crate::error::DaemonResult<()> {
+        let _guard = self.mcp_sync_gate.lock().await;
+        let config = self.merged_mcp_config().await?;
         let Some(host) = &self.mcp_host else {
-            return;
+            if config.servers.values().any(|s| s.enabled) {
+                return Err(DaemonError::Mcp("MCP host is unavailable; restart the daemon".into()));
+            }
+            return Ok(());
         };
-        let config = self.merged_mcp_config().await;
         host.sync(&config).await;
+        let failures: Vec<_> = host.statuses().into_iter()
+            .filter(|s| s.state == crate::integration::mcp::StatusKind::Failed)
+            .map(|s| format!("{}: {}", s.alias, s.error)).collect();
+        if failures.is_empty() { Ok(()) } else { Err(DaemonError::Mcp(failures.join("; "))) }
     }
 
     /// Attaches the addon host and loads the global addon directory.
@@ -359,6 +377,7 @@ pub(crate) async fn spawn_execution(
         tokio::sync::mpsc::unbounded_channel::<crate::execution::ExecutionEvent>();
     let (err_tx, err_rx) = tokio::sync::oneshot::channel();
 
+    let lsp_source = workspace.lsp_manager.clone();
     let interp_tx = event_tx.clone();
     let stream_broker = broker.clone();
     let stream_cancel = cancel_flag.clone();
@@ -368,6 +387,7 @@ pub(crate) async fn spawn_execution(
                 .with_checkpoint_sink(sink)
                 .with_audit(audit_writer)
                 .with_config(ws_config)
+                .with_lsp_source(lsp_source)
                 .with_user(subject)
                 .with_event_tx(interp_tx)
                 .with_approvals(broker)

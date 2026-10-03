@@ -78,6 +78,7 @@ pub struct Interpreter {
     pub(crate) workspace_db: Option<Db>,
     pub(crate) global_db: Option<Db>,
     pub(crate) lsp: Option<Arc<LspManager>>,
+    pub(crate) lsp_source: Option<crate::integration::lsp::SharedLsp>,
     pub(crate) addon_fragments: Vec<SystemFragment>,
     pub(crate) version_manager: Option<Arc<VersionManager>>,
     pub(crate) jobs: Option<Arc<JobManager>>,
@@ -129,6 +130,7 @@ impl Interpreter {
             workspace_db: None,
             global_db: None,
             lsp: None,
+            lsp_source: None,
             addon_fragments: Vec::new(),
             version_manager: None,
             jobs: None,
@@ -211,6 +213,12 @@ impl Interpreter {
     /// Attaches the global database for global sandbox grants.
     pub fn with_global_db(mut self, db: Db) -> Self {
         self.global_db = Some(db);
+        self
+    }
+
+    /// Shares reloads with existing contexts, including nested interpreters.
+    pub fn with_lsp_source(mut self, source: crate::integration::lsp::SharedLsp) -> Self {
+        self.lsp_source = Some(source);
         self
     }
 

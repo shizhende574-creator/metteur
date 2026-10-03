@@ -63,3 +63,10 @@ fn migration_covers_every_field_and_collection_policy() {
     assert_eq!(merged.llm.project_instruction_files, vec!["CUSTOM.md"]);
     assert!(layer(json!({"config_version":3})).effective().is_err());
 }
+
+#[test]
+fn nested_oversight_scalars_inherit_without_replacing_siblings() {
+    let global = layer(json!({"oversight":{"triggers":{"interval_ms":500,"on_validation_failed":true},"blackboard":{"max_entries":100}}})).effective().unwrap();
+    let ws = layer(json!({"config_version":2,"oversight":{"triggers":{"interval_ms":0}}}));
+    assert_eq!(ws.merge(&global).unwrap().extra["oversight"], json!({"triggers":{"interval_ms":0,"on_validation_failed":true},"blackboard":{"max_entries":100}}));
+}

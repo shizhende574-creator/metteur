@@ -720,6 +720,9 @@ const modelsText = computed(() => {
         </button>
       </div>
     </div>
+    <p class="mx-5 mt-2 text-[12px] text-muted-foreground">
+      LSP reloads for subsequent operations; language servers connect on first use and report connection errors there. Model and permission defaults apply to the next request or turn. Process/addon settings need a daemon restart; automatic snapshots need a workspace reopen. Save reports any pending application or connection failure.
+    </p>
     <p v-if="settings.layer === 'user' ? config.legacyUser : config.legacyWorkspace" class="mx-5 mt-2 text-[12px]" role="status">
       Legacy configuration: default values previously meant inherit. Saving this form explicitly migrates this layer to presence-based overrides while preserving its effective values. Afterwards false and 0 are explicit; Reset restores inheritance. The TOML editor keeps the original format unless you set config_version = 2.
     </p>

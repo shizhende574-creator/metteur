@@ -411,7 +411,8 @@ export class GrpcGateway implements DaemonGateway {
   async getConfigState(workspacePath = ''): Promise<Result<ConfigState>> {
     try {
       const resp = await this.client.getConfig({ workspacePath })
-      if (!resp.overridesJson || !resp.effectiveJson) return err('Update the daemon before editing configuration')
+      if (!resp.effectiveJson) return err('Update the daemon before editing configuration')
+      if (!resp.overridesJson) return err('Automatic configuration migration cannot preserve the current effective values. Open Settings TOML to review and explicitly migrate or save the original format.')
       return ok({ defaults: JSON.parse(resp.defaultsJson), raw: JSON.parse(resp.configJson), overrides: JSON.parse(resp.overridesJson), effective: JSON.parse(resp.effectiveJson), legacy: resp.legacyFormat })
     } catch (e) { return toErr(e) }
   }

@@ -215,6 +215,7 @@ impl Interpreter {
         ctx.workspace_db = self.workspace_db.clone();
         ctx.global_db = self.global_db.clone();
         ctx.lsp = self.lsp.clone();
+        ctx.lsp_source = self.lsp_source.clone();
         ctx.addon_fragments = self.addon_fragments.clone();
         ctx.blueprint = self.shared_blueprint.clone();
         ctx.version_manager = self.version_manager.clone();

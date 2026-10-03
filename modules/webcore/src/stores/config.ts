@@ -20,6 +20,10 @@ export function mergeConfig(user: DaemonConfig, ws: DaemonConfig): DaemonConfig 
   const out: DaemonConfig = { ...user }
   for (const key of Object.keys(ws)) {
     const wv = ws[key]
+    if (key === 'oversight') {
+      out[key] = mergePresence(user[key], wv)
+      continue
+    }
     if (wv === undefined || wv === null) continue
     if (Array.isArray(wv)) {
       if (wv.length > 0) out[key] = wv
@@ -42,6 +46,15 @@ export function mergeConfig(user: DaemonConfig, ws: DaemonConfig): DaemonConfig 
     out.llm = { ...out.llm, project_instruction_files: ws.llm.project_instruction_files }
   }
   return out
+}
+
+function mergePresence(base: unknown, override: unknown): unknown {
+  if (override && typeof override === 'object' && !Array.isArray(override)) {
+    const out: Record<string, unknown> = base && typeof base === 'object' && !Array.isArray(base) ? { ...base as Record<string, unknown> } : {}
+    for (const [key, value] of Object.entries(override)) out[key] = mergePresence(out[key], value)
+    return out
+  }
+  return override === undefined ? base : override
 }
 
 /** Field-level merge inside one section; empty collections fall back. */
