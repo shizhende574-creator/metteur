@@ -142,7 +142,7 @@ impl Interpreter {
         );
         // The parent caller is executed and the new frame already owns its
         // seeded entry, variable scope and tree before it becomes resumable.
-        self.write_checkpoint(ctx);
+        self.write_checkpoint(ctx)?;
         Ok(())
     }
 

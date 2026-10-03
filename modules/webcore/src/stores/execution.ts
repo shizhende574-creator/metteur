@@ -124,7 +124,7 @@ export const useExecutionStore = defineStore('execution', () => {
     runId.value = null
     // Passing the canvas makes Run execute what the editor shows, independent
     // of whether the daemon-side mirror is current.
-    await gateway.executeBlueprint(
+    const result = await gateway.executeBlueprint(
       ws.path,
       blueprintId,
       (ev) => {
@@ -150,6 +150,11 @@ export const useExecutionStore = defineStore('execution', () => {
       },
       blueprint,
     )
+    approval.value = null
+    if (!result.ok && !['cancelled'].includes(status.value)) {
+      status.value = 'failed'
+      push({ nodeId: '', kind: 'message', message: result.error })
+    }
     // Capture the run id of the stream just finished for a later resume, and
     // load the execution tree of the finished run.
     const runs = await gateway.listExecutions(ws.path)
@@ -162,7 +167,7 @@ export const useExecutionStore = defineStore('execution', () => {
         if (treeRes.ok) tree.value = treeRes.data
       }
     }
-    if (!['paused', 'cancelled'].includes(status.value)) status.value = 'finished'
+    if (!['paused', 'cancelled', 'failed'].includes(status.value)) status.value = 'finished'
   }
 
   async function respond(allow: boolean) {
@@ -185,7 +190,14 @@ export const useExecutionStore = defineStore('execution', () => {
     const ws = workspace.active
     if (!ws || !runId.value) return
     status.value = 'running'
-    await gateway.continueExecution(ws.path, runId.value, (ev) => push(ev))
+    const result = await gateway.continueExecution(ws.path, runId.value, (ev) => push(ev))
+    approval.value = null
+    if (!result.ok && !['cancelled'].includes(status.value)) {
+      status.value = 'failed'
+      push({ nodeId: '', kind: 'message', message: result.error })
+    } else if (status.value === 'running') {
+      status.value = 'finished'
+    }
   }
 
   async function cancel() {

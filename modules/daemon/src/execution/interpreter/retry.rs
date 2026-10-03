@@ -130,7 +130,7 @@ impl Interpreter {
                 sched.enqueue(*id);
             }
         }
-        self.write_checkpoint(ctx);
+        self.write_checkpoint(ctx)?;
         Ok(true)
     }
 

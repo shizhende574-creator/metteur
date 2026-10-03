@@ -123,8 +123,8 @@ const auditLabel = computed(() => inspectedId.value ?? '—')
         :class="{
           'bg-primary/15 text-primary': execution.status === 'running',
           'bg-amber-500/15 text-amber-600 dark:text-amber-400': execution.status === 'paused',
-          'bg-danger-soft text-danger': execution.status === 'cancelled',
-          'text-muted-foreground': !['running', 'paused', 'cancelled'].includes(execution.status),
+          'bg-danger-soft text-danger': ['cancelled', 'failed'].includes(execution.status),
+          'text-muted-foreground': !['running', 'paused', 'cancelled', 'failed'].includes(execution.status),
         }"
       >
         <span

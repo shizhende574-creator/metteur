@@ -95,7 +95,10 @@ async fn assert_every_save_recovers(
                     Arc::new(AtomicBool::new(false)),
                 )
                 .await;
-            if saved.status.is_terminal() {
+            if saved.in_flight.is_some() {
+                assert!(result.unwrap_err().to_string().contains("manual recovery required"));
+                assert!(resumed_sink.checkpoints.lock().unwrap().is_empty());
+            } else if saved.status.is_terminal() {
                 assert_eq!(normalized(&saved), normalized(expected));
                 assert!(result.is_err(), "terminal runs must not be replayed");
                 assert!(resumed_sink.checkpoints.lock().unwrap().is_empty());

@@ -61,7 +61,7 @@ impl Interpreter {
         self.shared_blueprint = Some(blueprint.clone());
         self.reset_run(blueprint);
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
-        self.write_checkpoint(&ctx);
+        self.write_checkpoint(&ctx)?;
         self.execute(blueprint, &mut ctx).await
     }
 
@@ -104,6 +104,13 @@ impl Interpreter {
                 "checkpoint belongs to a different blueprint".to_string(),
             ));
         }
+        if let Some(node_id) = resume.in_flight {
+            return Err(DaemonError::Persistence(format!(
+                "run {} has an uncommitted outcome for node {node_id}; manual recovery required, automatic replay refused",
+                resume.run_id
+            )));
+        }
+        self.in_flight = None;
         self.shared_blueprint = Some(blueprint.clone());
         self.state = ExecutionState {
             blueprint_id: resume.blueprint_id,
@@ -142,7 +149,7 @@ impl Interpreter {
         } else {
             resume.variables
         };
-        self.write_checkpoint(&ctx);
+        self.write_checkpoint(&ctx)?;
         self.execute(blueprint, &mut ctx).await
     }
 
@@ -150,6 +157,7 @@ impl Interpreter {
     fn reset_run(&mut self, blueprint: &SharedBlueprint) {
         let bp = blueprint.read();
         self.state = ExecutionState::default();
+        self.in_flight = None;
         self.state.blueprint_id = bp.id;
         self.state.call_stack.push(Frame {
             node_id: bp.entry_node_id,

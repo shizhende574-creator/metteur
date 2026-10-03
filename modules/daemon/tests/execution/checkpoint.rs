@@ -18,9 +18,9 @@ async fn checkpoint_records_successors_of_finished_node() {
     interpreter.run(&shared(blueprint.clone()), None).await.unwrap();
 
     let checkpoints = sink.checkpoints.lock().unwrap();
-    // Checkpoint 0 is the pre-run seed; checkpoint 1 follows Start.
+    // Select the committed transition, excluding the pre-executor fence.
     let after_start = checkpoints
-        .get(1)
+        .iter().find(|cp| cp.in_flight.is_none() && cp.executed.contains(&blueprint.entry_node_id))
         .expect("a checkpoint after the first node must exist");
     assert!(
         !after_start.pending.is_empty(),
@@ -41,7 +41,7 @@ async fn resume_from_live_checkpoint_finishes_outstanding_nodes() {
     let captured = {
         let checkpoints = sink.checkpoints.lock().unwrap();
         let cp = checkpoints
-            .get(1)
+            .iter().find(|cp| cp.in_flight.is_none() && cp.executed.contains(&blueprint.entry_node_id))
             .expect("a checkpoint after the first node must exist")
             .clone();
         assert!(
@@ -120,7 +120,7 @@ async fn writes_checkpoints_through_sink() {
     let mut interpreter = new_interpreter().with_checkpoint_sink(sink.clone());
     interpreter.run(&shared(blueprint), None).await.unwrap();
     let checkpoints = sink.checkpoints.lock().unwrap();
-    // Initial + one per node (3) + terminal.
-    assert_eq!(checkpoints.len(), 5);
+    // Initial + fence and committed outcome per node (3) + terminal.
+    assert_eq!(checkpoints.len(), 8);
     assert_eq!(checkpoints.last().unwrap().status, RunStatus::Completed);
 }

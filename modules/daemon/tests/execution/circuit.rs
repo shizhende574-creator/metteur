@@ -88,6 +88,7 @@ async fn approved_replan_saves_only_the_rerun_before_its_successor() {
         .iter()
         .find(|cp| {
             cp.pending == vec![validator]
+                && cp.in_flight.is_none()
                 && !cp.executed.contains(&validator)
                 && cp.exec_tree.nodes.values().any(|n| n.label == "Validator")
         })

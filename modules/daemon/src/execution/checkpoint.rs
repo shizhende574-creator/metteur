@@ -16,7 +16,7 @@ use super::context::Frame;
 use super::transaction::TransactionEntry;
 
 /// Checkpoints written after successor dispatch and frame/loop bookkeeping.
-pub const CHECKPOINT_TRANSITION_VERSION: u32 = 1;
+pub const CHECKPOINT_TRANSITION_VERSION: u32 = 2;
 
 /// The lifecycle status of an execution run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +57,10 @@ pub struct ExecutionCheckpoint {
     /// safely be resumed automatically.
     #[serde(default)]
     pub transition_version: u32,
+    /// An executor may have started, but its outcome is not committed. Never
+    /// replay it automatically: external effects may already have happened.
+    #[serde(default)]
+    pub in_flight: Option<NodeId>,
     /// The run identifier.
     pub run_id: uuid::Uuid,
     /// The blueprint being executed.
@@ -125,6 +129,7 @@ impl ExecutionCheckpoint {
     pub fn running(run_id: uuid::Uuid, blueprint_id: uuid::Uuid, started_at: u64) -> Self {
         Self {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
+            in_flight: None,
             run_id,
             blueprint_id,
             status: RunStatus::Running,

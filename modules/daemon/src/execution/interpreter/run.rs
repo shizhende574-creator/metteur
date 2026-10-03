@@ -109,7 +109,16 @@ impl Interpreter {
                 RunStatus::Failed
             }
         };
-        self.write_terminal_checkpoint(ctx, status, result.as_ref().err().map(|e| e.to_string()));
+        if let Err(err) = self.write_terminal_checkpoint(ctx, status, result.as_ref().err().map(|e| e.to_string())) {
+            if let Some(root) = &self.tree_root {
+                self.tree.finish(root, TreeNodeStatus::Failed(err.to_string()), now_millis());
+            }
+            // A transient terminal-write failure must never turn into success.
+            // Try to retain diagnostic state, but preserve the original error
+            // even if storage remains unavailable.
+            let _ = self.write_terminal_checkpoint(ctx, RunStatus::Failed, Some(err.to_string()));
+            return Err(err);
+        }
         result.map(|()| self.events.clone())
     }
 
@@ -252,10 +261,17 @@ impl Interpreter {
                 tracing::info!("run {} executing node {node_id}", sink.run_id());
             }
 
-            let executor = self.registry.node_executor(&node.kind).ok_or_else(|| {
+            let registry = self.registry.clone();
+            let executor = registry.node_executor(&node.kind).ok_or_else(|| {
                 DaemonError::Execution(format!("no executor for node kind '{}'", node.kind))
             })?;
+            // Fence arbitrary executors before they can perform external work.
+            // If the outcome cannot be saved, restart sees uncertainty rather
+            // than an apparently unstarted node that is safe to repeat.
+            self.in_flight = Some(node_id);
+            self.write_checkpoint(ctx)?;
             let outputs = executor.execute(&node, &inputs, ctx).await?;
+            self.in_flight = None;
             self.state.data_values.extend(outputs.iter().map(|(id, v)| (*id, v.clone())));
             let function = self.active_function();
             self.emit(ExecutionEvent::NodeData {
@@ -296,7 +312,7 @@ impl Interpreter {
             // user-approved replan and re-run this node under the new plan.
             // Decide before dispatch, so stale successors cannot outrun it.
             if self.maybe_circuit_break(node_id, &node, &outputs, ctx).await? {
-                self.write_checkpoint(ctx);
+                self.write_checkpoint(ctx)?;
                 continue;
             }
             self.commit_successors(&active_bp, node_id, None, ctx)?;
