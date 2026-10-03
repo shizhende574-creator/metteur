@@ -92,6 +92,7 @@ impl DaemonService {
         if self.state.chats.read().await.contains_key(&ws_key) {
             return Err(Status::failed_precondition("workspace already has an active chat"));
         }
+        ws.reconcile_files().map_err(to_status)?;
         // Capture the exact model state, not a reconstruction from UI messages.
         let before = existing.clone().unwrap_or_else(|| {
             let mut context = ContextManager::default();
@@ -100,18 +101,14 @@ impl DaemonService {
             record.session_id = session_id;
             record
         });
-        let checkpoint_id = match crate::chat::checkpoint::capture(
+        let checkpoint_id = crate::chat::checkpoint::capture(
             &ws_db,
             &ws.version_manager,
             before,
             &format!("Before chat turn {}", old_turns + 1),
-        ) {
-            Ok(id) => id.to_string(),
-            Err(error) => {
-                tracing::warn!("chat checkpoint unavailable: {error}");
-                String::new()
-            }
-        };
+        ).map_err(|error| Status::failed_precondition(format!(
+            "chat recovery checkpoint unavailable; no new turn started: {error}"
+        )))?.to_string();
         let interrupt_bus = InterruptBus::new();
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let broker = Arc::new(ApprovalBroker::new());
@@ -464,7 +461,7 @@ impl DaemonService {
             let todos = ctx.todos.clone();
             let turn_elapsed_ms = turn_started.elapsed().as_millis() as u64;
             transcript.lock().finish_turn(turn_elapsed_ms);
-            let (terminal, saved) = match outcome {
+            let (mut terminal, saved) = match outcome {
                 Ok(outcome) => {
                     // Text-only answers are not appended by the loop; persist
                     // them so a resumed session remembers prior turns.
@@ -539,6 +536,11 @@ impl DaemonService {
                 && let Err(err) = save_thread(&ws_db, &record)
             {
                 tracing::warn!("[chat] failed to persist session: {err}");
+                terminal = Ok(ChatEvent {
+                    kind: "error".to_string(),
+                    content: format!("chat persistence failed; turn state is not durably recoverable: {err}"),
+                    detail_json: serde_json::json!({ "turn_elapsed_ms": turn_elapsed_ms }).to_string(),
+                });
             }
             let _ = event_tx.send(terminal);
             // Background commands belong to the turn that started them.

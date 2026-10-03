@@ -4,6 +4,7 @@ pub mod checkpoint;
 pub mod context;
 pub mod control;
 pub mod file_journal;
+pub mod file_recovery;
 pub mod interpreter;
 pub mod interrupt;
 pub mod jobs;

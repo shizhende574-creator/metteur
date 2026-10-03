@@ -337,6 +337,7 @@ pub(crate) async fn spawn_execution(
         if running.contains_key(&ws_key) {
             return Err(Status::failed_precondition("workspace already has a running execution"));
         }
+        workspace.reconcile_files().map_err(super::to_status)?;
         running.insert(
             ws_key.clone(),
             RunningExecution {

@@ -2,6 +2,87 @@
 
 use crate::common::*;
 
+struct WriteThenCancel {
+    conflict: bool,
+}
+#[async_trait::async_trait]
+impl metteur_daemon::registry::Tool for WriteThenCancel {
+    fn name(&self) -> &str {
+        "WriteThenCancel"
+    }
+    fn description(&self) -> &str {
+        "writes files and cancels for a recovery boundary test"
+    }
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({})
+    }
+    async fn call(&self, _: &[Value], ctx: &mut ExecutionContext) -> DaemonResult<Value> {
+        ctx.write_file(&ctx.workspace_root.join("first"), b"agent", None)?;
+        ctx.write_file(&ctx.workspace_root.join("second"), b"agent", None)?;
+        if self.conflict {
+            std::fs::write(ctx.workspace_root.join("first"), b"user edit")?;
+        }
+        ctx.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(Value::Bool(true))
+    }
+}
+
+#[tokio::test]
+async fn cancelled_run_reports_complete_or_partial_file_rollback_accurately() {
+    for conflict in [false, true] {
+        let root = std::env::temp_dir().join(format!("metteur-cancel-files-{}", Uuid::new_v4()));
+        let db = metteur_daemon::storage::persistence::Db::open(&root.join(".metteur/db")).unwrap();
+        let sink = Arc::new(MemorySink::new());
+        let registry = Arc::new(Registry::with_builtins());
+        registry
+            .try_register_tool(Arc::new(WriteThenCancel {
+                conflict,
+            }))
+            .unwrap();
+        let mut bp = build_blueprint();
+        bp.nodes[0].kind = "Tool".into();
+        bp.nodes[0].data = serde_json::json!({"tool_name":"WriteThenCancel"});
+        bp.nodes[0].pins.push(Pin::data(
+            "Result",
+            PinType::DataOutput,
+            DataType::String,
+            Uuid::new_v4(),
+        ));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut runner = Interpreter::new(registry, LlmClientFactory::new(), root.clone())
+            .with_checkpoint_sink(sink.clone())
+            .with_workspace_db(db)
+            .with_event_tx(tx);
+        let error = runner.run(&shared(bp), None).await.unwrap_err();
+        assert!(matches!(error, DaemonError::Interrupted(_)), "{error}");
+        assert!(!root.join("second").exists());
+        let cp = sink.checkpoints.lock().unwrap().last().unwrap().clone();
+        assert_eq!(cp.status, RunStatus::Cancelled);
+        let expected = if conflict {
+            "rollback incomplete: restored 1"
+        } else {
+            "file rollback complete (2"
+        };
+        let mut messages = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let ExecutionEvent::Message {
+                message,
+                ..
+            } = event
+            {
+                messages.push(message);
+            }
+        }
+        assert!(messages.iter().any(|m| m.contains(expected)), "{messages:?}");
+        if conflict {
+            assert_eq!(std::fs::read(root.join("first")).unwrap(), b"user edit");
+            assert!(cp.error.unwrap().contains("rollback incomplete"));
+        } else {
+            assert!(!root.join("first").exists());
+        }
+    }
+}
+
 #[tokio::test]
 async fn cancel_marks_run_cancelled() {
     let blueprint = build_blueprint();

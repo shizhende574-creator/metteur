@@ -87,6 +87,7 @@ impl DaemonService {
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
+        let _admission = ws.activity_gate.lock().await;
         mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
@@ -140,6 +141,7 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let meta = std::fs::symlink_metadata(&path).map_err(io_status)?;
+        let _admission = ws.activity_gate.lock().await;
         if meta.is_dir() {
             std::fs::remove_dir_all(&path).map_err(io_status)?;
         } else {

@@ -42,6 +42,16 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Admission holds activity_gate and verifies that no run is active first.
+    pub fn reconcile_files(&self) -> DaemonResult<()> {
+        crate::execution::file_journal::FileJournal::new(
+            self.root.clone(),
+            Arc::new(crate::execution::file_journal::DbFileJournal(self.db.clone())),
+        )
+        .reconcile()?
+        .ensure_safe()?;
+        Ok(())
+    }
     /// Returns the workspace root path.
     pub fn root(&self) -> &Path {
         &self.root
@@ -139,6 +149,12 @@ impl WorkspaceManager {
         let metadata_dir = root.join(METADATA_DIR);
         let lock = SessionLock::acquire(&metadata_dir)?;
         let db = Db::open(&metadata_dir.join("db"))?;
+        crate::execution::file_journal::FileJournal::new(
+            root.clone(),
+            Arc::new(crate::execution::file_journal::DbFileJournal(db.clone())),
+        )
+        .reconcile()?
+        .ensure_safe()?;
         let global_config_path = self.global_config_path()?;
         let config = config::load_merged_config(&global_config_path, &root)?;
         let version_manager = Arc::new(VersionManager::new(db.clone(), root.clone()));

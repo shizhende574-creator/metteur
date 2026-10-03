@@ -10,9 +10,10 @@ use crate::storage::versioning::hash_content;
 use uuid::Uuid;
 
 /// The durable phase of a single file operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FilePhase {
     Prepared,
+    #[default]
     Applied,
     Reverting,
     Reverted,

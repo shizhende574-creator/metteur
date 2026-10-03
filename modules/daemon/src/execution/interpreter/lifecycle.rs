@@ -69,8 +69,8 @@ impl Interpreter {
     ///
     /// The scheduling state, produced data values and transaction log are
     /// restored and execution continues with checkpoints written to the same
-    /// run id. The node that was in flight when the run was interrupted is
-    /// re-executed.
+    /// run id. Uncommitted nodes and mismatched file phases require manual
+    /// recovery; unknown side effects are never automatically replayed.
     pub async fn resume_with_control(
         &mut self,
         blueprint: &SharedBlueprint,
@@ -143,6 +143,7 @@ impl Interpreter {
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
         ctx.transaction_log = TransactionLog::from_entries(resume.transaction_log);
         ctx.attach_file_journal();
+        ctx.transaction_log.validate_resume(resume.run_id)?;
         // Checkpoints predating frame variables resume with an empty stack;
         // restore the root frame so VariableSet has somewhere to write.
         ctx.variables = if resume.variables.is_empty() {

@@ -32,6 +32,8 @@ pub enum TransactionEntry {
     /// A durable operation; before/after content is in the shared blob store.
     FileOperation {
         operation_id: uuid::Uuid,
+        #[serde(default)]
+        phase: FilePhase,
     },
     /// A tool was invoked.
     ToolCall {
@@ -155,8 +157,17 @@ impl TransactionLog {
                 let mut operation = journal.prepare(path, after, origin, expected)?;
                 entries.push(TransactionEntry::FileOperation {
                     operation_id: operation.operation_id,
+                    phase: FilePhase::Prepared,
                 });
-                journal.apply(&mut operation)
+                journal.apply(&mut operation)?;
+                if let Some(TransactionEntry::FileOperation {
+                    phase,
+                    ..
+                }) = entries.last_mut()
+                {
+                    *phase = FilePhase::Applied;
+                }
+                Ok::<_, DaemonError>(())
             })();
             if let Err(error) = result {
                 let message = format!(
@@ -203,6 +214,50 @@ impl TransactionLog {
         self.entries.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Reject checkpoints older than durable file mutations or undo decisions.
+    pub fn validate_resume(&self, run_id: uuid::Uuid) -> DaemonResult<()> {
+        let entries = self.lock();
+        let journal = self.journal.lock().unwrap().clone();
+        let durable: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                TransactionEntry::FileOperation {
+                    operation_id,
+                    phase,
+                } => Some((*operation_id, *phase)),
+                _ => None,
+            })
+            .collect();
+        let Some(journal) = journal else {
+            return if durable.is_empty() {
+                Ok(())
+            } else {
+                Err(DaemonError::Persistence("file journal unavailable for resume".into()))
+            };
+        };
+        let operations = journal.store.operations()?;
+        for (id, phase) in &durable {
+            if !operations.iter().any(|op| {
+                op.operation_id == *id
+                    && op.origin.run_id == run_id
+                    && op.phase == *phase
+                    && matches!(phase, FilePhase::Applied | FilePhase::Reverted)
+            }) {
+                return Err(DaemonError::Persistence(format!(
+                    "checkpoint file operation {id} no longer matches durable state; manual recovery required"
+                )));
+            }
+        }
+        if operations.iter().any(|op| {
+            op.origin.run_id == run_id && !durable.iter().any(|(id, _)| *id == op.operation_id)
+        }) {
+            return Err(DaemonError::Persistence(
+                "file operations exist beyond this checkpoint; manual recovery required".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Returns the current log length, usable as a rollback mark.
     ///
     /// A later [`Self::rollback_after`] with this value undoes exactly the
@@ -229,47 +284,45 @@ impl TransactionLog {
     pub fn rollback_after(&self, mark: usize) -> DaemonResult<usize> {
         let mut entries = self.lock();
         let mut undone = 0;
+        let mut blocked = std::collections::HashSet::new();
+        let mut conflicts = Vec::new();
+        let journal = self.journal.lock().unwrap().clone();
         for entry in entries.iter_mut().skip(mark).rev() {
-            match entry {
+            let (path, result) = match entry {
                 TransactionEntry::FileWrite {
                     path,
                     old_content,
+                    new_content,
                     reverted,
-                    ..
                 } => {
-                    if *reverted {
+                    if *reverted || blocked.contains(path) {
                         continue;
                     }
-                    match old_content {
-                        Some(content) => std::fs::write(path, content)?,
-                        None => {
-                            if path.exists() {
-                                std::fs::remove_file(path)?;
-                            }
-                        }
+                    let result = rollback_legacy(path, old_content.as_deref(), Some(new_content));
+                    if result.is_ok() {
+                        *reverted = true;
                     }
-                    undone += 1;
-                    *reverted = true;
+                    (path.clone(), result)
                 }
                 TransactionEntry::FileDelete {
                     path,
                     content,
                     reverted,
                 } => {
-                    if *reverted {
+                    if *reverted || blocked.contains(path) {
                         continue;
                     }
-                    if let Some(parent) = path.parent() {
-                        std::fs::create_dir_all(parent)?;
+                    let result = rollback_legacy(path, Some(content), None);
+                    if result.is_ok() {
+                        *reverted = true;
                     }
-                    std::fs::write(path, content)?;
-                    undone += 1;
-                    *reverted = true;
+                    (path.clone(), result)
                 }
                 TransactionEntry::FileOperation {
                     operation_id,
+                    phase,
                 } => {
-                    let journal = self.journal.lock().unwrap().clone().ok_or_else(|| {
+                    let journal = journal.as_ref().ok_or_else(|| {
                         DaemonError::Persistence("file journal unavailable for rollback".into())
                     })?;
                     let mut operation = journal
@@ -280,21 +333,75 @@ impl TransactionLog {
                         .ok_or_else(|| {
                             DaemonError::Persistence("file operation missing for rollback".into())
                         })?;
-                    if operation.phase == FilePhase::Reverted {
+                    if blocked.contains(&operation.path) {
                         continue;
                     }
-                    journal.restore(&operation.path, &operation.before)?;
-                    operation.phase = FilePhase::Reverted;
-                    journal.save(&operation)?;
-                    undone += 1;
+                    let result = journal.rollback_operation(&mut operation);
+                    if result.is_ok() {
+                        *phase = operation.phase;
+                    }
+                    (operation.path, result)
                 }
                 TransactionEntry::ToolCall {
                     ..
-                } => {}
+                } => continue,
+            };
+            match result {
+                Ok(changed) => undone += usize::from(changed),
+                Err(error @ DaemonError::Persistence(_)) => {
+                    return Err(DaemonError::Persistence(format!(
+                        "rollback incomplete after {undone} restored operation(s): {error}"
+                    )));
+                }
+                Err(error) => {
+                    blocked.insert(path);
+                    conflicts.push(error.to_string());
+                }
             }
         }
-        Ok(undone)
+        if conflicts.is_empty() {
+            Ok(undone)
+        } else {
+            Err(DaemonError::Execution(format!(
+                "rollback incomplete: restored {undone} operation(s); {}",
+                conflicts.join("; ")
+            )))
+        }
     }
+}
+
+/// Older/ephemeral entries carry bytes inline but still require a content guard.
+fn rollback_legacy(
+    path: &std::path::Path,
+    before: Option<&[u8]>,
+    after: Option<&[u8]>,
+) -> DaemonResult<bool> {
+    if !path.is_absolute() {
+        return Err(DaemonError::Execution(
+            "legacy relative file path requires manual recovery".into(),
+        ));
+    }
+    validate_path(path.ancestors().last().unwrap(), path)?;
+    let current = read_optional(path)?;
+    if current.as_deref() == before {
+        return Ok(true);
+    }
+    if current.as_deref() != after {
+        return Err(DaemonError::Execution(format!(
+            "file conflict at {}; later content was preserved",
+            path.display()
+        )));
+    }
+    match before {
+        Some(bytes) => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, bytes)?;
+        }
+        None => std::fs::remove_file(path)?,
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

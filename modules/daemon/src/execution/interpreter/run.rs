@@ -43,7 +43,7 @@ impl Interpreter {
             tracing::info!("run {} started", sink.run_id());
         }
 
-        let result = self.run_loop(blueprint, ctx).await;
+        let mut result = self.run_loop(blueprint, ctx).await;
         if let Some(root) = self.tree_root.clone() {
             let (status, now) = match &result {
                 Ok(()) => (TreeNodeStatus::Done, now_millis()),
@@ -55,25 +55,41 @@ impl Interpreter {
         // client can tell an abandoned run from a broken one.
         let cancelled = matches!(&result, Err(DaemonError::Interrupted(_)));
         let rollback_on_cancel = self.should_rollback_on_cancel(ctx);
+        let mut rolled_back = false;
         if cancelled && rollback_on_cancel {
             // Undo the file mutations this run made, so cancelling leaves the
             // workspace as it was found. Command side effects are outside the
             // WAL and are not undone.
             match ctx.transaction_log.rollback_after(0) {
-                Ok(undone) => ctx.audit(
-                    "execution.cancel_rollback",
-                    serde_json::json!({
-                        "run_id": ctx.run_id.to_string(),
-                        "undone": undone,
-                    }),
-                ),
-                Err(err) => ctx.audit(
-                    "execution.cancel_rollback_failed",
-                    serde_json::json!({
-                        "run_id": ctx.run_id.to_string(),
-                        "error": err.to_string(),
-                    }),
-                ),
+                Ok(undone) => {
+                    rolled_back = true;
+                    ctx.audit(
+                        "execution.cancel_rollback",
+                        serde_json::json!({
+                            "run_id": ctx.run_id.to_string(), "undone": undone,
+                        }),
+                    );
+                    self.emit(ExecutionEvent::Message {
+                        node_id: ctx.current_node,
+                        message: format!("cancelled: file rollback complete ({undone} operation(s)); shell/network effects are not reversed"),
+                    });
+                }
+                Err(err) => {
+                    ctx.audit(
+                        "execution.cancel_rollback_failed",
+                        serde_json::json!({
+                            "run_id": ctx.run_id.to_string(), "error": err.to_string(),
+                        }),
+                    );
+                    let message = format!(
+                        "cancelled: {err}; manual recovery required; shell/network effects are not reversed"
+                    );
+                    self.emit(ExecutionEvent::Message {
+                        node_id: ctx.current_node,
+                        message: message.clone(),
+                    });
+                    result = Err(DaemonError::Interrupted(message));
+                }
             }
         }
         let status = match &result {
@@ -93,7 +109,7 @@ impl Interpreter {
                     serde_json::json!({
                         "run_id": ctx.run_id.to_string(),
                         "blueprint_id": bp_id.to_string(),
-                        "rolled_back": rollback_on_cancel,
+                        "rolled_back": rolled_back,
                     }),
                 );
                 RunStatus::Cancelled
