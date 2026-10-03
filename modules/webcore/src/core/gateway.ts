@@ -10,6 +10,7 @@ import type {
   ChatSessionSnapshot,
   ChatUsage,
   DaemonConfig,
+  ConfigState,
   ExecTreeData,
   ExecutionEvent,
   ExecutionInfo,
@@ -53,6 +54,7 @@ export interface DaemonGateway {
    * Read one configuration layer: pass an empty string for the global layer,
    * or a workspace root path for that workspace's layer.
    */
+  getConfigState(workspacePath?: string): Promise<Result<ConfigState>>
   getConfig(workspacePath?: string): Promise<Result<DaemonConfig>>
   /** Persist a configuration layer ('' = global, otherwise workspace-root). */
   setConfig(config: DaemonConfig, workspacePath?: string): Promise<Result<void>>

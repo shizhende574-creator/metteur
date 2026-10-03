@@ -217,13 +217,11 @@ function liveValue(def: SettingDef): unknown {
 function sourceOf(def: SettingDef): 'User' | 'Workspace' | 'Inherit' | 'Default' {
   const wsSec = sectionOf(wsCfg.value, def.section)
   const userSec = sectionOf(userCfg.value, def.section)
-  if (settings.layer === 'workspace') {
-    if (def.key in wsSec) return 'Workspace'
-    if (def.key in userSec) return 'Inherit'
-    return 'Default'
-  }
-  if (def.key in userSec) return 'User'
-  if (def.key in wsSec) return 'Workspace'
+  const override = wsSec[def.key]
+  const provided = override !== undefined && override !== null &&
+    (!Array.isArray(override) || override.length > 0)
+  if (provided && (def.section !== 'addon' || def.key === 'call_timeout_ms')) return 'Workspace'
+  if (def.key in userSec) return settings.layer === 'workspace' ? 'Inherit' : 'User'
   return 'Default'
 }
 
@@ -722,6 +720,9 @@ const modelsText = computed(() => {
         </button>
       </div>
     </div>
+    <p v-if="settings.layer === 'user' ? config.legacyUser : config.legacyWorkspace" class="mx-5 mt-2 text-[12px]" role="status">
+      Legacy configuration: default values previously meant inherit. Saving this form explicitly migrates this layer to presence-based overrides while preserving its effective values. Afterwards false and 0 are explicit; Reset restores inheritance. The TOML editor keeps the original format unless you set config_version = 2.
+    </p>
     <p v-if="config.lastError" class="mx-5 mt-2 rounded-md px-3 py-2 text-[12px]" style="background: var(--danger-soft); color: var(--danger)" role="alert">
       {{ config.lastError }}
     </p>

@@ -671,3 +671,12 @@ export interface DaemonConfig {
   /** Extension keys for future Addon use. */
   [key: string]: unknown
 }
+
+/** Raw file plus the daemon's compatible editing layer and runtime values. */
+export interface ConfigState {
+  defaults: DaemonConfig
+  raw: DaemonConfig
+  overrides: DaemonConfig
+  effective: DaemonConfig
+  legacy: boolean
+}

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use metteur_shared::config::Config;
+use metteur_shared::config::ConfigLayer;
 use tonic::{Request, Response, Status};
 
 use crate::error::DaemonError;
@@ -21,13 +21,12 @@ impl DaemonService {
         request: Request<GetConfigRequest>,
     ) -> Result<Response<ProtoConfig>, Status> {
         let req = request.into_inner();
-        // Clients edit the two layers independently (VSCode user/workspace
-        // model), so each scope must return that layer's *raw* file content,
-        // never the merged result: a merged workspace layer would pin global
-        // values into the workspace file on the next save and make user-layer
-        // edits appear to vanish.
-        let config = if req.workspace_path.is_empty() {
-            self.state.global_config.read().await.clone()
+        let is_workspace = !req.workspace_path.is_empty();
+        let (path, effective) = if !is_workspace {
+            (
+                self.state.workspaces.global_config_path().map_err(to_status)?,
+                self.state.global_config.read().await.clone(),
+            )
         } else {
             let ws = self
                 .state
@@ -35,11 +34,23 @@ impl DaemonService {
                 .get(&PathBuf::from(&req.workspace_path))
                 .await
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
-            crate::config::load_workspace_config(ws.root()).map_err(to_status)?
+            let effective = ws.config.read().await.clone();
+            (ws.root().join(crate::config::CONFIG_DIR).join(crate::config::CONFIG_FILE), effective)
         };
-        let json = serde_json::to_string(&config).map_err(|e| Status::internal(e.to_string()))?;
+        let layer = crate::config::load_config_layer(&path).map_err(to_status)?;
+        let overrides = layer
+            .compatible_overrides(is_workspace)
+            .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(ProtoConfig {
-            config_json: json,
+            config_json: serde_json::to_string(&layer)
+                .map_err(|e| Status::internal(e.to_string()))?,
+            overrides_json: serde_json::to_string(&overrides)
+                .map_err(|e| Status::internal(e.to_string()))?,
+            effective_json: serde_json::to_string(&effective)
+                .map_err(|e| Status::internal(e.to_string()))?,
+            legacy_format: layer.config_version.is_none(),
+            defaults_json: serde_json::to_string(&metteur_shared::config::Config::default())
+                .map_err(|e| Status::internal(e.to_string()))?,
         }))
     }
 
@@ -49,16 +60,20 @@ impl DaemonService {
     ) -> Result<Response<Empty>, Status> {
         let subject = subject_from_request(&request).unwrap_or_else(|| "local".to_string());
         let req = request.into_inner();
-        let config: Config = serde_json::from_str(&req.config_json)
+        let mut layer: ConfigLayer = serde_json::from_str(&req.config_json)
             .map_err(|e| Status::invalid_argument(format!("invalid config: {e}")))?;
 
+        let config = layer
+            .effective()
+            .map_err(|e| Status::invalid_argument(format!("invalid config: {e}")))?;
+        layer.discard_legacy_nulls();
         if req.workspace_path.is_empty() {
             // Persist to the configured global config file (honours `--config`).
             let path = self.state.workspaces.global_config_path().map_err(to_status)?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| to_status(DaemonError::Io(e)))?;
             }
-            let toml = toml::to_string(&config).map_err(|e| Status::internal(e.to_string()))?;
+            let toml = toml::to_string(&layer).map_err(|e| Status::internal(e.to_string()))?;
             std::fs::write(&path, toml).map_err(|e| to_status(DaemonError::Io(e)))?;
             *self.state.global_config.write().await = config.clone();
             // Apply to the shared ACL store immediately and broadcast the
@@ -98,7 +113,7 @@ impl DaemonService {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| to_status(DaemonError::Io(e)))?;
             }
-            let toml = toml::to_string(&config).map_err(|e| Status::internal(e.to_string()))?;
+            let toml = toml::to_string(&layer).map_err(|e| Status::internal(e.to_string()))?;
             std::fs::write(&path, toml).map_err(|e| to_status(DaemonError::Io(e)))?;
             // Reload the merged config for the workspace.
             let global_config_path =

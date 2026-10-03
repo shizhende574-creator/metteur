@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use metteur_shared::config::Config;
+use metteur_shared::config::{Config, ConfigLayer};
 
 use crate::error::{DaemonError, DaemonResult};
 
@@ -40,8 +40,13 @@ pub fn load_workspace_config(workspace_root: &Path) -> DaemonResult<Config> {
 
 /// Loads a config from a file, returning a default config if absent.
 fn load_config_file(path: &Path) -> DaemonResult<Config> {
+    load_config_layer(path)?.effective().map_err(|e| DaemonError::Serialization(e.to_string()))
+}
+
+/// Read overrides without materializing default fields.
+pub fn load_config_layer(path: &Path) -> DaemonResult<ConfigLayer> {
     if !path.exists() {
-        return Ok(Config::default());
+        return Ok(ConfigLayer::default());
     }
     let content = std::fs::read_to_string(path)?;
     let config = toml::from_str(&content).map_err(|e| {
@@ -53,8 +58,8 @@ fn load_config_file(path: &Path) -> DaemonResult<Config> {
 /// Loads and merges the global and workspace configs.
 pub fn load_merged_config(global_path: &Path, workspace_root: &Path) -> DaemonResult<Config> {
     let global = load_global_config(global_path)?;
-    let workspace = load_workspace_config(workspace_root)?;
-    Ok(global.merge(&workspace))
+    let workspace = load_config_layer(&workspace_root.join(CONFIG_DIR).join(CONFIG_FILE))?;
+    workspace.merge(&global).map_err(|e| DaemonError::Serialization(e.to_string()))
 }
 
 #[cfg(test)]

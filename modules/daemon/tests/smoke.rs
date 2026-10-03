@@ -2873,8 +2873,8 @@ async fn smoke_config_layers_do_not_leak_into_each_other() {
         .into_inner();
     let parsed: serde_json::Value = serde_json::from_str(&ws_layer.config_json).unwrap();
     assert_eq!(
-        parsed["llm"]["models"].as_object().map(|m| m.len()),
-        Some(0),
+        parsed["llm"]["models"].as_object().map(|m| m.len()).unwrap_or(0),
+        0,
         "workspace layer must be raw, not the merged config: {parsed}"
     );
     assert!(parsed["llm"]["default_model"].is_null());
@@ -3923,4 +3923,43 @@ async fn node_catalog_rpc_matches_registry_and_web_fixture() {
         actual, fixture,
         "Regenerate the demo fixture with UPDATE_NODE_CATALOG=1 after contract changes"
     );
+}
+
+#[tokio::test]
+async fn config_presence_survives_rpc_file_and_reset() {
+    let (mut client, workspace) = start_server(metteur_shared::config::Config::default()).await;
+    let path = workspace.to_string_lossy().to_string();
+    client.open_workspace(OpenWorkspaceRequest { path: path.clone() }).await.unwrap();
+    client.set_config(SetConfigRequest { workspace_path: String::new(), config_json: serde_json::json!({"config_version":2,"sandbox":{"enabled":true,"mode":"ask"},"llm":{"thinking_budget_tokens":4096,"default_model":"global"}}).to_string() }).await.unwrap();
+    let raw = serde_json::json!({"config_version":2,"sandbox":{"enabled":false},"llm":{"thinking_budget_tokens":0}});
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:raw.to_string() }).await.unwrap();
+    let read = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&read.config_json).unwrap(), raw);
+    let effective: metteur_shared::config::Config = serde_json::from_str(&read.effective_json).unwrap();
+    assert!(!effective.sandbox.enabled);
+    assert_eq!(effective.sandbox.mode, "ask");
+    assert_eq!(effective.llm.thinking_budget_tokens, 0);
+    assert_eq!(effective.llm.default_model.as_deref(), Some("global"));
+    let disk = std::fs::read_to_string(workspace.join(".metteur/config.toml")).unwrap();
+    assert!(!disk.contains("default_model"));
+    client.close_workspace(CloseWorkspaceRequest { path:path.clone() }).await.unwrap();
+    client.open_workspace(OpenWorkspaceRequest { path:path.clone() }).await.unwrap();
+    let loaded = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert_eq!(loaded.config_json, read.config_json);
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:"{\"config_version\":2}".into() }).await.unwrap();
+    let reset = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    let effective: metteur_shared::config::Config = serde_json::from_str(&reset.effective_json).unwrap();
+    assert!(effective.sandbox.enabled);
+    assert_eq!(effective.llm.thinking_budget_tokens, 4096);
+    // Unmarked writes retain legacy default-as-inherit, and reads don't rewrite.
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:"[invalid]".into() }).await.unwrap_err();
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:serde_json::to_string(&metteur_shared::config::Config::default()).unwrap() }).await.unwrap();
+    let before = std::fs::read(workspace.join(".metteur/config.toml")).unwrap();
+    let legacy = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert!(legacy.legacy_format);
+    let proposed: metteur_shared::config::ConfigLayer = serde_json::from_str(&legacy.overrides_json).unwrap();
+    let global: metteur_shared::config::Config = serde_json::from_str(&client.get_config(GetConfigRequest { workspace_path:String::new() }).await.unwrap().into_inner().effective_json).unwrap();
+    assert_eq!(proposed.merge(&global).unwrap(), serde_json::from_str::<metteur_shared::config::Config>(&legacy.effective_json).unwrap());
+    assert_eq!(before, std::fs::read(workspace.join(".metteur/config.toml")).unwrap());
+    client.close_workspace(CloseWorkspaceRequest { path }).await.unwrap();
 }

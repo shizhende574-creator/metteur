@@ -15,6 +15,7 @@ import type {
   ChatSessionSnapshot,
   ChatUsage,
   DaemonConfig,
+  ConfigState,
   ExecStatus,
   ExecutionEvent,
   ExecutionInfo,
@@ -492,6 +493,13 @@ export class MockGateway implements DaemonGateway {
       },
     ],
   ])
+
+  async getConfigState(workspacePath = ''): Promise<Result<ConfigState>> {
+    const r = await this.getConfig(workspacePath)
+    if (!r.ok) return r
+    const raw = r.data
+    return ok({ defaults: {}, raw, overrides: { ...raw, config_version: 2 }, effective: raw, legacy: false })
+  }
 
   async getConfig(workspacePath = ''): Promise<Result<DaemonConfig>> {
     await delay(60)

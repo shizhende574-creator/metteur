@@ -34,6 +34,13 @@ export function mergeConfig(user: DaemonConfig, ws: DaemonConfig): DaemonConfig 
       out[key] = wv
     }
   }
+  // Trust policy is global-only; section collection rules remain unchanged.
+  if (user.addon || ws.addon) out.addon = { ...out.addon, require_signature: user.addon?.require_signature, signing_keys: user.addon?.signing_keys }
+  if (ws.llm?.project_instruction_files?.join('\0') === 'METTEUR.md\0AGENTS.md') {
+    out.llm = { ...out.llm, project_instruction_files: user.llm?.project_instruction_files }
+  } else if (ws.llm?.project_instruction_files) {
+    out.llm = { ...out.llm, project_instruction_files: ws.llm.project_instruction_files }
+  }
   return out
 }
 
@@ -69,32 +76,45 @@ export const useConfigStore = defineStore('config', () => {
   const loaded = ref(false)
   const saving = ref(false)
   const lastError = ref('')
+  const legacyUser = ref(false)
+  const legacyWorkspace = ref(false)
+  const defaults = ref<DaemonConfig>({})
 
   const hasWorkspace = computed(() => !!workspace.active)
   /** User + workspace merged per key (what actually applies). */
-  const effective = computed(() => mergeConfig(user.value, ws.value))
+  const effective = computed(() => {
+    const base: DaemonConfig = { ...defaults.value, ...user.value }
+    for (const [section, value] of Object.entries(user.value)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        base[section] = { ...(defaults.value[section] as object), ...value }
+      }
+    }
+    // Preserve the historical distinction between an absent LSP section and
+    // a present section whose debounce field was omitted.
+    if (user.value.lsp && user.value.lsp.debounce_ms === undefined) base.lsp = { ...base.lsp, debounce_ms: 300 }
+    return mergeConfig(base, ws.value)
+  })
 
-  const read = async <T>(p: Promise<{ ok: boolean; data?: T; error?: string }>): Promise<T | null> => {
-    const r = await p
-    return r.ok ? (r.data as T) : null
-  }
-
-  /** Fetch both layers from the daemon (no-op fail keeps last values). */
+  /** Fetch the daemon's compatibility projection; no file is rewritten. */
   async function load(): Promise<void> {
     const activePath = workspace.active?.path
     const [u, w] = await Promise.all([
-      read(gateway.getConfig('')),
-      activePath ? read(gateway.getConfig(activePath)) : Promise.resolve(null),
+      gateway.getConfigState(''),
+      activePath ? gateway.getConfigState(activePath) : Promise.resolve(null),
     ])
-    if (u) user.value = u
-    // Clear the workspace layer when there is no workspace (or its read
-    // failed) so a previous workspace's values cannot leak into this one.
-    if (activePath) {
-      if (w) ws.value = w
-      else ws.value = {}
-    } else {
+    if (!u.ok || (w && !w.ok)) {
+      lastError.value = !u.ok ? u.error : w && !w.ok ? w.error : ''
       ws.value = {}
+      legacyWorkspace.value = false
+      loaded.value = false
+      return
     }
+    user.value = u.data.overrides
+    defaults.value = u.data.defaults
+    legacyUser.value = u.data.legacy
+    ws.value = w?.ok ? w.data.overrides : {}
+    legacyWorkspace.value = w?.ok ? w.data.legacy : false
+    lastError.value = ''
     loaded.value = true
   }
 
@@ -104,7 +124,9 @@ export const useConfigStore = defineStore('config', () => {
     saving.value = true
     lastError.value = ''
     try {
-      const cfg = layer === 'user' ? user.value : ws.value
+      if (!loaded.value) return (lastError.value = 'Load configuration successfully before saving')
+      if (layer === 'workspace' && !workspace.active) return (lastError.value = 'Open a workspace before saving its configuration')
+      const cfg = { ...(layer === 'user' ? user.value : ws.value), config_version: 2 }
       const path = layer === 'workspace' ? workspace.active?.path ?? '' : ''
       const r = await gateway.setConfig(cfg, path)
       if (!r.ok) {
@@ -112,7 +134,7 @@ export const useConfigStore = defineStore('config', () => {
         return r.error
       }
       await load()
-      return ''
+      return lastError.value
     } finally {
       saving.value = false
     }
@@ -131,6 +153,8 @@ export const useConfigStore = defineStore('config', () => {
   return {
     user,
     ws,
+    legacyUser,
+    legacyWorkspace,
     effective,
     hasWorkspace,
     loaded,

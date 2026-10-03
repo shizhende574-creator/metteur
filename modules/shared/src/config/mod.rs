@@ -1,6 +1,8 @@
 //! Configuration types shared between the daemon and clients.
 
 pub mod acl;
+mod layer;
+pub use layer::ConfigLayer;
 
 use std::collections::HashMap;
 
