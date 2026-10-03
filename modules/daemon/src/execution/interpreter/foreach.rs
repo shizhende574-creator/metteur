@@ -50,8 +50,7 @@ impl Interpreter {
                 serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),
             );
             self.tree_end(ctx, TreeNodeStatus::Done);
-            self.write_checkpoint(ctx);
-            self.fire_named_edge(blueprint, node_id, "Completed")?;
+            self.commit_successors(blueprint, node_id, Some("Completed"), ctx)?;
             return Ok(());
         }
         self.state.foreach_stack.push(ForEachState {
@@ -70,8 +69,7 @@ impl Interpreter {
             serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),
         );
         self.tree_end(ctx, TreeNodeStatus::Done);
-        self.write_checkpoint(ctx);
-        self.fire_named_edge(blueprint, node_id, "Body")
+        self.commit_successors(blueprint, node_id, Some("Body"), ctx)
     }
 
     /// Advances the innermost loop of the current frame after its body drains.
@@ -94,8 +92,7 @@ impl Interpreter {
         let node_id = top.node_id;
         if top.index + 1 >= top.items.len() {
             self.state.foreach_stack.pop();
-            self.write_checkpoint(ctx);
-            self.fire_named_edge(blueprint, node_id, "Completed")?;
+            self.commit_successors(blueprint, node_id, Some("Completed"), ctx)?;
             return Ok(true);
         }
         let max = ctx
@@ -117,8 +114,7 @@ impl Interpreter {
             .cloned()
             .ok_or_else(|| DaemonError::Execution(format!("unknown node {node_id}")))?;
         self.publish_foreach_item(&node, ctx)?;
-        self.write_checkpoint(ctx);
-        self.fire_named_edge(blueprint, node_id, "Body")?;
+        self.commit_successors(blueprint, node_id, Some("Body"), ctx)?;
         Ok(true)
     }
 
@@ -208,7 +204,7 @@ impl Interpreter {
     }
 
     /// Enqueues the targets of one named execution output pin.
-    fn fire_named_edge(
+    pub(super) fn fire_named_edge(
         &mut self,
         blueprint: &Blueprint,
         node_id: NodeId,

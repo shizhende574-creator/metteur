@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{DaemonError, DaemonResult};
-use crate::execution::checkpoint::ExecutionCheckpoint;
+use crate::execution::checkpoint::{CHECKPOINT_TRANSITION_VERSION, ExecutionCheckpoint};
 use crate::execution::context::{ExecutionContext, ExecutionState, Frame, Scheduler};
 use crate::execution::interrupt::InterruptBus;
 use crate::execution::transaction::TransactionLog;
@@ -89,6 +89,20 @@ impl Interpreter {
                 "run {} is not resumable",
                 resume.run_id
             )));
+        }
+        // Old writers saved some branches before dispatching successors. Even
+        // a nonempty queue cannot prove that a parallel continuation was not
+        // lost, so do not upgrade such records by guessing their next step.
+        if resume.transition_version != CHECKPOINT_TRANSITION_VERSION {
+            return Err(DaemonError::Execution(format!(
+                "run {} has unsupported checkpoint transition version {}; successor dispatch cannot be verified, manual recovery required",
+                resume.run_id, resume.transition_version
+            )));
+        }
+        if resume.blueprint_id != blueprint.read().id {
+            return Err(DaemonError::Execution(
+                "checkpoint belongs to a different blueprint".to_string(),
+            ));
         }
         self.shared_blueprint = Some(blueprint.clone());
         self.state = ExecutionState {

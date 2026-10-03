@@ -242,10 +242,9 @@ impl Interpreter {
                     serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),
                 );
                 self.tree_end(ctx, TreeNodeStatus::Done);
-                self.write_checkpoint(ctx);
                 // Drive the body forward from the entry node (exit nodes
                 // typically have no successors, which is harmless).
-                self.fire_edges(&active_bp, node_id)?;
+                self.commit_successors(&active_bp, node_id, None, ctx)?;
                 continue;
             }
 
@@ -293,19 +292,14 @@ impl Interpreter {
                 continue;
             }
 
-            // Fire execution output edges and wake data consumers.
-            self.fire_edges(&active_bp, node_id)?;
-
             // Circuit breaker: repeated validation failures trigger a
             // user-approved replan and re-run this node under the new plan.
-            self.maybe_circuit_break(node_id, &node, &outputs, ctx).await?;
-
-            // Persist only once the successors are queued. A checkpoint taken
-            // before `fire_edges` would record this node as executed while its
-            // successors are in neither `executed` nor `pending`; a crash in
-            // that window would resume into a drained queue and report the run
-            // as completed with the remaining branch silently skipped.
-            self.write_checkpoint(ctx);
+            // Decide before dispatch, so stale successors cannot outrun it.
+            if self.maybe_circuit_break(node_id, &node, &outputs, ctx).await? {
+                self.write_checkpoint(ctx);
+                continue;
+            }
+            self.commit_successors(&active_bp, node_id, None, ctx)?;
         }
         Ok(())
     }

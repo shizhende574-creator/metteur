@@ -140,6 +140,9 @@ impl Interpreter {
                 "depth": self.function_depth(),
             }),
         );
+        // The parent caller is executed and the new frame already owns its
+        // seeded entry, variable scope and tree before it becomes resumable.
+        self.write_checkpoint(ctx);
         Ok(())
     }
 
@@ -220,7 +223,6 @@ impl Interpreter {
         );
         // Close the CallFunction tree node the caller opened at start.
         self.tree_end(ctx, TreeNodeStatus::Done);
-        self.write_checkpoint(ctx);
-        self.fire_edges(&outer_bp, caller_id)
+        self.commit_successors(&outer_bp, caller_id, None, ctx)
     }
 }

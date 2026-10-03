@@ -3,12 +3,36 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::execution::checkpoint::{CheckpointSink, ExecutionCheckpoint, RunStatus};
+use metteur_shared::{Blueprint, NodeId};
+
+use crate::error::DaemonResult;
+use crate::execution::checkpoint::{
+    CHECKPOINT_TRANSITION_VERSION, CheckpointSink, ExecutionCheckpoint, RunStatus,
+};
 use crate::execution::context::ExecutionContext;
 
 use super::Interpreter;
 
 impl Interpreter {
+    /// Commits a completed transition only after its continuation is queued.
+    /// Frame, variable, loop, retry and tree updates must precede this call.
+    /// `pin_name` selects a ForEach branch; other nodes dispatch all eligible
+    /// execution edges and wake their data consumers.
+    pub(crate) fn commit_successors(
+        &mut self,
+        blueprint: &Blueprint,
+        node_id: NodeId,
+        pin_name: Option<&str>,
+        ctx: &ExecutionContext,
+    ) -> DaemonResult<()> {
+        match pin_name {
+            Some(name) => self.fire_named_edge(blueprint, node_id, name)?,
+            None => self.fire_edges(blueprint, node_id)?,
+        }
+        self.write_checkpoint(ctx);
+        Ok(())
+    }
+
     /// Persists a checkpoint of the current run state, if a sink is set.
     pub(crate) fn write_checkpoint(&self, ctx: &ExecutionContext) {
         let Some(sink) = &self.checkpoint else {
@@ -39,6 +63,7 @@ impl Interpreter {
         error: Option<String>,
     ) {
         let checkpoint = ExecutionCheckpoint {
+            transition_version: CHECKPOINT_TRANSITION_VERSION,
             run_id: sink.run_id(),
             blueprint_id: self.blueprint_id,
             status,

@@ -15,6 +15,9 @@ use crate::storage::persistence::{Db, cf};
 use super::context::Frame;
 use super::transaction::TransactionEntry;
 
+/// Checkpoints written after successor dispatch and frame/loop bookkeeping.
+pub const CHECKPOINT_TRANSITION_VERSION: u32 = 1;
+
 /// The lifecycle status of an execution run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunStatus {
@@ -49,6 +52,11 @@ impl RunStatus {
 /// A serializable snapshot of a paused execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionCheckpoint {
+    /// Scheduling boundary format. Missing on legacy records whose successors
+    /// may not have been queued yet; those records remain readable, but cannot
+    /// safely be resumed automatically.
+    #[serde(default)]
+    pub transition_version: u32,
     /// The run identifier.
     pub run_id: uuid::Uuid,
     /// The blueprint being executed.
@@ -116,6 +124,7 @@ impl ExecutionCheckpoint {
     /// Builds an initial resumable checkpoint for a fresh run.
     pub fn running(run_id: uuid::Uuid, blueprint_id: uuid::Uuid, started_at: u64) -> Self {
         Self {
+            transition_version: CHECKPOINT_TRANSITION_VERSION,
             run_id,
             blueprint_id,
             status: RunStatus::Running,

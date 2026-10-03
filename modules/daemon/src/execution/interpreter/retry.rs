@@ -142,7 +142,7 @@ impl Interpreter {
         node: &Node,
         outputs: &HashMap<PinId, Value>,
         ctx: &mut ExecutionContext,
-    ) -> DaemonResult<()> {
+    ) -> DaemonResult<bool> {
         let failed = circuit_failed(node, outputs);
         self.circuit_failures = if failed {
             self.circuit_failures + 1
@@ -156,7 +156,7 @@ impl Interpreter {
             .map(|cfg| cfg.execution.circuit_break_after)
             .unwrap_or(0);
         if threshold == 0 || self.circuit_failures < threshold {
-            return Ok(());
+            return Ok(false);
         }
         crate::replan::trip_and_replan(ctx, node_id, self.circuit_failures).await?;
         self.circuit_failures = 0;
@@ -164,7 +164,7 @@ impl Interpreter {
         sched.unmark_executed(node_id);
         sched.dequeue_all(&[node_id]);
         sched.enqueue(node_id);
-        Ok(())
+        Ok(true)
     }
 }
 
