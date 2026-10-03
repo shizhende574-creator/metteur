@@ -75,7 +75,11 @@ test('the reader turn is a quiet block, not a saturated bubble', async ({ page }
   const turn = page.locator('.chat-user-turn').first()
   await expect(turn).toBeVisible()
 
-  const colors = await turn.evaluate((el) => {
+  // Highlighter initialization can remount the transcript after a locator resolves.
+  // Resolve and sample in one browser task so the styles belong to an attached turn.
+  const colors = await page.evaluate(() => {
+    const el = document.querySelector('.chat-user-turn')
+    if (!el) throw new Error('Reader turn is missing')
     const style = getComputedStyle(el)
     const root = getComputedStyle(document.documentElement)
     return {

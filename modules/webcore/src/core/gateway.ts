@@ -3,6 +3,7 @@ import type {
   AddonInfo,
   ChatContextStats,
   Blueprint,
+  NodeCatalog,
   ChatMessage,
   ChatOptions,
   ChatSessionInfo,
@@ -149,7 +150,7 @@ export interface DaemonGateway {
   deleteChatSession(workspacePath: string, sessionId?: string): Promise<Result<void>>
 
   // Blueprints -----------------------------------------------------------------
-  listNodeKinds(): Promise<Result<string[]>>
+  listNodeKinds(): Promise<Result<NodeCatalog>>
   listFunctions(workspacePath: string): Promise<Result<FunctionItem[]>>
   compileDsl(source: string): Promise<Result<Blueprint>>
   decompileBlueprint(workspacePath: string, blueprintOrId: Blueprint | string): Promise<Result<string>>

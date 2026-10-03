@@ -19,6 +19,8 @@ export type {
   AddonInfo,
   ApprovalRequest,
   Blueprint,
+  NodeCatalog,
+  NodeKindInfo,
   BlueprintEdge,
   BlueprintNode,
   BlueprintPin,

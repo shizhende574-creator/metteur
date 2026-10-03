@@ -5,6 +5,7 @@ import type {
   ChatContextStats,
   ApprovalRequest,
   Blueprint,
+  NodeCatalog,
   BlueprintEdge,
   BlueprintNode,
   BlueprintPin,
@@ -35,20 +36,8 @@ import type {
 import { err, ok } from './types'
 import { configScopeOf, configToToml, isConfigDoc, tryParseToml } from '@/lib/toml'
 
-/** The node kinds the daemon's built-in registry executes. */
-const NODE_KINDS = [
-  'Start', 'End', 'CallLLM', 'Tool', 'Validator', 'Judge', 'Branch', 'Switch',
-  'ForEach', 'VariableSet', 'VariableGet', 'RequestApproval', 'Abstract',
-  'CallFunction', 'FunctionEntry', 'FunctionExit', 'Delay', 'LspCheck',
-  'ContextClone', 'ContextCreate', 'ContextFilter', 'ContextMerge',
-  'ContextRelease', 'ContextToText', 'ContextTrim', 'ParseJson', 'JsonGet',
-  'JsonSet', 'Concat', 'Contains', 'Length', 'Lower', 'Replace', 'Substring',
-  'Trim', 'Upper', 'Add', 'Subtract', 'Multiply', 'Divide', 'Max', 'Min',
-  'Modulo', 'Power', 'Round', 'Abs', 'And', 'Or', 'Not', 'Xor', 'Equal',
-  'NotEqual', 'Greater', 'GreaterEqual', 'Less', 'LessEqual', 'ListAppend',
-  'ListContains', 'ListCreate', 'ListGet', 'ListLength', 'ToBool', 'ToFloat',
-  'ToInt', 'ToJson', 'ToString',
-]
+import catalogFixture from './node-catalog.fixture.json'
+import { fromWireCatalog } from './node-catalog'
 
 /** Builds a pin list: exec pins first, then data pins, matching UE pin slots. */
 function pins(
@@ -964,10 +953,10 @@ export class MockGateway implements DaemonGateway {
   }
 
   // Blueprints ----------------------------------------------------------------
-  async listNodeKinds(): Promise<Result<string[]>> {
+  async listNodeKinds(): Promise<Result<NodeCatalog>> {
     // Mirrors the daemon's built-in registry so the palette filter behaves the
     // same in the demo as against a real daemon.
-    return ok(NODE_KINDS)
+    return ok(fromWireCatalog(catalogFixture))
   }
 
   async listFunctions(): Promise<Result<FunctionItem[]>> {

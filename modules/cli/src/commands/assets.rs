@@ -140,5 +140,5 @@ pub(crate) async fn handle_tools(client: &mut DaemonClient<Channel>) -> anyhow::
 /// Handles `nodes`: lists available node kinds.
 pub(crate) async fn handle_nodes(client: &mut DaemonClient<Channel>) -> anyhow::Result<Outcome> {
     let list = client.list_node_kinds(Empty {}).await.map_err(status)?.into_inner();
-    Ok(Outcome::Printed(print::node_kinds(&list.kinds)))
+    Ok(Outcome::Printed(print::node_catalog(&list)))
 }

@@ -66,6 +66,56 @@ pub fn node_kinds(kinds: &[String]) -> String {
     }
 }
 
+/// Renders the daemon's contracts, with an explicit legacy compatibility state.
+pub fn node_catalog(list: &metteur_proto::proto::NodeKindList) -> String {
+    if list.signature_version != 1
+        || list.kinds.iter().any(|kind| !list.infos.iter().any(|info| &info.kind == kind))
+    {
+        return format!(
+            "{}\nPin signatures unavailable from this daemon (version {}).",
+            node_kinds(&list.kinds),
+            list.signature_version
+        );
+    }
+    let mut out = String::new();
+    for kind in &list.kinds {
+        let Some(info) = list.infos.iter().find(|info| &info.kind == kind) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "{} [{}]{}\n",
+            info.kind,
+            info.node_type,
+            if info.dynamic_pins {
+                " (dynamic pins)"
+            } else {
+                ""
+            }
+        ));
+        for pin in &info.pins {
+            out.push_str(&format!("  {} {}: {}", pin.pin_type, pin.name, pin.data_type));
+            if pin.optional {
+                out.push_str(" optional");
+            }
+            if !pin.default_json.is_empty() {
+                out.push_str(&format!(" default={}", pin.default_json));
+            }
+            if !pin.choices.is_empty() {
+                out.push_str(&format!(" choices={}", pin.choices.join("|")));
+            }
+            if !pin.description.is_empty() {
+                out.push_str(&format!(" — {}", pin.description));
+            }
+            out.push('\n');
+        }
+    }
+    if out.is_empty() {
+        "(no node kinds)".to_string()
+    } else {
+        out.trim_end().to_string()
+    }
+}
+
 /// Lists executions (runs) for a workspace.
 pub fn executions(list: &ExecutionList) -> String {
     if list.executions.is_empty() {

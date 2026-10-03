@@ -1,6 +1,5 @@
 import type { editor as MonacoEditor, IRange, languages as MonacoLanguages } from 'monaco-editor'
 import { gateway } from '@/core'
-import { NODE_PRESETS } from '@/lib/blueprint'
 
 /**
  * Monaco language service for the blueprint DSL (`.mbp` files).
@@ -49,19 +48,15 @@ export function ensureMbpLanguage(monaco: Monaco): void {
     insertText,
     detail,
   })
-  // Tool presets (SubAgentTool, ...) are canvas aliases for kind `Tool`;
-  // only real daemon kinds complete in DSL headers.
-  const kindEntries = Object.keys(NODE_PRESETS)
-    .filter((kind) => !NODE_PRESETS[kind].kind)
-    .map((kind) => ({
-      kind: Class,
-      label: kind,
-      insertText: `${kind}()`,
-      detail: 'Add a node of this kind',
-    }))
   monaco.languages.registerCompletionItemProvider('mbp', {
     triggerCharacters: ['b', 'e', 'a', 'B', 'E', 'A'],
-    provideCompletionItems(model, position) {
+    async provideCompletionItems(model, position) {
+      const result = await gateway.listNodeKinds()
+      const kindEntries = result.ok && result.data.ready ? result.data.nodes.map((node) => ({
+        kind: Class, label: node.kind, insertText: `${node.kind}()`,
+        detail: node.description,
+        documentation: node.pins.map((p) => `${p.kind} ${p.name || p.key}: ${p.type}${p.optional ? ' (optional)' : ''}${p.default !== undefined ? ` = ${JSON.stringify(p.default)}` : ''}`).join('\n'),
+      })) : []
       // Suggest node kinds only while a node header (`alias: Kind`) is being
       // typed; keywords are always offered. Items replace the word under the
       // cursor, which Monaco requires every suggestion to declare.

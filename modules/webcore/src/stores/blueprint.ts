@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { gateway } from '@/core'
-import { NODE_PRESETS, pinsFor } from '@/lib/blueprint'
-import type { Blueprint, BlueprintEdge, BlueprintNode, BlueprintPin, FunctionItem } from '@/core'
+import { pinsFor } from '@/lib/blueprint'
+import { inlineValue, valueText, nodeConfiguration } from '@/core/node-catalog'
+import type { Blueprint, BlueprintEdge, BlueprintNode, BlueprintPin, FunctionItem, NodeKindInfo } from '@/core'
 
 /**
  * Blueprint graph state shared across the editor.
@@ -29,6 +30,9 @@ function keyFor(nodes: BlueprintNode[], edges: KeyEdge[]): string {
   return JSON.stringify({
     nodes: nodes.map((n) => ({
       id: n.id,
+      type: n.type,
+      nodeType: n.nodeType,
+      data: n.data,
       position: n.position,
       title: n.title,
       category: n.category,
@@ -48,31 +52,39 @@ function keyFor(nodes: BlueprintNode[], edges: KeyEdge[]): string {
 }
 
 /** A fresh Start → End graph used to seed a brand-new blueprint file.
- *  Pins come from the presets so the seed stays in sync with the palette. */
-function seedGraph(): GraphData {
+ *  Pins come from the current daemon catalogue. */
+function seedGraph(signatures: NodeKindInfo[]): GraphData {
+  const startSignature = signatures.find((n) => n.kind === 'Start')
+  const endSignature = signatures.find((n) => n.kind === 'End')
+  if (!startSignature || !endSignature) return { id: crypto.randomUUID(), nodes: [], edges: [] }
   const nodeId = () => crypto.randomUUID()
   const start = nodeId()
   const end = nodeId()
-  const startPins = pinsFor(NODE_PRESETS['Start'])
-  const endPins = pinsFor(NODE_PRESETS['End'])
+  const startPins = pinsFor(startSignature)
+  const endPins = pinsFor(endSignature)
   return {
     id: crypto.randomUUID(),
     nodes: [
       {
         id: start,
         type: 'Start',
+        nodeType: startSignature.nodeType,
+        data: {},
         category: 'event',
         title: 'Start',
-        position: { x: 40, y: 220 },
+        // Match the canvas 12px grid so initialization does not dirty a fresh graph.
+        position: { x: 36, y: 216 },
         inputs: startPins.inputs,
         outputs: startPins.outputs,
       },
       {
         id: end,
         type: 'End',
+        nodeType: endSignature.nodeType,
+        data: {},
         category: 'event',
         title: 'End',
-        position: { x: 320, y: 220 },
+        position: { x: 324, y: 216 },
         inputs: endPins.inputs,
         outputs: endPins.outputs,
       },
@@ -145,34 +157,35 @@ const LEGACY_PIN_NAMES: Record<string, string> = {
 const KIND_ALIASES: Record<string, string> = { Arithmetic: 'Add' }
 
 /**
- * Renames a node's data pins to the preset labels for its kind (older
+ * Aligns existing pins with the daemon contract while preserving their IDs (older
  * canvases stored lowercase/`out` names that no longer match the daemon's
  * executor lookups or the DSL templates). Whitespace is stripped so exported
  * data wires never break the DSL parser.
  */
-function canonicalizePinNames(n: BlueprintNode): BlueprintNode {
+function canonicalizePinNames(n: BlueprintNode, signatures: NodeKindInfo[]): BlueprintNode {
   const kind = KIND_ALIASES[n.type] ?? n.type
-  const preset = NODE_PRESETS[kind]
-  const labelOf = new Map<string, string>()
-  if (preset) {
-    for (const d of preset.inputs) labelOf.set(d.id, d.label)
-    for (const d of preset.outputs) labelOf.set(d.id, d.label)
+  const signature = signatures.find((s) => s.kind === kind)
+  const values = { ...n.values }
+  for (const p of n.inputs ?? []) {
+    const raw = inlineValue(n.data ?? {}, p)
+    if (p.kind === 'data-in' && values[p.id] === undefined && raw !== undefined) values[p.id] = valueText(raw)
   }
   const byName = (p: BlueprintPin): BlueprintPin => {
-    const label = p.key ? (labelOf.get(p.key) ?? LEGACY_PIN_NAMES[p.key]) : undefined
+    const contract = signature?.pins.find((d) => d.kind === p.kind && ((p.key && d.key === p.key) || d.name === p.name))
+    const label = contract?.name || (!signature && p.key ? LEGACY_PIN_NAMES[p.key] : undefined)
     const name = (label ?? p.name ?? '').replace(/\s+/g, '')
-    return name !== p.name ? { ...p, name } : p
+    return contract ? { ...contract, id: p.id, name, default: p.default === undefined ? contract.default : p.default } : name !== p.name ? { ...p, name } : p
   }
-  return { ...n, type: n.type === kind ? n.type : kind, inputs: (n.inputs ?? []).map(byName), outputs: (n.outputs ?? []).map(byName) }
+  return { ...n, data: nodeConfiguration(n.data ?? {}, n.inputs ?? []), values, nodeType: signature?.nodeType ?? n.nodeType, type: n.type === kind ? n.type : kind, inputs: (n.inputs ?? []).map(byName), outputs: (n.outputs ?? []).map(byName) }
 }
 
 /**
  * Rewrites ids that are not UUIDs (older canvases used `n-…` node ids) so the
  * graph satisfies the daemon model, which keys nodes/edges/pins by `Uuid`, and
- * renames pins to the current preset labels. Idempotent; works for cached
+ * aligns pins with the current daemon signature. Idempotent; works for cached
  * graphs too, since name canonicalization never depends on id migration.
  */
-function migrateIds(g: GraphData): GraphData {
+function migrateIds(g: GraphData, signatures: NodeKindInfo[]): GraphData {
   const nodeIds = new Map<string, string>()
   const pinIds = new Map<string, string>()
   for (const n of g.nodes) {
@@ -184,13 +197,14 @@ function migrateIds(g: GraphData): GraphData {
   return {
     id: UUID_RE.test(g.id) ? g.id : crypto.randomUUID(),
     nodes: g.nodes.map((n) => {
-      const remapped = {
-        ...n,
+      const canonical = canonicalizePinNames(n, signatures)
+      return {
+        ...canonical,
         id: nodeIds.get(n.id) ?? n.id,
-        inputs: (n.inputs ?? []).map((p) => ({ ...p, id: pinIds.get(p.id) ?? p.id })),
-        outputs: (n.outputs ?? []).map((p) => ({ ...p, id: pinIds.get(p.id) ?? p.id })),
+        values: Object.fromEntries(Object.entries(canonical.values ?? {}).map(([id, value]) => [pinIds.get(id) ?? id, value])),
+        inputs: canonical.inputs.map((p) => ({ ...p, id: pinIds.get(p.id) ?? p.id })),
+        outputs: canonical.outputs.map((p) => ({ ...p, id: pinIds.get(p.id) ?? p.id })),
       }
-      return canonicalizePinNames(remapped as BlueprintNode)
     }),
     edges: g.edges.map((e) => ({
       ...e,
@@ -209,6 +223,8 @@ export const useBlueprintStore = defineStore('blueprint', () => {
   const nodes = ref<BlueprintNode[]>([])
   const edges = ref<BlueprintEdge[]>([])
   const nodeKinds = ref<string[]>([])
+  const signatures = ref<NodeKindInfo[]>([])
+  const catalogMessage = ref('Loading node signatures…')
   /** Registered blueprint functions surfaced by the daemon library. */
   const functions = ref<FunctionItem[]>([])
   /** Unsaved graph per blueprint file path, so different files stay independent. */
@@ -242,7 +258,11 @@ export const useBlueprintStore = defineStore('blueprint', () => {
 
   async function listKinds() {
     const r = await gateway.listNodeKinds()
-    if (r.ok) nodeKinds.value = r.data
+    nodeKinds.value = r.ok ? r.data.kinds : []
+    signatures.value = r.ok && r.data.ready ? r.data.nodes : []
+    catalogMessage.value = r.ok && r.data.ready ? '' : r.ok
+      ? 'This daemon does not provide supported pin signatures. Existing graphs remain editable; node creation requires an updated daemon.'
+      : `Node signatures unavailable: ${r.error}`
   }
 
   /** Load the function library (`path` empty = builtin + global). */
@@ -258,16 +278,17 @@ export const useBlueprintStore = defineStore('blueprint', () => {
 
   async function load(path: string, filePath: string) {
     currentFile.value = filePath
+    await listKinds()
     const cached = graphs.value[filePath]
     if (cached) {
-      const graph = migrateIds(cached)
+      const graph = migrateIds(cached, signatures.value)
       graphs.value[filePath] = graph
       nodes.value = graph.nodes
       edges.value = graph.edges
       ids.value[filePath] = graph.id
     } else {
-      const [file, _] = await Promise.all([gateway.readFile(path, filePath), listKinds()])
-      let graph = seedGraph()
+      const file = await gateway.readFile(path, filePath)
+      let graph = seedGraph(signatures.value)
       if (file.ok && file.data.content.trim()) {
         try {
           const parsed = JSON.parse(file.data.content) as Blueprint
@@ -278,7 +299,7 @@ export const useBlueprintStore = defineStore('blueprint', () => {
           // Corrupt files fall back to a fresh graph.
         }
       }
-      graph = migrateIds(graph)
+      graph = migrateIds(graph, signatures.value)
       graphs.value[filePath] = graph
       ids.value[filePath] = graph.id
       // The freshly loaded graph is, by definition, the on-disk baseline.
@@ -342,6 +363,8 @@ export const useBlueprintStore = defineStore('blueprint', () => {
     nodes,
     edges,
     nodeKinds,
+    signatures,
+    catalogMessage,
     functions,
     graphs,
     savedKeys,

@@ -1,11 +1,12 @@
 import { createClient, type Client } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
 import { ref, type Ref } from 'vue'
-import type { NodeCategory, PinKind } from './types'
+import type { PinKind } from './types'
 import type { DaemonGateway } from './gateway'
 import type {
   AddonInfo,
   Blueprint,
+  NodeCatalog,
   BlueprintEdge,
   BlueprintNode,
   BlueprintPin,
@@ -37,7 +38,8 @@ import type {
 import { err, ok } from './types'
 import { readSse } from './sse'
 import { Daemon } from '@/gen/metteur_pb'
-import { NODE_PRESETS } from '@/lib/blueprint'
+import { categoryFor } from '@/lib/blueprint'
+import { fromWireCatalog, fromWirePin, parseDefault, pinType, valueText, inlineValue, nodeConfiguration, type WirePin } from './node-catalog'
 import { configScopeOf, configToToml, isConfigDoc, tryParseToml } from '@/lib/toml'
 
 /** Reads a context-stats payload, tolerating a partial or unexpected shape. */
@@ -178,72 +180,38 @@ function pinTypeOf(kind: PinKind): string {
   }
 }
 
-/** Map a UI pin value type to the daemon data-type string. */
-function dataTypeOf(type?: string): string {
-  switch (type) {
-    case 'number':
-      return 'Float'
-    case 'int':
-      return 'Int'
-    case 'bool':
-      return 'Bool'
-    case 'list':
-      return 'List'
-    case 'object':
-      return 'Json'
-    default:
-      return 'String'
-  }
-}
-
-/** Map a daemon data-type string to the UI pin value type. */
-function fnTypeOf(dataType: string): string {
-  switch (dataType) {
-    case 'Bool':
-      return 'bool'
-    case 'Int':
-      return 'int'
-    case 'List':
-      return 'list'
-    case 'Json':
-      return 'object'
-    case 'Float':
-    case 'Int64':
-      return 'number'
-    default:
-      return 'string'
-  }
-}
-
-/** Coerce an inline editor value to the JSON type its pin declares. */
+/** Coerce inline values without narrowing structural types to strings. */
 function coerceValue(type: string | undefined, raw: string): unknown {
-  switch (type) {
-    case 'number': {
-      const n = Number(raw)
-      return Number.isNaN(n) ? raw : n
-    }
-    case 'bool':
-      return raw === 'true'
-    default:
-      return raw
+  if (['number', 'float', 'int'].includes(type ?? '')) {
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : raw
   }
+  if (type === 'bool') return raw === 'true'
+  if (['any', 'json'].includes(type ?? '') || type?.startsWith('list') || type?.startsWith('object')) {
+    try { return JSON.parse(raw) } catch { return raw }
+  }
+  return raw
 }
 
 /** Serialize a UI node into the daemon `data` object from its pin values. */
 function nodeData(node: BlueprintNode): Record<string, unknown> {
-  const data: Record<string, unknown> = {}
+  const data: Record<string, unknown> = { ...node.data }
   const values = node.values ?? {}
   for (const pin of node.inputs) {
     if (pin.kind !== 'data-in') continue
-    const raw = values[pin.id]
+    const raw = values[pin.id] ?? valueText(inlineValue(data, pin))
+    // Pin values are authoritative for inline inputs; preserve unrelated configuration.
+    delete data[pin.name]
+    if (pin.key) delete data[pin.key]
+    delete data[pin.id]
     if (raw === undefined || raw === '') continue
-    data[pin.key ?? pin.name] = coerceValue(pin.type, raw)
+    data[pin.name || pin.key || pin.id] = coerceValue(pin.type, raw)
   }
   return data
 }
 
 /** Convert a domain blueprint into its protobuf form for the daemon. */
-function toProtoBlueprint(bp: Blueprint): object {
+export function toProtoBlueprint(bp: Blueprint): object {
   const kept = bp.nodes.filter((n) => n.type !== 'FileReference')
   const keptIds = new Set(kept.map((n) => n.id))
   // The daemon resolves the entry against the (FileReference-filtered) node
@@ -258,7 +226,7 @@ function toProtoBlueprint(bp: Blueprint): object {
       const kind = daemonKindOf(n.type)
       return {
         id: n.id,
-        nodeType: nodeTypeOf(kind),
+        nodeType: n.nodeType ?? nodeTypeOf(kind),
         kind,
         posX: n.position.x,
         posY: n.position.y,
@@ -267,7 +235,9 @@ function toProtoBlueprint(bp: Blueprint): object {
           key: p.key ?? '',
           name: p.name || (p.kind === 'data-out' ? p.key ?? 'Result' : p.key ?? ''),
           pinType: pinTypeOf(p.kind),
-          dataType: dataTypeOf(p.type),
+          dataType: pinType(p.type ?? (p.kind.startsWith('exec') ? 'void' : 'any')),
+          defaultJson: p.default === undefined ? '' : JSON.stringify(p.default),
+          optional: p.optional ?? false, choices: p.choices ?? [], description: p.description ?? '',
         })),
         dataJson: JSON.stringify(nodeData(n)),
       }
@@ -284,26 +254,8 @@ function toProtoBlueprint(bp: Blueprint): object {
   }
 }
 
-/** Map a daemon `DataType` display string to the canvas pin type. Daemon
- *  serializes types lowercase (`float`, `list<int>`…); scalar aliases collapse
- *  onto the canvas vocabulary while structural types pass through verbatim. */
-function protoTypeOf(dt: string): string {
-  switch (dt) {
-    case 'float':
-      return 'number'
-    case 'json':
-      return 'json'
-    case 'context':
-      return 'context'
-    case 'any':
-      return 'any'
-    default:
-      return dt // int / bool / string / list<…> / object{…} pass through
-  }
-}
-
 /** Convert a protobuf blueprint into its domain form. */
-function fromProtoBlueprint(pb: {
+export function fromProtoBlueprint(pb: {
   id: string
   name: string
   entryNodeId: string
@@ -313,14 +265,7 @@ function fromProtoBlueprint(pb: {
     kind: string
     posX: number
     posY: number
-    pins: Array<{
-      id: string
-      key: string
-      name: string
-      pinType: string
-      dataType: string
-      choices?: string[]
-    }>
+    pins: WirePin[]
     dataJson: string
   }>
   edges: Array<{
@@ -342,36 +287,11 @@ function fromProtoBlueprint(pb: {
     }
     const values: Record<string, string> = {}
     for (const p of n.pins) {
-      const kind: PinKind =
-        p.pinType === 'ExecInput'
-          ? 'exec-in'
-          : p.pinType === 'ExecOutput'
-            ? 'exec-out'
-            : p.pinType === 'DataInput'
-              ? 'data-in'
-              : 'data-out'
-      // Default exec outlets carry no on-canvas label (matching hand-drawn
-      // nodes); the key keeps the semantic name for DSL round-trips.
-      const exec = kind === 'exec-in' || kind === 'exec-out'
-      const name = exec && (p.name === 'x-in' || p.name === 'x-out') ? '' : p.name
-      // Enum candidates are registry metadata: when the wire omits them (e.g.
-      // a DSL-compiled `choice` pin), the preset fills them in by key/label.
-      const presetPin = NODE_PRESETS[n.kind]
-        ? [...NODE_PRESETS[n.kind].inputs, ...NODE_PRESETS[n.kind].outputs].find(
-            (d) => (p.key && d.id === p.key) || (p.name && d.label === p.name),
-          )
-        : undefined
-      const pin: BlueprintPin = {
-        id: p.id,
-        key: p.key || p.name || undefined,
-        name,
-        kind,
-        type: p.choices?.length || presetPin?.choices?.length ? 'choice' : protoTypeOf(p.dataType),
-        choices: p.choices?.length ? p.choices : presetPin?.choices,
-      }
+      const pin = fromWirePin(p)
+      const kind = pin.kind
       if (kind === 'data-in') {
-        const raw = data[p.key || p.name]
-        if (raw !== undefined) values[p.id] = String(raw)
+        const raw = inlineValue(data, p)
+        if (raw !== undefined) values[p.id] = valueText(raw)
         inputs.push(pin)
       } else if (kind === 'exec-in') {
         inputs.push(pin)
@@ -379,13 +299,12 @@ function fromProtoBlueprint(pb: {
         outputs.push(pin)
       }
     }
-    // Category, colour and signature are registry metadata: the blueprint only
-    // carries the kind, so import derives them from the preset table by kind.
-    const category: NodeCategory = NODE_PRESETS[n.kind]?.category ?? 'module'
     return {
       id: n.id,
       type: n.kind,
-      category,
+      nodeType: n.nodeType,
+      data: nodeConfiguration(data, inputs),
+      category: categoryFor(n.kind, n.nodeType),
       title: n.kind,
       position: { x: n.posX, y: n.posY },
       inputs,
@@ -1012,10 +931,10 @@ export class GrpcGateway implements DaemonGateway {
   }
 
   // Blueprints -----------------------------------------------------------------
-  async listNodeKinds(): Promise<Result<string[]>> {
+  async listNodeKinds(): Promise<Result<NodeCatalog>> {
     try {
       const kinds = await this.client.listNodeKinds({})
-      return ok(kinds.kinds)
+      return ok(fromWireCatalog(kinds))
     } catch (e) {
       return toErr(e)
     }
@@ -1029,8 +948,8 @@ export class GrpcGateway implements DaemonGateway {
         name: f.name,
         description: f.description,
         source: f.source,
-        inputs: (f.inputs ?? []).map((p) => ({ name: p.name, type: fnTypeOf(p.dataType) })),
-        outputs: (f.outputs ?? []).map((p) => ({ name: p.name, type: fnTypeOf(p.dataType) })),
+        inputs: (f.inputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
+        outputs: (f.outputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
       }))
       return ok(items)
     } catch (e) {

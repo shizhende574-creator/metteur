@@ -327,7 +327,20 @@ message UsageSummary {
 }
 
 message NodeKindList {
+  // Retained for older clients. Only actual registered executor kinds appear.
   repeated string kinds = 1;
+  repeated NodeKindInfo infos = 2;
+  // Zero means a legacy daemon without pin metadata; currently version 1.
+  uint32 signature_version = 3;
+}
+
+message NodeKindInfo {
+  string kind = 1;
+  string node_type = 2;
+  // Contract pins have empty ids; clients assign fresh ids to node instances.
+  repeated Pin pins = 3;
+  string description = 4;
+  bool dynamic_pins = 5;
 }
 
 message McpServerInfo {
