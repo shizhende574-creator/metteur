@@ -4,7 +4,7 @@ use crate::common::*;
 
 /// Builds Start -> ForEach([1,2,3]) -> Body: Set(last=Iteration) ->
 /// Completed -> Get(last) -> Validator(eq 3) -> End.
-fn foreach_blueprint(list: serde_json::Value) -> Blueprint {
+pub(crate) fn foreach_blueprint(list: serde_json::Value) -> Blueprint {
     let (start, fe, set, get, validator, end) = (
         Uuid::new_v4(),
         Uuid::new_v4(),

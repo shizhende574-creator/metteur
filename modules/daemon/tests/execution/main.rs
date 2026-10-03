@@ -4,6 +4,8 @@ mod approval;
 mod basics;
 mod branch;
 mod checkpoint;
+mod checkpoint_failures;
+mod checkpoint_transitions;
 mod circuit;
 mod common;
 mod control;

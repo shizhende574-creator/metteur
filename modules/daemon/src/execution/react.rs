@@ -285,10 +285,8 @@ async fn react_loop_inner(
         // A resumed run keeps its plan: the tool result that produced it may
         // have been evicted, and the model must not lose track of the work.
         let rendered = metteur_shared::llm::render_todos(&ctx.todos);
-        context.push_message(Message::text(
-            Role::User,
-            format!("[engine] current plan:\n{rendered}"),
-        ));
+        context
+            .push_message(Message::text(Role::User, format!("[engine] current plan:\n{rendered}")));
     }
 
     let budget = opts.max_iterations + notices.wrap_up_turns();
@@ -325,19 +323,15 @@ async fn react_loop_inner(
         if let Some(notice) = notices.notice_for(iteration, opts.max_iterations) {
             context.push_message(Message::text(Role::User, notice));
         }
-        let turn_tools: &[ToolDefinition] = if wrapping { &[] } else { &tools };
+        let turn_tools: &[ToolDefinition] = if wrapping {
+            &[]
+        } else {
+            &tools
+        };
 
         // Compress long contexts before issuing the next request.
-        compress_if_needed(
-            ctx,
-            &client,
-            &mut context,
-            &params,
-            opts,
-            &billing,
-            &mut total_usage,
-        )
-        .await;
+        compress_if_needed(ctx, &client, &mut context, &params, opts, &billing, &mut total_usage)
+            .await;
 
         // Race the LLM call against an emergency interrupt so that an
         // emergency message can abort an in-flight request. The streamed
@@ -346,8 +340,7 @@ async fn react_loop_inner(
         // The model sees an anonymized shadow copy; stored context keeps the
         // original text so chat restore and audit remain readable.
         let response = {
-            let outbound =
-                outbound_context(&context, &anonymizer, opts.anonymize_thinking).await;
+            let outbound = outbound_context(&context, &anonymizer, opts.anonymize_thinking).await;
             match request_with_retry(
                 ctx,
                 &mut client,
@@ -389,12 +382,12 @@ async fn react_loop_inner(
                     // Keep the model's "I will wait" text, then hand it the
                     // result of the job that just ended.
                     if !response.text.is_empty() {
-                        context
-                            .push_message(Message::text(Role::Assistant, response.text.clone()));
+                        context.push_message(Message::text(Role::Assistant, response.text.clone()));
                     }
                     // The `job` execution event already tells the UI; the
                     // notice here is what the model reads.
-                    let notice = job_notice(&finished, &ctx.jobs, execution.job_tail_lines as usize);
+                    let notice =
+                        job_notice(&finished, &ctx.jobs, execution.job_tail_lines as usize);
                     notify_job(ctx, &finished);
                     context.push_message(Message::text(Role::User, notice));
                     continue;
@@ -468,6 +461,9 @@ async fn react_loop_inner(
         let outcomes =
             execute_tool_calls(ctx, &response.tool_calls, opts, &anonymizer, &mut on_event).await;
         ctx.parent_context = None;
+        if let Err(error) = ctx.transaction_log.ensure_healthy() {
+            return Err((error, context));
+        }
 
         // Context operations requested by the calls above apply to the results
         // already in the context, never to the batch that requested them.
@@ -480,6 +476,10 @@ async fn react_loop_inner(
                 full_reads,
                 elapsed_ms,
             } = outcome;
+            let outcome = match outcome {
+                Err(error @ DaemonError::Persistence(_)) => return Err((error, context)),
+                other => other,
+            };
             // A complete read replaces an earlier complete read of the same
             // paths: keeping both would duplicate content the model already
             // has. The check runs per call so the paths are attributed to the
@@ -554,8 +554,7 @@ async fn react_loop_inner(
             let mixed = anonymizer.anonymize(&displayed).await;
             // Retention comes from the tool's own declaration so reads survive
             // across turns while one-shot mutations can be evicted early.
-            let lifetime =
-                ctx.registry.tool(&call.name).map(|t| t.lifetime()).unwrap_or_default();
+            let lifetime = ctx.registry.tool(&call.name).map(|t| t.lifetime()).unwrap_or_default();
             context.mix_in_tool_result(ToolResult {
                 tool_call_id: call.id.clone(),
                 tool: call.name.clone(),
@@ -627,11 +626,7 @@ async fn collect_finished_job(
         ctx,
         format!(
             "[engine] waiting for {} background job(s) to finish; you will be woken when one              completes",
-            ctx.jobs
-                .list(Some(ctx.run_id))
-                .iter()
-                .filter(|job| job.state.is_running())
-                .count()
+            ctx.jobs.list(Some(ctx.run_id)).iter().filter(|job| job.state.is_running()).count()
         ),
     );
     let jobs = Arc::clone(&ctx.jobs);
@@ -852,9 +847,7 @@ async fn request_with_retry(
                 )
                 .await
             }
-            None => {
-                race_call(client.as_ref(), context, params, tools, &ctx.interrupts, None).await
-            }
+            None => race_call(client.as_ref(), context, params, tools, &ctx.interrupts, None).await,
         };
         match result {
             Ok(race) => return Ok(race),
@@ -913,10 +906,7 @@ async fn request_with_retry(
                     "llm.fallback",
                     serde_json::json!({ "to": next, "error": err.to_string() }),
                 );
-                notify(
-                    ctx,
-                    format!("[engine] switching to fallback model '{next}' after: {err}"),
-                );
+                notify(ctx, format!("[engine] switching to fallback model '{next}' after: {err}"));
                 *client = fallback;
                 attempts = 0;
             }
@@ -1162,10 +1152,8 @@ fn build_client(
         })
     })?;
     // The id sent to the provider usually differs from the config key.
-    let model = model_cfg
-        .map(|cfg| cfg.model_id.clone())
-        .filter(|id| !id.is_empty())
-        .unwrap_or(model_key);
+    let model =
+        model_cfg.map(|cfg| cfg.model_id.clone()).filter(|id| !id.is_empty()).unwrap_or(model_key);
     let base_url = opts
         .base_url
         .clone()
@@ -1236,11 +1224,7 @@ fn tool_definitions(
 }
 
 /// Resolves the byte budget for one tool result.
-async fn tool_result_budget(
-    ctx: &ExecutionContext,
-    name: &str,
-    opts: &ReactOptions,
-) -> usize {
+async fn tool_result_budget(ctx: &ExecutionContext, name: &str, opts: &ReactOptions) -> usize {
     let declared = ctx.registry.tool(name).map(|t| t.max_result_bytes()).unwrap_or(0);
     if declared > 0 {
         return declared;
@@ -1304,12 +1288,17 @@ async fn execute_tool_calls(
             ctx.read_paths_full.clear();
             let started = std::time::Instant::now();
             let result = run_with_progress(ctx, call, opts, anonymizer, on_event).await;
+            let fatal = matches!(&result, Err(DaemonError::Persistence(_)))
+                || ctx.transaction_log.ensure_healthy().is_err();
             out.push(ToolOutcome {
                 result,
                 read_paths: drain_read_paths(ctx),
                 full_reads: std::mem::take(&mut ctx.read_paths_full),
                 elapsed_ms: started.elapsed().as_millis() as u64,
             });
+            if fatal {
+                break;
+            }
         }
         return out;
     }
@@ -1343,13 +1332,14 @@ async fn execute_tool_calls(
         let mut child = ctx.child_nested();
         handles.push(Some(tokio::spawn(async move {
             let outcome = match tool.timeout() {
-                Some(limit) => match tokio::time::timeout(limit, tool.call(&args, &mut child)).await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        Err(DaemonError::Execution(format!("tool '{}' timed out", tool.name())))
+                Some(limit) => {
+                    match tokio::time::timeout(limit, tool.call(&args, &mut child)).await {
+                        Ok(result) => result,
+                        Err(_) => {
+                            Err(DaemonError::Execution(format!("tool '{}' timed out", tool.name())))
+                        }
                     }
-                },
+                }
                 None => tool.call(&args, &mut child).await,
             };
             let text = outcome.map(|value| crate::execution::nodes::value_to_string(&value));
@@ -1409,7 +1399,10 @@ async fn run_with_progress(
     ctx.progress = Some(tx);
     let mut forward = |tail: String| {
         if let Some(cb) = on_event.as_deref_mut() {
-            cb(ReactEvent::ToolProgress { call_id: call.id.clone(), tail });
+            cb(ReactEvent::ToolProgress {
+                call_id: call.id.clone(),
+                tail,
+            });
         }
     };
     let result = {
@@ -1484,6 +1477,7 @@ async fn invoke_tool(
     if rejected_reason(ctx, call, allowed).is_some() {
         return rejected_result(ctx, call, allowed);
     }
+    ctx.transaction_log.ensure_healthy()?;
     let Some(tool) = ctx.registry.tool(&call.name) else {
         return rejected_result(ctx, call, allowed);
     };
@@ -1593,8 +1587,7 @@ async fn compress_if_needed(
 ) {
     let by_messages = opts.compress_after_messages.filter(|keep| *keep > 0);
     let by_tokens = window_pressure(ctx, context, opts).await;
-    let triggered_by_messages =
-        matches!(by_messages, Some(keep) if context.messages.len() > keep);
+    let triggered_by_messages = matches!(by_messages, Some(keep) if context.messages.len() > keep);
     // Window pressure is relieved deterministically first: releasing tool
     // results costs no model call and loses no meaning, while summarizing
     // spends a completion and can drop details. An explicit node-level message
@@ -1843,13 +1836,9 @@ mod tests {
         let newest = format!("message {}", messages.len() - 1);
         let oldest = "message 0";
         assert!(transcript.contains(&newest), "newest message was dropped");
-        assert!(
-            !transcript.contains(oldest),
-            "oldest message should be the one omitted"
-        );
+        assert!(!transcript.contains(oldest), "oldest message should be the one omitted");
         assert!(transcript.contains("omitted for length"));
     }
-
 
     fn new_ctx() -> ExecutionContext {
         ExecutionContext::new(
@@ -2001,9 +1990,7 @@ mod tests {
                 .unwrap();
         // The mock provider delivers the whole text as a single delta.
         assert_eq!(deltas, vec![StreamDelta::Text("streamed".to_string())]);
-        assert!(
-            matches!(&events[0], ReactEvent::Assistant { text, .. } if text == "streamed")
-        );
+        assert!(matches!(&events[0], ReactEvent::Assistant { text, .. } if text == "streamed"));
         assert_eq!(outcome.text, "streamed");
         // The loop keeps the initial user message; the final text is appended
         // by the caller when persisting.

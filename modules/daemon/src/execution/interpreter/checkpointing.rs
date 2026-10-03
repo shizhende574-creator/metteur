@@ -3,42 +3,67 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::execution::checkpoint::{CheckpointSink, ExecutionCheckpoint, RunStatus};
+use metteur_shared::{Blueprint, NodeId};
+
+use crate::error::{DaemonError, DaemonResult};
+use crate::execution::checkpoint::{
+    CHECKPOINT_TRANSITION_VERSION, CheckpointSink, ExecutionCheckpoint, RunStatus,
+};
 use crate::execution::context::ExecutionContext;
 
 use super::Interpreter;
 
 impl Interpreter {
+    /// Commits a completed transition only after its continuation is queued.
+    /// Frame, variable, loop, retry and tree updates must precede this call.
+    /// `pin_name` selects a ForEach branch; other nodes dispatch all eligible
+    /// execution edges and wake their data consumers.
+    pub(crate) fn commit_successors(
+        &mut self,
+        blueprint: &Blueprint,
+        node_id: NodeId,
+        pin_name: Option<&str>,
+        ctx: &ExecutionContext,
+    ) -> DaemonResult<()> {
+        match pin_name {
+            Some(name) => self.fire_named_edge(blueprint, node_id, name)?,
+            None => self.fire_edges(blueprint, node_id)?,
+        }
+        self.write_checkpoint(ctx)
+    }
+
     /// Persists a checkpoint of the current run state, if a sink is set.
-    pub(crate) fn write_checkpoint(&self, ctx: &ExecutionContext) {
-        let Some(sink) = &self.checkpoint else {
-            return;
+    pub(crate) fn write_checkpoint(&mut self, ctx: &ExecutionContext) -> DaemonResult<()> {
+        let Some(sink) = self.checkpoint.clone() else {
+            return Ok(());
         };
-        self.persist(sink, ctx, RunStatus::Running, None);
+        self.persist(&sink, ctx, RunStatus::Running, None)
     }
 
     /// Persists the terminal checkpoint for a finished run.
     pub(crate) fn write_terminal_checkpoint(
-        &self,
+        &mut self,
         ctx: &ExecutionContext,
         status: RunStatus,
         error: Option<String>,
-    ) {
-        let Some(sink) = &self.checkpoint else {
-            return;
+    ) -> DaemonResult<()> {
+        let Some(sink) = self.checkpoint.clone() else {
+            return Ok(());
         };
-        self.persist(sink, ctx, status, error);
+        self.persist(&sink, ctx, status, error)
     }
 
     /// Serializes and writes a checkpoint through the sink.
     fn persist(
-        &self,
+        &mut self,
         sink: &Arc<dyn CheckpointSink>,
         ctx: &ExecutionContext,
         status: RunStatus,
         error: Option<String>,
-    ) {
+    ) -> DaemonResult<()> {
         let checkpoint = ExecutionCheckpoint {
+            transition_version: CHECKPOINT_TRANSITION_VERSION,
+            in_flight: self.in_flight,
             run_id: sink.run_id(),
             blueprint_id: self.blueprint_id,
             status,
@@ -62,9 +87,14 @@ impl Interpreter {
             circuit_failures: self.circuit_failures,
             error,
         };
-        if let Err(err) = sink.write(&checkpoint) {
-            tracing::error!("failed to write checkpoint: {err}");
-        }
+        sink.write(&checkpoint).map_err(|err| {
+            let message = format!(
+                "run {} checkpoint failed: {err}; no new effects will start; uncommitted external outcomes require manual recovery",
+                sink.run_id(),
+            );
+            self.emit(super::ExecutionEvent::Message { node_id: ctx.current_node, message: message.clone() });
+            DaemonError::Persistence(message)
+        })
     }
 }
 

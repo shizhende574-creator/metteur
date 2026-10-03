@@ -54,7 +54,7 @@ impl NodeExecutor for LspCheckExecutor {
         // No language server configured is not a failure: the rule simply has
         // nothing to observe, and failing here would break every workspace
         // that has not set up LSP.
-        let Some(manager) = ctx.lsp.clone() else {
+        let Some(manager) = ctx.lsp_manager() else {
             return Ok(empty_report(node, allow_warnings));
         };
 

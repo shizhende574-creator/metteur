@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{DaemonError, DaemonResult};
-use crate::execution::checkpoint::ExecutionCheckpoint;
+use crate::execution::checkpoint::{CHECKPOINT_TRANSITION_VERSION, ExecutionCheckpoint};
 use crate::execution::context::{ExecutionContext, ExecutionState, Frame, Scheduler};
 use crate::execution::interrupt::InterruptBus;
 use crate::execution::transaction::TransactionLog;
@@ -46,6 +46,11 @@ impl Interpreter {
         pause_requested: Arc<std::sync::atomic::AtomicBool>,
         cancel_requested: Arc<std::sync::atomic::AtomicBool>,
     ) -> DaemonResult<Vec<super::ExecutionEvent>> {
+        let _approval_lifetime = self
+            .approvals
+            .as_ref()
+            .filter(|_| self.owns_approvals)
+            .map(|broker| broker.close_on_drop());
         // Reject blueprints whose execution graph contains a cycle.
         if has_exec_cycle(&blueprint.read()) {
             return Err(DaemonError::Execution(
@@ -56,7 +61,7 @@ impl Interpreter {
         self.shared_blueprint = Some(blueprint.clone());
         self.reset_run(blueprint);
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
-        self.write_checkpoint(&ctx);
+        self.write_checkpoint(&ctx)?;
         self.execute(blueprint, &mut ctx).await
     }
 
@@ -64,8 +69,8 @@ impl Interpreter {
     ///
     /// The scheduling state, produced data values and transaction log are
     /// restored and execution continues with checkpoints written to the same
-    /// run id. The node that was in flight when the run was interrupted is
-    /// re-executed.
+    /// run id. Uncommitted nodes and mismatched file phases require manual
+    /// recovery; unknown side effects are never automatically replayed.
     pub async fn resume_with_control(
         &mut self,
         blueprint: &SharedBlueprint,
@@ -74,12 +79,38 @@ impl Interpreter {
         pause_requested: Arc<std::sync::atomic::AtomicBool>,
         cancel_requested: Arc<std::sync::atomic::AtomicBool>,
     ) -> DaemonResult<Vec<super::ExecutionEvent>> {
+        let _approval_lifetime = self
+            .approvals
+            .as_ref()
+            .filter(|_| self.owns_approvals)
+            .map(|broker| broker.close_on_drop());
         if !resume.status.resumable() {
             return Err(DaemonError::Interrupted(format!(
                 "run {} is not resumable",
                 resume.run_id
             )));
         }
+        // Old writers saved some branches before dispatching successors. Even
+        // a nonempty queue cannot prove that a parallel continuation was not
+        // lost, so do not upgrade such records by guessing their next step.
+        if resume.transition_version != CHECKPOINT_TRANSITION_VERSION {
+            return Err(DaemonError::Execution(format!(
+                "run {} has unsupported checkpoint transition version {}; successor dispatch cannot be verified, manual recovery required",
+                resume.run_id, resume.transition_version
+            )));
+        }
+        if resume.blueprint_id != blueprint.read().id {
+            return Err(DaemonError::Execution(
+                "checkpoint belongs to a different blueprint".to_string(),
+            ));
+        }
+        if let Some(node_id) = resume.in_flight {
+            return Err(DaemonError::Persistence(format!(
+                "run {} has an uncommitted outcome for node {node_id}; manual recovery required, automatic replay refused",
+                resume.run_id
+            )));
+        }
+        self.in_flight = None;
         self.shared_blueprint = Some(blueprint.clone());
         self.state = ExecutionState {
             blueprint_id: resume.blueprint_id,
@@ -111,6 +142,8 @@ impl Interpreter {
 
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
         ctx.transaction_log = TransactionLog::from_entries(resume.transaction_log);
+        ctx.attach_file_journal();
+        ctx.transaction_log.validate_resume(resume.run_id)?;
         // Checkpoints predating frame variables resume with an empty stack;
         // restore the root frame so VariableSet has somewhere to write.
         ctx.variables = if resume.variables.is_empty() {
@@ -118,7 +151,7 @@ impl Interpreter {
         } else {
             resume.variables
         };
-        self.write_checkpoint(&ctx);
+        self.write_checkpoint(&ctx)?;
         self.execute(blueprint, &mut ctx).await
     }
 
@@ -126,6 +159,7 @@ impl Interpreter {
     fn reset_run(&mut self, blueprint: &SharedBlueprint) {
         let bp = blueprint.read();
         self.state = ExecutionState::default();
+        self.in_flight = None;
         self.state.blueprint_id = bp.id;
         self.state.call_stack.push(Frame {
             node_id: bp.entry_node_id,
@@ -181,6 +215,7 @@ impl Interpreter {
         ctx.workspace_db = self.workspace_db.clone();
         ctx.global_db = self.global_db.clone();
         ctx.lsp = self.lsp.clone();
+        ctx.lsp_source = self.lsp_source.clone();
         ctx.addon_fragments = self.addon_fragments.clone();
         ctx.blueprint = self.shared_blueprint.clone();
         ctx.version_manager = self.version_manager.clone();
@@ -188,6 +223,7 @@ impl Interpreter {
             ctx.jobs = Arc::clone(jobs);
         }
         ctx.todos = self.resume_todos.clone();
+        ctx.attach_file_journal();
         ctx
     }
 }

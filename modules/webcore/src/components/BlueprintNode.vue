@@ -3,6 +3,7 @@ import { computed, inject } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { BlueprintPin } from '@/core'
 import { DATA_COLORS } from '@/lib/blueprint'
+import { valueText } from '@/core/node-catalog'
 
 /**
  * Unreal-style blueprint node.
@@ -53,6 +54,8 @@ const ACCENT: Record<string, string> = {
 /** Value editor flavour per pin type, matching Unreal's typed pin editors. */
 const INPUT_TYPE: Record<string, string> = {
   number: 'number',
+  float: 'number',
+  int: 'number',
   bool: 'checkbox',
   string: 'text',
   choice: 'select',
@@ -62,7 +65,7 @@ const accent = computed(() => ACCENT[props.data.category] ?? '#8b8ba0')
 /** Handles that are wired, keyed by side, drive solid/hollow pin styling. */
 const connectedIn = computed(() => new Set(props.data.connectedIn ?? []))
 const connectedOut = computed(() => new Set(props.data.connectedOut ?? []))
-const valueOf = (pin: BlueprintPin) => props.data.values?.[pin.id] ?? ''
+const valueOf = (pin: BlueprintPin) => props.data.values?.[pin.id] ?? valueText(pin.default)
 
 /** Fill colour for a data pin, resolved from its value type. */
 function dataColor(pin: BlueprintPin): string {
@@ -163,7 +166,7 @@ function onValue(pin: BlueprintPin, e: Event) {
           </svg>
           <template v-if="editsValue(p)">
             <select
-              v-if="p.type === 'choice'"
+              v-if="p.choices?.length"
               class="metteur-value nodrag"
               :value="valueOf(p)"
               @change="onValue(p, $event)"

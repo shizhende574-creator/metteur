@@ -113,7 +113,9 @@ impl DaemonService {
         let executions = checkpoints
             .into_iter()
             .map(|cp| {
-                let status = if cp.status == RunStatus::Running && !active {
+                let status = if cp.in_flight.is_some() && !active && cp.status.resumable() {
+                    "RecoveryRequired".to_string()
+                } else if cp.status == RunStatus::Running && !active {
                     "Suspended".to_string()
                 } else {
                     status_str(cp.status)

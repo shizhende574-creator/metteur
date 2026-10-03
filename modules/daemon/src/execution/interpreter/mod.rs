@@ -63,6 +63,7 @@ pub struct Interpreter {
     pub(crate) scheduler: Scheduler,
     pub(crate) events: Vec<ExecutionEvent>,
     pub(crate) checkpoint: Option<Arc<dyn CheckpointSink>>,
+    pub(crate) in_flight: Option<NodeId>,
     pub(crate) audit: Option<AuditWriter>,
     pub(crate) config: Option<Arc<RwLock<Config>>>,
     pub(crate) user: String,
@@ -71,11 +72,13 @@ pub struct Interpreter {
     /// Live event sink; when set, events stream out instead of buffering.
     pub(crate) event_tx: Option<tokio::sync::mpsc::UnboundedSender<ExecutionEvent>>,
     pub(crate) approvals: Option<Arc<ApprovalBroker>>,
+    pub(crate) owns_approvals: bool,
     pub(crate) metrics: Option<Arc<Metrics>>,
     pub(crate) transaction_log: Option<TransactionLog>,
     pub(crate) workspace_db: Option<Db>,
     pub(crate) global_db: Option<Db>,
     pub(crate) lsp: Option<Arc<LspManager>>,
+    pub(crate) lsp_source: Option<crate::integration::lsp::SharedLsp>,
     pub(crate) addon_fragments: Vec<SystemFragment>,
     pub(crate) version_manager: Option<Arc<VersionManager>>,
     pub(crate) jobs: Option<Arc<JobManager>>,
@@ -113,6 +116,7 @@ impl Interpreter {
             scheduler: Scheduler::default(),
             events: Vec::new(),
             checkpoint: None,
+            in_flight: None,
             audit: None,
             config: None,
             user: "local".to_string(),
@@ -120,11 +124,13 @@ impl Interpreter {
             started_at: 0,
             event_tx: None,
             approvals: None,
+            owns_approvals: false,
             metrics: None,
             transaction_log: None,
             workspace_db: None,
             global_db: None,
             lsp: None,
+            lsp_source: None,
             addon_fragments: Vec::new(),
             version_manager: None,
             jobs: None,
@@ -171,8 +177,17 @@ impl Interpreter {
     }
 
     /// Attaches the sandbox approval broker shared with the control RPCs.
+    /// Each execution requires a fresh broker; ending a run closes it.
     pub fn with_approvals(mut self, approvals: Arc<ApprovalBroker>) -> Self {
         self.approvals = Some(approvals);
+        self.owns_approvals = true;
+        self
+    }
+
+    /// Shares the outer run's broker without ending it when a subgraph returns.
+    pub(crate) fn with_inherited_approvals(mut self, approvals: Arc<ApprovalBroker>) -> Self {
+        self.approvals = Some(approvals);
+        self.owns_approvals = false;
         self
     }
 
@@ -198,6 +213,12 @@ impl Interpreter {
     /// Attaches the global database for global sandbox grants.
     pub fn with_global_db(mut self, db: Db) -> Self {
         self.global_db = Some(db);
+        self
+    }
+
+    /// Shares reloads with existing contexts, including nested interpreters.
+    pub fn with_lsp_source(mut self, source: crate::integration::lsp::SharedLsp) -> Self {
+        self.lsp_source = Some(source);
         self
     }
 

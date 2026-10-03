@@ -3,12 +3,14 @@ import type {
   AddonInfo,
   ChatContextStats,
   Blueprint,
+  NodeCatalog,
   ChatMessage,
   ChatOptions,
   ChatSessionInfo,
   ChatSessionSnapshot,
   ChatUsage,
   DaemonConfig,
+  ConfigState,
   ExecTreeData,
   ExecutionEvent,
   ExecutionInfo,
@@ -52,6 +54,7 @@ export interface DaemonGateway {
    * Read one configuration layer: pass an empty string for the global layer,
    * or a workspace root path for that workspace's layer.
    */
+  getConfigState(workspacePath?: string): Promise<Result<ConfigState>>
   getConfig(workspacePath?: string): Promise<Result<DaemonConfig>>
   /** Persist a configuration layer ('' = global, otherwise workspace-root). */
   setConfig(config: DaemonConfig, workspacePath?: string): Promise<Result<void>>
@@ -149,7 +152,7 @@ export interface DaemonGateway {
   deleteChatSession(workspacePath: string, sessionId?: string): Promise<Result<void>>
 
   // Blueprints -----------------------------------------------------------------
-  listNodeKinds(): Promise<Result<string[]>>
+  listNodeKinds(): Promise<Result<NodeCatalog>>
   listFunctions(workspacePath: string): Promise<Result<FunctionItem[]>>
   compileDsl(source: string): Promise<Result<Blueprint>>
   decompileBlueprint(workspacePath: string, blueprintOrId: Blueprint | string): Promise<Result<string>>

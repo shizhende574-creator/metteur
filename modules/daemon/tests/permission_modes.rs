@@ -106,10 +106,54 @@ async fn an_unavailable_reviewer_does_not_grant_a_denial() {
 }
 
 #[tokio::test]
-async fn ask_mode_still_runs_writes_without_an_approval_channel() {
-    // Nothing can ask (no client attached), so the write proceeds: refusing
-    // would make an unattended run useless, and the jail still applies.
+async fn ask_mode_rejects_writes_without_an_approval_channel() {
+    // A file-system jail does not replace the user's required confirmation.
     let ctx = context("ask", PermissionMode::Ask, true);
     let target = ctx.workspace_root.join("a.txt");
-    assert!(authorize_write(&ctx, &target, "a.txt", "write 1 byte").await.unwrap());
+    assert!(!authorize_write(&ctx, &target, "a.txt", "write 1 byte").await.unwrap());
+}
+
+#[tokio::test]
+async fn failed_full_review_falls_back_to_explicit_user_approval() {
+    use metteur_daemon::execution::ExecutionEvent;
+    use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision, Scope};
+    for step in [MockStep::Text("uncertain".into()), MockStep::Transport("offline".into())] {
+        for file in [false, true] {
+            let mut ctx = context("review-fallback", PermissionMode::Full, true);
+            ctx.llm_factory =
+                LlmClientFactory::with_override(Arc::new(MockClient::new(vec![step.clone()])));
+            let broker = Arc::new(ApprovalBroker::new());
+            ctx.approvals = Some(broker.clone());
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            ctx.events = Some(tx);
+            let outside = temp_root("outside").join("a.txt");
+            let authorize = async {
+                if file {
+                    authorize_write(&ctx, &outside, "../a.txt", "write bytes").await
+                } else {
+                    authorize(&ctx, "terraform destroy").await
+                }
+            };
+            let respond = async {
+                let event = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let ExecutionEvent::ApprovalRequested {
+                    request_id,
+                    ..
+                } = event
+                else {
+                    panic!("expected approval")
+                };
+                broker
+                    .respond(&request_id, Decision::Allow, Scope::Once, &Default::default())
+                    .unwrap();
+            };
+            let (result, _) = tokio::join!(authorize, respond);
+            assert!(result.unwrap());
+            ctx.approvals = None;
+            assert!(!authorize_write(&ctx, &outside, "../a.txt", "write bytes").await.unwrap());
+        }
+    }
 }

@@ -190,6 +190,85 @@ impl Registry {
     pub fn node_kinds(&self) -> Vec<String> {
         self.nodes.kinds()
     }
+
+    /// Canonical signatures of the executors actually installed in this registry.
+    pub fn node_signatures(&self) -> metteur_shared::node_catalog::NodeCatalog {
+        let mut catalog = self.nodes.signatures();
+        catalog.functions =
+            self.functions().into_iter().map(|entry| (entry.name, entry.signature)).collect();
+        catalog
+    }
+
+    /// Authoring snapshot, including registered tools as schema-derived aliases
+    /// for Tool nodes. Clone the tool handles under the read lock before calling
+    /// their schema methods so concurrent registration cannot deadlock a reader.
+    pub fn authoring_catalog(&self) -> metteur_shared::node_catalog::NodeCatalog {
+        use metteur_shared::node_catalog::{NodeSignature, PinSignature};
+        use metteur_shared::{DataType, NodeType, PinType};
+        let mut catalog = self.node_signatures();
+        for tool in self.tools() {
+            if catalog.contains_key(tool.name()) {
+                continue;
+            }
+            let schema = tool.parameters();
+            let required = schema.get("required").and_then(|v| v.as_array());
+            let mut pins = catalog
+                .get("Tool")
+                .map(|s| {
+                    s.pins
+                        .iter()
+                        .filter(|p| p.pin_type != PinType::DataInput)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if let Some(properties) = schema.get("properties").and_then(|v| v.as_object()) {
+                for (name, property) in properties {
+                    let data_type = match property.get("type").and_then(|v| v.as_str()) {
+                        Some("string") => DataType::String,
+                        Some("integer") => DataType::Int,
+                        Some("number") => DataType::Float,
+                        Some("boolean") => DataType::Bool,
+                        Some("array") => DataType::List(Box::new(DataType::Any)),
+                        Some("object") => DataType::Json,
+                        _ => DataType::Any,
+                    };
+                    pins.push(PinSignature {
+                        key: name.clone(),
+                        name: name.clone(),
+                        pin_type: PinType::DataInput,
+                        data_type,
+                        default: property.get("default").cloned(),
+                        optional: !required
+                            .is_some_and(|names| names.iter().any(|v| v.as_str() == Some(name))),
+                        choices: property
+                            .get("enum")
+                            .and_then(|v| v.as_array())
+                            .map(|values| {
+                                values.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                            })
+                            .unwrap_or_default(),
+                        description: property
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                    });
+                }
+            }
+            catalog.insert(
+                tool.name().to_string(),
+                NodeSignature {
+                    kind: tool.name().to_string(),
+                    executor_kind: "Tool".to_string(),
+                    node_type: NodeType::Function,
+                    pins,
+                    dynamic_pins: false,
+                    description: tool.description().to_string(),
+                },
+            );
+        }
+        catalog
+    }
 }
 
 #[cfg(test)]

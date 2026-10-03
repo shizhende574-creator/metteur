@@ -42,7 +42,7 @@ import ContextMenu, { type MenuGroup } from '@/components/ContextMenu.vue'
 import FileVersionPanel from '@/components/FileVersionPanel.vue'
 import NodeInspector from '@/components/NodeInspector.vue'
 import FilePickerDialog, { type FilePick } from '@/components/FilePickerDialog.vue'
-import { CATEGORIES, execInOf, isPinCompatible, makeCallFunctionNode, makeFlowNode, NODE_PRESETS, uuid } from '@/lib/blueprint'
+import { CATEGORIES, execInOf, isPinCompatible, makeCallFunctionNode, makeFlowNode, makeFileReference, categoryFor, NODE_PRESETS, uuid } from '@/lib/blueprint'
 
 const workspace = useWorkspaceStore()
 const store = useBlueprintStore()
@@ -119,6 +119,9 @@ interface SelectableFlowNode {
   position: { x: number; y: number }
   selected?: boolean
   data?: {
+    kind?: string
+    nodeType?: string
+    data?: Record<string, unknown>
     title?: string
     category?: string
     inputs?: BlueprintPin[]
@@ -327,19 +330,10 @@ const ACCENT: Record<NodeCategory, string> = {
   flow: '#2fbf8f',
 }
 
-/**
- * Node kinds offered by the palette, restricted to what the daemon can execute.
- *
- * `NODE_PRESETS` is a UI catalogue (layout, title, category); the daemon's
- * registry decides what actually runs. Intersecting the two is what keeps a
- * preset that no longer — or not yet — has an executor out of the palette,
- * where placing it would guarantee a run failure.
- */
-const kindList = computed(() => {
-  const known = store.nodeKinds
-  if (known.length === 0) return Object.keys(NODE_PRESETS)
-  return Object.keys(NODE_PRESETS).filter((kind) => known.includes(kind))
-})
+/** The live registry controls available kinds, including extensions without visual presets. */
+const kindList = computed(() => store.signatures.map((s) => s.kind))
+const signatureOf = (kind: string) => store.signatures.find((s) => s.kind === kind)
+const categoryOf = (kind: string) => categoryFor(kind, signatureOf(kind)?.nodeType)
 
 /** Load the graph for the currently open blueprint file and reset editor state. */
 async function loadBlueprint() {
@@ -464,6 +458,9 @@ function toFlowNode(n: BlueprintNode): FlowNode {
     type: 'blueprint',
     position: n.position,
     data: {
+      kind: n.type,
+      nodeType: n.nodeType,
+      data: n.data,
       title: n.title,
       category: n.category,
       inputs: n.inputs,
@@ -496,7 +493,9 @@ function toFlowEdge(e: BlueprintEdge): LocalEdge {
 function toBpNode(f: SelectableFlowNode): BlueprintNode {
   return {
     id: f.id,
-    type: String(f.data?.title ?? f.id),
+    type: String(f.data?.kind ?? f.data?.title ?? f.id),
+    nodeType: f.data?.nodeType,
+    data: f.data?.data,
     category: (f.data?.category as BlueprintNode['category']) ?? 'module',
     title: String(f.data?.title ?? f.id),
     position: f.position,
@@ -701,11 +700,11 @@ const paletteGroups = computed<MenuGroup[]>(() => {
     label: cat.label,
     color: ACCENT[cat.key],
     items: kindList.value
-      .filter((k) => NODE_PRESETS[k].category === cat.key)
-      .map((k) => ({ id: k, label: NODE_PRESETS[k].title ?? k })),
+      .filter((k) => categoryOf(k) === cat.key)
+      .map((k) => ({ id: k, label: NODE_PRESETS[k]?.title ?? k })),
   }))
   const fns = store.functions
-  if (fns.length > 0) {
+  if (fns.length > 0 && signatureOf('CallFunction')) {
     groups.push({
       label: 'Functions',
       color: ACCENT.module,
@@ -725,18 +724,18 @@ const paletteMenuGroups = computed<MenuGroup[]>(() => {
   const srcPin = pinOf(wire.source, wire.sourceHandle)
   if (!srcPin) return paletteGroups.value
   const compatible = (kind: string): boolean => {
-    const preset = NODE_PRESETS[kind]
-    if (!preset) return false
-    if (srcPin.kind === 'exec-out') return preset.hasExecIn
-    if (srcPin.kind === 'data-out') return preset.inputs.some((d) => isPinCompatible(srcPin.type, d.type))
+    const signature = signatureOf(kind)
+    if (!signature) return false
+    if (srcPin.kind === 'exec-out') return signature.pins.some((p) => p.kind === 'exec-in')
+    if (srcPin.kind === 'data-out') return signature.pins.some((p) => p.kind === 'data-in' && isPinCompatible(srcPin.type, p.type))
     return false
   }
   return CATEGORIES.map((cat) => ({
     label: cat.label,
     color: ACCENT[cat.key],
     items: kindList.value
-      .filter((k) => NODE_PRESETS[k].category === cat.key && compatible(k))
-      .map((k) => ({ id: k, label: NODE_PRESETS[k].title ?? k })),
+      .filter((k) => categoryOf(k) === cat.key && compatible(k))
+      .map((k) => ({ id: k, label: NODE_PRESETS[k]?.title ?? k })),
   })).filter((g) => g.items.length > 0)
 })
 
@@ -907,13 +906,15 @@ function dismissMenu() {
 /* Node CRUD                                                         */
 
 function addNodeAt(pos: { x: number; y: number }, kind: string): string | null {
-  commit()
   const entry = kind.startsWith('fn::')
     ? store.functions.find((f) => `fn::${f.name}` === kind)
     : undefined
   // Node ids must be UUIDs: the daemon model keys nodes/edges/pins by `Uuid`.
   const id = uuid()
-  const node = entry ? makeCallFunctionNode(entry, pos, id) : makeFlowNode(NODE_PRESETS[kind]?.kind ?? kind, pos, id, kind)
+  const signature = signatureOf(entry ? 'CallFunction' : kind)
+  if (!signature) return null
+  commit()
+  const node = entry ? makeCallFunctionNode(entry, signature, pos, id) : makeFlowNode(signature, pos, id)
   flowNodes.value = [...flowNodes.value, node]
   selectedId.value = id
   selectedEdgeId.value = null
@@ -934,9 +935,7 @@ function deleteNode(id: string) {
 function addReferenceNode(filePath: string) {
   commit()
   const id = uuid()
-  const node = makeFlowNode('FileReference', { x: 120, y: 120 }, id)
-  node.data!.values = { ...(node.data!.values ?? {}), 'path-in': filePath }
-  node.data!.title = filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath
+  const node = makeFileReference(filePath, { x: 120, y: 120 }, id)
   flowNodes.value = [...flowNodes.value, node]
   selectedId.value = id
   selectedEdgeId.value = null
@@ -1415,6 +1414,7 @@ function openVersionPanel() {
 
 <template>
   <div class="flex h-full flex-col">
+    <p v-if="store.catalogMessage" data-testid="node-catalog-status" class="border-b border-divider px-3 py-2 text-xs text-muted-foreground">{{ store.catalogMessage }}</p>
     <!-- Editor toolbar -->
     <div class="flex h-11 shrink-0 items-center gap-2 border-b border-divider px-3">
       <Workflow class="h-4 w-4 text-muted-foreground" />

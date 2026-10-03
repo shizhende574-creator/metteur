@@ -12,7 +12,11 @@ use super::Interpreter;
 impl Interpreter {
     /// Follows a node's execution output edges and wakes data consumers in
     /// the active frame.
-    pub(crate) fn fire_edges(&mut self, blueprint: &Blueprint, node_id: NodeId) -> DaemonResult<()> {
+    pub(crate) fn fire_edges(
+        &mut self,
+        blueprint: &Blueprint,
+        node_id: NodeId,
+    ) -> DaemonResult<()> {
         let next_nodes = self.follow_exec_edges(blueprint, node_id)?;
         let ready_consumers: Vec<NodeId> = self
             .data_targets(blueprint, node_id)
@@ -73,6 +77,10 @@ impl Interpreter {
         node_id: NodeId,
     ) -> DaemonResult<HashMap<PinId, Value>> {
         let mut inputs = HashMap::new();
+        let signature = blueprint
+            .node(node_id)
+            .and_then(|node| self.registry.node_executor(&node.kind))
+            .map(|executor| executor.signature());
         for edge in blueprint.incoming_edges(node_id) {
             let source_pin = blueprint
                 .pin(edge.source_pin)
@@ -91,7 +99,14 @@ impl Interpreter {
             // incompatible wirings, so a failure here means the graph changed
             // under a running plan (a replan) and is worth surfacing.
             let value = match blueprint.pin(edge.target_pin) {
-                Some(target_pin) => match metteur_shared::coerce(&value, &target_pin.data_type) {
+                Some(target_pin) => match metteur_shared::coerce(
+                    &value,
+                    signature
+                        .as_ref()
+                        .and_then(|s| s.pin(target_pin))
+                        .map(|p| &p.data_type)
+                        .unwrap_or(&target_pin.data_type),
+                ) {
                     Some(coerced) => coerced,
                     None => {
                         return Err(DaemonError::Execution(format!(
@@ -109,9 +124,15 @@ impl Interpreter {
                 if inputs.contains_key(&pin.id) {
                     continue;
                 }
-                if let Some(default) = &pin.default {
+                // Inline constants predate canonical signatures and must win
+                // over newly supplied defaults (or an optional null).
+                if let Some(value) = metteur_shared::node_catalog::inline_value(node, pin) {
+                    inputs.insert(pin.id, json_to_value(value));
+                } else if let Some(default) = pin.default.as_ref().or_else(|| {
+                    signature.as_ref().and_then(|s| s.pin(pin)).and_then(|p| p.default.as_ref())
+                }) {
                     inputs.insert(pin.id, json_to_value(default));
-                } else if pin.optional {
+                } else if pin.optional && !matches!(node.kind.as_str(), "ListCreate" | "Tool") {
                     inputs.insert(pin.id, Value::Null);
                 }
             }

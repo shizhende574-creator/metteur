@@ -12,7 +12,7 @@ impl DaemonService {
         &self,
         request: Request<ApprovalDecisionRequest>,
     ) -> Result<Response<Empty>, Status> {
-        use crate::sandbox::approval::{Scope, parse_decision};
+        use crate::sandbox::approval::parse_decision;
         use crate::sandbox::grant::GrantStore;
 
         let req = request.into_inner();
@@ -29,22 +29,8 @@ impl DaemonService {
             .approval_broker_for(ws.root())
             .await
             .ok_or_else(|| Status::not_found("no running execution or chat"))?;
-        // Run-scoped grants are recorded by the awaiting authorization itself;
-        // this call only needs to deliver the decision for those.
-        let answered = broker.respond(&req.request_id, decision);
-
-        let Some(answered) = answered else {
-            return Err(Status::failed_precondition(
-                "approval request already answered or unknown",
-            ));
-        };
-
-        if matches!(scope, Scope::Workspace | Scope::Global) {
-            let grants = GrantStore::new(Some(ws.db.clone()), self.state.global_db.clone());
-            grants
-                .store(scope, answered.command_hash, decision, &answered.command)
-                .map_err(to_status)?;
-        }
+        let grants = GrantStore::new(Some(ws.db.clone()), self.state.global_db.clone());
+        broker.respond(&req.request_id, decision, scope, &grants).map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 }

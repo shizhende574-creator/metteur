@@ -27,12 +27,13 @@ pub struct Workspace {
     pub metadata_dir: PathBuf,
     /// The merged (global + workspace) configuration.
     pub config: Arc<RwLock<Config>>,
+    pub(crate) applied_auto_snapshot: bool,
     /// The workspace-local database.
     pub db: Db,
     /// The workspace version manager (snapshots, file history).
     pub version_manager: Arc<VersionManager>,
     /// Language-server manager, rebuilt when the workspace LSP config changes.
-    pub lsp_manager: parking_lot::RwLock<Option<Arc<crate::integration::lsp::LspManager>>>,
+    pub lsp_manager: crate::integration::lsp::SharedLsp,
     /// Background commands started by the agent in this workspace.
     pub jobs: Arc<crate::execution::JobManager>,
     /// The held session lock.
@@ -42,6 +43,16 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Admission holds activity_gate and verifies that no run is active first.
+    pub fn reconcile_files(&self) -> DaemonResult<()> {
+        crate::execution::file_journal::FileJournal::new(
+            self.root.clone(),
+            Arc::new(crate::execution::file_journal::DbFileJournal(self.db.clone())),
+        )
+        .reconcile()?
+        .ensure_safe()?;
+        Ok(())
+    }
     /// Returns the workspace root path.
     pub fn root(&self) -> &Path {
         &self.root
@@ -139,6 +150,12 @@ impl WorkspaceManager {
         let metadata_dir = root.join(METADATA_DIR);
         let lock = SessionLock::acquire(&metadata_dir)?;
         let db = Db::open(&metadata_dir.join("db"))?;
+        crate::execution::file_journal::FileJournal::new(
+            root.clone(),
+            Arc::new(crate::execution::file_journal::DbFileJournal(db.clone())),
+        )
+        .reconcile()?
+        .ensure_safe()?;
         let global_config_path = self.global_config_path()?;
         let config = config::load_merged_config(&global_config_path, &root)?;
         let version_manager = Arc::new(VersionManager::new(db.clone(), root.clone()));
@@ -159,11 +176,12 @@ impl WorkspaceManager {
             activity_gate: tokio::sync::Mutex::new(()),
             root: root.clone(),
             metadata_dir,
+            applied_auto_snapshot: config.versioning.auto_snapshot,
             config: Arc::new(RwLock::new(config)),
             db,
             version_manager,
             jobs: Arc::new(crate::execution::JobManager::new(root.clone())),
-            lsp_manager: parking_lot::RwLock::new(lsp_manager),
+            lsp_manager: Arc::new(parking_lot::RwLock::new(lsp_manager)),
             _lock: lock,
             watcher,
         });

@@ -34,6 +34,11 @@ impl NodeExecutor for CallLlmExecutor {
         inputs: &HashMap<PinId, Value>,
         ctx: &mut ExecutionContext,
     ) -> DaemonResult<HashMap<PinId, Value>> {
+        // Generation options historically lived in node.data. Resolve the
+        // advertised input pins over that configuration without changing the
+        // persisted node or dropping data-only provider settings.
+        let resolved = resolved_node(node, inputs);
+        let node = &resolved;
         // Resolve the input context, cloning it for isolation.
         let mut system = crate::harness::fragments(ctx).await;
         // The node's own instruction is task-level: it renders after the
@@ -77,7 +82,11 @@ impl NodeExecutor for CallLlmExecutor {
 
         // Write outputs: Result (text) and Context (cloned manager).
         let mut outputs = string_output(node, "Result", outcome.text)?;
-        if let Some(pin) = node.pins.iter().find(|p| p.name == "Context") {
+        if let Some(pin) = node
+            .pins
+            .iter()
+            .find(|p| p.name == "Context" && p.pin_type == metteur_shared::PinType::DataOutput)
+        {
             outputs.insert(pin.id, Value::Context(outcome.context));
         }
         Ok(outputs)
@@ -86,8 +95,30 @@ impl NodeExecutor for CallLlmExecutor {
 
 /// Reads the input context from the `Context` pin, if present.
 fn input_context(node: &Node, inputs: &HashMap<PinId, Value>) -> Option<ContextManager> {
-    let pin = node.pins.iter().find(|p| p.name == "Context")?;
+    let pin = node
+        .pins
+        .iter()
+        .find(|p| p.name == "Context" && p.pin_type == metteur_shared::PinType::DataInput)?;
     inputs.get(&pin.id).and_then(|v| v.as_context()).cloned()
+}
+
+fn resolved_node(node: &Node, inputs: &HashMap<PinId, Value>) -> Node {
+    let mut resolved = node.clone();
+    if !resolved.data.is_object() {
+        resolved.data = serde_json::json!({});
+    }
+    for pin in node
+        .pins
+        .iter()
+        .filter(|p| p.pin_type == metteur_shared::PinType::DataInput && p.name != "Context")
+    {
+        if let Some(value) = inputs.get(&pin.id).filter(|v| !matches!(v, Value::Null)) {
+            let key =
+                pin.key.clone().unwrap_or_else(|| metteur_shared::node_catalog::key_of(&pin.name));
+            resolved.data[&key] = super::value_to_json(value);
+        }
+    }
+    resolved
 }
 
 /// Builds ReAct options from the node's data keys, over the workspace

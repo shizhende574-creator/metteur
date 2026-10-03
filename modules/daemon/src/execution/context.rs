@@ -249,6 +249,8 @@ pub struct ExecutionContext {
     pub config: Option<Arc<RwLock<Config>>>,
     /// The node currently being executed.
     pub current_node: NodeId,
+    /// Execution attempt associated with durable file operations.
+    pub file_attempt: u32,
     /// Sandbox approval channel, when live event streaming is attached.
     pub approvals: Option<Arc<crate::sandbox::approval::ApprovalBroker>>,
     /// Live event sink for streaming events to clients as they occur.
@@ -263,6 +265,8 @@ pub struct ExecutionContext {
     pub metrics: Option<Arc<crate::observability::metrics::Metrics>>,
     /// Language-server manager for this workspace, when LSP is enabled.
     pub lsp: Option<Arc<crate::integration::lsp::LspManager>>,
+    /// Live workspace slot, preferred over the standalone manager.
+    pub lsp_source: Option<crate::integration::lsp::SharedLsp>,
     /// Addon prompt fragments injected into fresh CallLLM contexts.
     pub addon_fragments: Vec<metteur_shared::llm::SystemFragment>,
     /// Shared handle to the executing root blueprint (replan hot-apply).
@@ -322,6 +326,40 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
+    /// Reuses the workspace database for durable tool file operations.
+    pub fn attach_file_journal(&self) {
+        self.transaction_log.bind_run(self.run_id);
+        if let Some(db) = &self.workspace_db {
+            self.transaction_log.attach_journal(super::file_journal::FileJournal::new(
+                self.workspace_root.clone(),
+                std::sync::Arc::new(super::file_journal::DbFileJournal(db.clone())),
+            ));
+        }
+    }
+
+    /// Writes after the caller has completed path and sandbox authorization.
+    pub fn write_file(
+        &mut self,
+        path: &std::path::Path,
+        bytes: &[u8],
+        expected: Option<&[u8]>,
+    ) -> crate::error::DaemonResult<()> {
+        self.attach_file_journal();
+        self.transaction_log.mutate_file(
+            &self.workspace_root,
+            path,
+            Some(bytes),
+            super::file_journal::FileOrigin {
+                run_id: self.run_id,
+                node_id: self.current_node,
+                attempt: self.file_attempt,
+                wal_position: 0,
+            },
+            expected,
+        )?;
+        self.note_file_mutation(path);
+        Ok(())
+    }
     /// Creates a new execution context.
     pub fn new(
         registry: Arc<Registry>,
@@ -344,6 +382,7 @@ impl ExecutionContext {
             user: "local".to_string(),
             config: None,
             current_node: uuid::Uuid::nil(),
+            file_attempt: 1,
             approvals: None,
             events: None,
             workspace_db: None,
@@ -351,6 +390,7 @@ impl ExecutionContext {
             depth: 0,
             metrics: None,
             lsp: None,
+            lsp_source: None,
             addon_fragments: Vec::new(),
             blueprint: None,
             variables: vec![HashMap::new()],
@@ -413,7 +453,15 @@ impl ExecutionContext {
         self.variables.iter()
     }
 
-    /// Attaches the workspace language-server manager.
+    /// Resolves the current workspace manager for each LSP operation.
+    pub fn lsp_manager(&self) -> Option<Arc<crate::integration::lsp::LspManager>> {
+        match &self.lsp_source {
+            Some(source) => source.read().clone(),
+            None => self.lsp.clone(),
+        }
+    }
+
+    /// Attaches a standalone manager when there is no live workspace slot.
     pub fn with_lsp(mut self, lsp: Arc<crate::integration::lsp::LspManager>) -> Self {
         self.lsp = Some(lsp);
         self
@@ -430,7 +478,7 @@ impl ExecutionContext {
     /// The child shares the registry, LLM factory, workspace root,
     /// configuration, interrupt bus, approval broker, event sink, control
     /// flags, identity and audit writer of this context, but starts with a
-    /// fresh transaction log and an incremented nesting depth.
+    /// shared transaction log and an incremented nesting depth.
     pub fn child_nested(&self) -> Self {
         let mut child =
             Self::new(self.registry.clone(), self.llm_factory.clone(), self.workspace_root.clone());
@@ -445,10 +493,13 @@ impl ExecutionContext {
         child.run_id = self.run_id;
         child.started_at = self.started_at;
         child.current_node = self.current_node;
+        child.transaction_log = self.transaction_log.clone();
+        child.file_attempt = self.file_attempt;
         child.workspace_db = self.workspace_db.clone();
         child.global_db = self.global_db.clone();
         child.metrics = self.metrics.clone();
         child.lsp = self.lsp.clone();
+        child.lsp_source = self.lsp_source.clone();
         child.addon_fragments = self.addon_fragments.clone();
         child.blueprint = self.blueprint.clone();
         child.version_manager = self.version_manager.clone();

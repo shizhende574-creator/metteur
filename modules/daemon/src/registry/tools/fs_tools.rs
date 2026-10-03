@@ -219,14 +219,7 @@ impl Tool for WriteFile {
         if !crate::sandbox::authorize_write(ctx, &resolved, &path, &summary).await? {
             return Err(DaemonError::Sandbox(format!("write denied by permission mode: {path}")));
         }
-        let old_content = std::fs::read(&resolved).ok();
-        ctx.transaction_log.record_file_write(
-            resolved.clone(),
-            old_content,
-            content.clone().into_bytes(),
-        );
-        fs.write(&path, content.as_bytes())?;
-        ctx.note_file_mutation(&resolved);
+        ctx.write_file(&resolved, content.as_bytes(), None)?;
         Ok(Value::Bool(true))
     }
 }

@@ -1,0 +1,4059 @@
+{
+  "infos": [
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Abs",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "No fixed data pins; expansion is configured in node.data (prompt, model, max_expand_depth).",
+      "dynamicPins": true,
+      "kind": "Abstract",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Add",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "And",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Branch",
+      "nodeType": "Control",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "True",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "False",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Condition input; inline values use node.data[cond] (name and pin id are also accepted).",
+          "id": "",
+          "key": "cond",
+          "name": "Condition",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Data pins come from the function library signature; instance pins are preserved.",
+      "dynamicPins": true,
+      "kind": "CallFunction",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected inputs override node.data; absent generation options inherit workspace defaults.",
+      "dynamicPins": false,
+      "kind": "CallLLM",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "Context input; inline values use node.data[context] (name and pin id are also accepted).",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "dataType": "choice",
+          "defaultJson": "",
+          "description": "ReasoningEffort input; inline values use node.data[reasoning_effort] (name and pin id are also accepted).",
+          "id": "",
+          "key": "reasoning_effort",
+          "name": "ReasoningEffort",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Model input; inline values use node.data[model] (name and pin id are also accepted).",
+          "id": "",
+          "key": "model",
+          "name": "Model",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Prompt input; inline values use node.data[prompt] (name and pin id are also accepted).",
+          "id": "",
+          "key": "prompt",
+          "name": "Prompt",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "System input; inline values use node.data[system] (name and pin id are also accepted).",
+          "id": "",
+          "key": "system",
+          "name": "System",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "Temperature input; inline values use node.data[temperature] (name and pin id are also accepted).",
+          "id": "",
+          "key": "temperature",
+          "name": "Temperature",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "TopP input; inline values use node.data[top_p] (name and pin id are also accepted).",
+          "id": "",
+          "key": "top_p",
+          "name": "TopP",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "MaxTokens input; inline values use node.data[max_tokens] (name and pin id are also accepted).",
+          "id": "",
+          "key": "max_tokens",
+          "name": "MaxTokens",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "MaxIterations input; inline values use node.data[max_iterations] (name and pin id are also accepted).",
+          "id": "",
+          "key": "max_iterations",
+          "name": "MaxIterations",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Seed input; inline values use node.data[seed] (name and pin id are also accepted).",
+          "id": "",
+          "key": "seed",
+          "name": "Seed",
+          "optional": true,
+          "pinType": "DataInput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Concat",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Contains",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextClone",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextCreate",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "System input; inline values use node.data[system] (name and pin id are also accepted).",
+          "id": "",
+          "key": "system",
+          "name": "System",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Prompt input; inline values use node.data[prompt] (name and pin id are also accepted).",
+          "id": "",
+          "key": "prompt",
+          "name": "Prompt",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextFilter",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "Context input; inline values use node.data[context] (name and pin id are also accepted).",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [
+            "user",
+            "assistant",
+            "tool",
+            "system"
+          ],
+          "dataType": "choice",
+          "defaultJson": "",
+          "description": "Role input; inline values use node.data[role] (name and pin id are also accepted).",
+          "id": "",
+          "key": "role",
+          "name": "Role",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextMerge",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "Context input; inline values use node.data[context] (name and pin id are also accepted).",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Text input; inline values use node.data[text] (name and pin id are also accepted).",
+          "id": "",
+          "key": "text",
+          "name": "Text",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [
+            "user",
+            "assistant",
+            "tool",
+            "system"
+          ],
+          "dataType": "choice",
+          "defaultJson": "",
+          "description": "Role input; inline values use node.data[role] (name and pin id are also accepted).",
+          "id": "",
+          "key": "role",
+          "name": "Role",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Select Paths, Patterns, Tools, or node.data.all; node.data.keep_recent is retained.",
+      "dynamicPins": false,
+      "kind": "ContextRelease",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "Context input; inline values use node.data[context] (name and pin id are also accepted).",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<string>",
+          "defaultJson": "",
+          "description": "Paths input; inline values use node.data[paths] (name and pin id are also accepted).",
+          "id": "",
+          "key": "paths",
+          "name": "Paths",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<string>",
+          "defaultJson": "",
+          "description": "Patterns input; inline values use node.data[patterns] (name and pin id are also accepted).",
+          "id": "",
+          "key": "patterns",
+          "name": "Patterns",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<string>",
+          "defaultJson": "",
+          "description": "Tools input; inline values use node.data[tools] (name and pin id are also accepted).",
+          "id": "",
+          "key": "tools",
+          "name": "Tools",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "released",
+          "name": "Released",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "freed",
+          "name": "Freed",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextToText",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ContextTrim",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "Context input; inline values use node.data[context] (name and pin id are also accepted).",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Keep input; inline values use node.data[keep] (name and pin id are also accepted).",
+          "id": "",
+          "key": "keep",
+          "name": "Keep",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Delay",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Ms input; inline values use node.data[ms] (name and pin id are also accepted).",
+          "id": "",
+          "key": "ms",
+          "name": "Ms",
+          "optional": false,
+          "pinType": "DataInput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Divide",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "End",
+      "nodeType": "Event",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Equal",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ForEach",
+      "nodeType": "Control",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "Body",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "Completed",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "List input; inline values use node.data[list] (name and pin id are also accepted).",
+          "id": "",
+          "key": "list",
+          "name": "List",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "iteration",
+          "name": "Iteration",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "index",
+          "name": "Index",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Data pins come from the function library signature; instance pins are preserved.",
+      "dynamicPins": true,
+      "kind": "FunctionEntry",
+      "nodeType": "Event",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        }
+      ]
+    },
+    {
+      "description": "Data pins come from the function library signature; instance pins are preserved.",
+      "dynamicPins": true,
+      "kind": "FunctionExit",
+      "nodeType": "Event",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Greater",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "GreaterEqual",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "JsonGet",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "Object input; inline values use node.data[object] (name and pin id are also accepted).",
+          "id": "",
+          "key": "object",
+          "name": "Object",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Path input; inline values use node.data[path] (name and pin id are also accepted).",
+          "id": "",
+          "key": "path",
+          "name": "Path",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "JsonSet",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "Object input; inline values use node.data[object] (name and pin id are also accepted).",
+          "id": "",
+          "key": "object",
+          "name": "Object",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Path input; inline values use node.data[path] (name and pin id are also accepted).",
+          "id": "",
+          "key": "path",
+          "name": "Path",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Value input; inline values use node.data[value] (name and pin id are also accepted).",
+          "id": "",
+          "key": "value",
+          "name": "Value",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Score with node.data.threshold (default 1), or Result with node.data.success_criteria.",
+      "dynamicPins": false,
+      "kind": "Judge",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "Score input; inline values use node.data[score] (name and pin id are also accepted).",
+          "id": "",
+          "key": "score",
+          "name": "Score",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "Result input; inline values use node.data[result] (name and pin id are also accepted).",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "success",
+          "name": "Success",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Length",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Less",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "LessEqual",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ListAppend",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "List input; inline values use node.data[list] (name and pin id are also accepted).",
+          "id": "",
+          "key": "list",
+          "name": "List",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Item input; inline values use node.data[item] (name and pin id are also accepted).",
+          "id": "",
+          "key": "item",
+          "name": "Item",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ListContains",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "List input; inline values use node.data[list] (name and pin id are also accepted).",
+          "id": "",
+          "key": "list",
+          "name": "List",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Item input; inline values use node.data[item] (name and pin id are also accepted).",
+          "id": "",
+          "key": "item",
+          "name": "Item",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ListCreate",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "ItemA input; inline values use node.data[itemA] (name and pin id are also accepted).",
+          "id": "",
+          "key": "itemA",
+          "name": "ItemA",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "ItemB input; inline values use node.data[itemB] (name and pin id are also accepted).",
+          "id": "",
+          "key": "itemB",
+          "name": "ItemB",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "ItemC input; inline values use node.data[itemC] (name and pin id are also accepted).",
+          "id": "",
+          "key": "itemC",
+          "name": "ItemC",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ListGet",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "List input; inline values use node.data[list] (name and pin id are also accepted).",
+          "id": "",
+          "key": "list",
+          "name": "List",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Index input; inline values use node.data[index] (name and pin id are also accepted).",
+          "id": "",
+          "key": "index",
+          "name": "Index",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ListLength",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<any>",
+          "defaultJson": "",
+          "description": "List input; inline values use node.data[list] (name and pin id are also accepted).",
+          "id": "",
+          "key": "list",
+          "name": "List",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Lower",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Path or node.data.paths; node.data.skip_if_unavailable defaults to true.",
+      "dynamicPins": false,
+      "kind": "LspCheck",
+      "nodeType": "Control",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Path input; inline values use node.data[path] (name and pin id are also accepted).",
+          "id": "",
+          "key": "path",
+          "name": "Path",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "5000",
+          "description": "TimeoutMs input; inline values use node.data[timeout_ms] (name and pin id are also accepted).",
+          "id": "",
+          "key": "timeout_ms",
+          "name": "TimeoutMs",
+          "optional": true,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "passed",
+          "name": "Passed",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "errors",
+          "name": "Errors",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "warnings",
+          "name": "Warnings",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "diagnostics",
+          "name": "Diagnostics",
+          "optional": false,
+          "pinType": "DataOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "list<json>",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "problems",
+          "name": "Problems",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Max",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Min",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Modulo",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Multiply",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Not",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "NotEqual",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Or",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ParseJson",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Power",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Replace",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Input input; inline values use node.data[input] (name and pin id are also accepted).",
+          "id": "",
+          "key": "input",
+          "name": "Input",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Find input; inline values use node.data[find] (name and pin id are also accepted).",
+          "id": "",
+          "key": "find",
+          "name": "Find",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "ReplaceWith input; inline values use node.data[replaceWith] (name and pin id are also accepted).",
+          "id": "",
+          "key": "replaceWith",
+          "name": "ReplaceWith",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "RequestApproval",
+      "nodeType": "Control",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "Approved",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "Denied",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Message input; inline values use node.data[message] (name and pin id are also accepted).",
+          "id": "",
+          "key": "message",
+          "name": "Message",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "allowed",
+          "name": "Allowed",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Round",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Additional data outputs come from node.data constants.",
+      "dynamicPins": true,
+      "kind": "Start",
+      "nodeType": "Event",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "context",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "context",
+          "name": "Context",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Substring",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Start input; inline values use node.data[start] (name and pin id are also accepted).",
+          "id": "",
+          "key": "start",
+          "name": "Start",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "Length input; inline values use node.data[length] (name and pin id are also accepted).",
+          "id": "",
+          "key": "length",
+          "name": "Length",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Subtract",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Additional Case_<value> execution outputs come from node.data.cases.",
+      "dynamicPins": true,
+      "kind": "Switch",
+      "nodeType": "Control",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "Default",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Case input; inline values use node.data[case] (name and pin id are also accepted).",
+          "id": "",
+          "key": "case",
+          "name": "Case",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ToBool",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ToFloat",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "float",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ToInt",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "int",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ToJson",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "json",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "ToString",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "tool_name selects a registered tool; argument pins come from its JSON schema.",
+      "dynamicPins": true,
+      "kind": "Tool",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "ToolName input; inline values use node.data[tool_name] (name and pin id are also accepted).",
+          "id": "",
+          "key": "tool_name",
+          "name": "ToolName",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Command input; inline values use node.data[command] (name and pin id are also accepted).",
+          "id": "",
+          "key": "command",
+          "name": "Command",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Trim",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Upper",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "In input; inline values use node.data[in] (name and pin id are also accepted).",
+          "id": "",
+          "key": "in",
+          "name": "In",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "node.data.mode selects validation; expected, regex and retry retain their existing configuration meanings.",
+      "dynamicPins": false,
+      "kind": "Validator",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Actual input; inline values use node.data[actual] (name and pin id are also accepted).",
+          "id": "",
+          "key": "actual",
+          "name": "Actual",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Expected input; inline values use node.data[expected] (name and pin id are also accepted).",
+          "id": "",
+          "key": "expected",
+          "name": "Expected",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "passed",
+          "name": "Passed",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "VariableGet",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Name input; inline values use node.data[name] (name and pin id are also accepted).",
+          "id": "",
+          "key": "name",
+          "name": "Name",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "value",
+          "name": "Value",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "VariableSet",
+      "nodeType": "Function",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "string",
+          "defaultJson": "",
+          "description": "Name input; inline values use node.data[name] (name and pin id are also accepted).",
+          "id": "",
+          "key": "name",
+          "name": "Name",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "Value input; inline values use node.data[value] (name and pin id are also accepted).",
+          "id": "",
+          "key": "value",
+          "name": "Value",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "any",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "value",
+          "name": "Value",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    },
+    {
+      "description": "Connected data inputs override inline node.data values, then pin defaults.",
+      "dynamicPins": false,
+      "kind": "Xor",
+      "nodeType": "Pure",
+      "pins": [
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-in",
+          "optional": false,
+          "pinType": "ExecInput"
+        },
+        {
+          "choices": [],
+          "dataType": "void",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "",
+          "name": "x-out",
+          "optional": false,
+          "pinType": "ExecOutput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "A input; inline values use node.data[a] (name and pin id are also accepted).",
+          "id": "",
+          "key": "a",
+          "name": "A",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "B input; inline values use node.data[b] (name and pin id are also accepted).",
+          "id": "",
+          "key": "b",
+          "name": "B",
+          "optional": false,
+          "pinType": "DataInput"
+        },
+        {
+          "choices": [],
+          "dataType": "bool",
+          "defaultJson": "",
+          "description": "",
+          "id": "",
+          "key": "result",
+          "name": "Result",
+          "optional": false,
+          "pinType": "DataOutput"
+        }
+      ]
+    }
+  ],
+  "kinds": [
+    "Abs",
+    "Abstract",
+    "Add",
+    "And",
+    "Branch",
+    "CallFunction",
+    "CallLLM",
+    "Concat",
+    "Contains",
+    "ContextClone",
+    "ContextCreate",
+    "ContextFilter",
+    "ContextMerge",
+    "ContextRelease",
+    "ContextToText",
+    "ContextTrim",
+    "Delay",
+    "Divide",
+    "End",
+    "Equal",
+    "ForEach",
+    "FunctionEntry",
+    "FunctionExit",
+    "Greater",
+    "GreaterEqual",
+    "JsonGet",
+    "JsonSet",
+    "Judge",
+    "Length",
+    "Less",
+    "LessEqual",
+    "ListAppend",
+    "ListContains",
+    "ListCreate",
+    "ListGet",
+    "ListLength",
+    "Lower",
+    "LspCheck",
+    "Max",
+    "Min",
+    "Modulo",
+    "Multiply",
+    "Not",
+    "NotEqual",
+    "Or",
+    "ParseJson",
+    "Power",
+    "Replace",
+    "RequestApproval",
+    "Round",
+    "Start",
+    "Substring",
+    "Subtract",
+    "Switch",
+    "ToBool",
+    "ToFloat",
+    "ToInt",
+    "ToJson",
+    "ToString",
+    "Tool",
+    "Trim",
+    "Upper",
+    "Validator",
+    "VariableGet",
+    "VariableSet",
+    "Xor"
+  ],
+  "signatureVersion": 1
+}

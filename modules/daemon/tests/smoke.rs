@@ -2873,8 +2873,8 @@ async fn smoke_config_layers_do_not_leak_into_each_other() {
         .into_inner();
     let parsed: serde_json::Value = serde_json::from_str(&ws_layer.config_json).unwrap();
     assert_eq!(
-        parsed["llm"]["models"].as_object().map(|m| m.len()),
-        Some(0),
+        parsed["llm"]["models"].as_object().map(|m| m.len()).unwrap_or(0),
+        0,
         "workspace layer must be raw, not the merged config: {parsed}"
     );
     assert!(parsed["llm"]["default_model"].is_null());
@@ -3325,17 +3325,20 @@ async fn smoke_kill_job_terminates_a_running_command() {
         .unwrap();
 
     // A run that starts a long command and stays alive long enough to kill it.
-    let source = r#"blueprint "KillMe"
+    let command = if cfg!(windows) { "ping -n 30 127.0.0.1 > nul" } else { "sleep 30" };
+    let source = format!(
+        r#"blueprint "KillMe"
 entry start: Start
-run: StartCommand(command = "ping -n 30 127.0.0.1 > nul")
+run: StartCommand(command = "{command}")
 pause: Delay(Ms = 4000)
 stop: End
 start -> run
 run -> pause
 pause -> stop
-"#;
+"#
+    );
     let blueprint =
-        metteur_shared::dsl::compile(source).expect("the job tools must compile from the DSL");
+        metteur_shared::dsl::compile(&source).expect("the job tools must compile from the DSL");
     let mut run_client = client.clone();
     let run_ws_path = ws_path.clone();
     let run = tokio::spawn(async move {
@@ -3856,4 +3859,107 @@ async fn smoke_rejects_exec_output_wired_to_data_input() {
         "message should name the pin-kind clash: {}",
         err.message()
     );
+}
+
+/// Exercise the real RPC and keep the demo fixture derived from live registry metadata.
+#[tokio::test]
+async fn node_catalog_rpc_matches_registry_and_web_fixture() {
+    let (mut client, _workspace) = start_server(metteur_shared::config::Config::default()).await;
+    let list = client.list_node_kinds(proto::Empty {}).await.unwrap().into_inner();
+    let registry = metteur_daemon::registry::Registry::with_builtins();
+    let catalog = registry.node_signatures();
+    assert_eq!(list.signature_version, 1);
+    assert_eq!(list.kinds, registry.node_kinds());
+    assert_eq!(list.infos.len(), list.kinds.len());
+    let mut infos = Vec::new();
+    for info in &list.infos {
+        let signature = &catalog[&info.kind];
+        assert_eq!(info.node_type, format!("{:?}", signature.node_type));
+        assert_eq!(info.dynamic_pins, signature.dynamic_pins);
+        assert_eq!(info.description, signature.description);
+        assert_eq!(info.pins.len(), signature.pins.len());
+        let compiled = client
+            .compile_dsl(proto::CompileDslRequest {
+                source: format!("entry n: {}", info.kind),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        let pins: Vec<_> = info.pins.iter().zip(&signature.pins).map(|(pin, expected)| {
+            assert!(pin.id.is_empty());
+            assert_eq!(pin.key, expected.key);
+            assert_eq!(pin.name, expected.name);
+            assert_eq!(pin.pin_type, format!("{:?}", expected.pin_type));
+            assert_eq!(pin.data_type, expected.data_type.to_string());
+            assert_eq!(pin.default_json, expected.default.as_ref().map(|v| v.to_string()).unwrap_or_default());
+            assert_eq!(pin.optional, expected.optional);
+            assert_eq!(pin.choices, expected.choices);
+            assert_eq!(pin.description, expected.description.clone().unwrap_or_default());
+            let compiled_pin = compiled.nodes[0].pins.iter().find(|p| p.name == pin.name && p.pin_type == pin.pin_type).unwrap();
+            let mut compiled_pin = compiled_pin.clone();
+            compiled_pin.id.clear();
+            assert_eq!(&compiled_pin, pin);
+            serde_json::json!({
+                "id": pin.id, "key": pin.key, "name": pin.name, "pinType": pin.pin_type,
+                "dataType": pin.data_type, "defaultJson": pin.default_json, "optional": pin.optional,
+                "choices": pin.choices, "description": pin.description,
+            })
+        }).collect();
+        infos.push(serde_json::json!({
+            "kind": info.kind, "nodeType": info.node_type, "pins": pins,
+            "dynamicPins": info.dynamic_pins, "description": info.description,
+        }));
+    }
+    let actual = serde_json::json!({ "kinds": list.kinds, "signatureVersion": 1, "infos": infos });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../webcore/src/core/node-catalog.fixture.json");
+    if std::env::var("UPDATE_NODE_CATALOG").as_deref() == Ok("1") {
+        std::fs::write(&path, format!("{}\n", serde_json::to_string_pretty(&actual).unwrap()))
+            .unwrap();
+    }
+    let fixture: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(
+        actual, fixture,
+        "Regenerate the demo fixture with UPDATE_NODE_CATALOG=1 after contract changes"
+    );
+}
+
+#[tokio::test]
+async fn config_presence_survives_rpc_file_and_reset() {
+    let (mut client, workspace) = start_server(metteur_shared::config::Config::default()).await;
+    let path = workspace.to_string_lossy().to_string();
+    client.open_workspace(OpenWorkspaceRequest { path: path.clone() }).await.unwrap();
+    client.set_config(SetConfigRequest { workspace_path: String::new(), config_json: serde_json::json!({"config_version":2,"sandbox":{"enabled":true,"mode":"ask"},"llm":{"thinking_budget_tokens":4096,"default_model":"global"}}).to_string() }).await.unwrap();
+    let raw = serde_json::json!({"config_version":2,"sandbox":{"enabled":false},"llm":{"thinking_budget_tokens":0}});
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:raw.to_string() }).await.unwrap();
+    let read = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&read.config_json).unwrap(), raw);
+    let effective: metteur_shared::config::Config = serde_json::from_str(&read.effective_json).unwrap();
+    assert!(!effective.sandbox.enabled);
+    assert_eq!(effective.sandbox.mode, "ask");
+    assert_eq!(effective.llm.thinking_budget_tokens, 0);
+    assert_eq!(effective.llm.default_model.as_deref(), Some("global"));
+    let disk = std::fs::read_to_string(workspace.join(".metteur/config.toml")).unwrap();
+    assert!(!disk.contains("default_model"));
+    client.close_workspace(CloseWorkspaceRequest { path:path.clone() }).await.unwrap();
+    client.open_workspace(OpenWorkspaceRequest { path:path.clone() }).await.unwrap();
+    let loaded = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert_eq!(loaded.config_json, read.config_json);
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:"{\"config_version\":2}".into() }).await.unwrap();
+    let reset = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    let effective: metteur_shared::config::Config = serde_json::from_str(&reset.effective_json).unwrap();
+    assert!(effective.sandbox.enabled);
+    assert_eq!(effective.llm.thinking_budget_tokens, 4096);
+    // Unmarked writes retain legacy default-as-inherit, and reads don't rewrite.
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:"[invalid]".into() }).await.unwrap_err();
+    client.set_config(SetConfigRequest { workspace_path:path.clone(), config_json:serde_json::to_string(&metteur_shared::config::Config::default()).unwrap() }).await.unwrap();
+    let before = std::fs::read(workspace.join(".metteur/config.toml")).unwrap();
+    let legacy = client.get_config(GetConfigRequest { workspace_path:path.clone() }).await.unwrap().into_inner();
+    assert!(legacy.legacy_format);
+    let proposed: metteur_shared::config::ConfigLayer = serde_json::from_str(&legacy.overrides_json).unwrap();
+    let global: metteur_shared::config::Config = serde_json::from_str(&client.get_config(GetConfigRequest { workspace_path:String::new() }).await.unwrap().into_inner().effective_json).unwrap();
+    assert_eq!(proposed.merge(&global).unwrap(), serde_json::from_str::<metteur_shared::config::Config>(&legacy.effective_json).unwrap());
+    assert_eq!(before, std::fs::read(workspace.join(".metteur/config.toml")).unwrap());
+    client.close_workspace(CloseWorkspaceRequest { path }).await.unwrap();
 }

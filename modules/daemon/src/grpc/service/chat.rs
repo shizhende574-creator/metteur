@@ -92,6 +92,7 @@ impl DaemonService {
         if self.state.chats.read().await.contains_key(&ws_key) {
             return Err(Status::failed_precondition("workspace already has an active chat"));
         }
+        ws.reconcile_files().map_err(to_status)?;
         // Capture the exact model state, not a reconstruction from UI messages.
         let before = existing.clone().unwrap_or_else(|| {
             let mut context = ContextManager::default();
@@ -100,18 +101,14 @@ impl DaemonService {
             record.session_id = session_id;
             record
         });
-        let checkpoint_id = match crate::chat::checkpoint::capture(
+        let checkpoint_id = crate::chat::checkpoint::capture(
             &ws_db,
             &ws.version_manager,
             before,
             &format!("Before chat turn {}", old_turns + 1),
-        ) {
-            Ok(id) => id.to_string(),
-            Err(error) => {
-                tracing::warn!("chat checkpoint unavailable: {error}");
-                String::new()
-            }
-        };
+        ).map_err(|error| Status::failed_precondition(format!(
+            "chat recovery checkpoint unavailable; no new turn started: {error}"
+        )))?.to_string();
         let interrupt_bus = InterruptBus::new();
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let broker = Arc::new(ApprovalBroker::new());
@@ -138,7 +135,7 @@ impl DaemonService {
         let llm_factory = self.state.llm_factory.clone();
         let root = ws.root().to_path_buf();
         let ws_config = ws.config.clone();
-        let lsp = ws.lsp();
+        let lsp_source = ws.lsp_manager.clone();
         let version_manager = ws.version_manager.clone();
         let jobs = ws.jobs();
         let user = subject.clone();
@@ -147,6 +144,7 @@ impl DaemonService {
         let options_json = req.options_json.clone();
 
         tokio::spawn(async move {
+            let approval_lifetime = broker.close_on_drop();
             let mut ctx = ExecutionContext::new(registry, llm_factory, root.clone())
                 .with_run(run_id, now)
                 .with_user(user)
@@ -156,7 +154,7 @@ impl DaemonService {
             ctx.cancel_requested = cancel_flag.clone();
             ctx.approvals = Some(broker);
             ctx.workspace_db = Some(ws_db.clone());
-            ctx.lsp = lsp;
+            ctx.lsp_source = Some(lsp_source);
             ctx.version_manager = Some(version_manager);
             ctx.jobs = Arc::clone(&jobs);
             ctx.todos = existing_todos;
@@ -440,15 +438,30 @@ impl DaemonService {
                 }
             };
 
-            let outcome =
-                run_react_streaming(&mut ctx, context, &opts, Some(&mut on_delta), &mut on_event)
-                    .await;
+            let stream_broker = ctx.approvals.as_ref().unwrap().clone();
+            let stream_cancel = ctx.cancel_requested.clone();
+            let outcome = {
+                let run = run_react_streaming(
+                    &mut ctx, context, &opts, Some(&mut on_delta), &mut on_event,
+                );
+                tokio::pin!(run);
+                tokio::select! {
+                    biased;
+                    _ = event_tx.closed() => {
+                        stream_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                        stream_broker.close();
+                        run.await
+                    }
+                    outcome = &mut run => outcome,
+                }
+            };
+            drop(approval_lifetime);
             // The task list lives on the execution context; carry it into the
             // persisted record so a resumed session remembers the plan.
             let todos = ctx.todos.clone();
             let turn_elapsed_ms = turn_started.elapsed().as_millis() as u64;
             transcript.lock().finish_turn(turn_elapsed_ms);
-            let (terminal, saved) = match outcome {
+            let (mut terminal, saved) = match outcome {
                 Ok(outcome) => {
                     // Text-only answers are not appended by the loop; persist
                     // them so a resumed session remembers prior turns.
@@ -523,6 +536,11 @@ impl DaemonService {
                 && let Err(err) = save_thread(&ws_db, &record)
             {
                 tracing::warn!("[chat] failed to persist session: {err}");
+                terminal = Ok(ChatEvent {
+                    kind: "error".to_string(),
+                    content: format!("chat persistence failed; turn state is not durably recoverable: {err}"),
+                    detail_json: serde_json::json!({ "turn_elapsed_ms": turn_elapsed_ms }).to_string(),
+                });
             }
             let _ = event_tx.send(terminal);
             // Background commands belong to the turn that started them.
@@ -551,6 +569,9 @@ impl DaemonService {
         let chats = self.state.chats.read().await;
         let entry = chats.get(&ws_key).ok_or_else(|| Status::not_found("no active chat"))?;
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(broker) = &entry.approvals {
+            broker.close();
+        }
         if let Some(bus) = &entry.interrupt_bus {
             bus.send(Interrupt {
                 priority: InterruptPriority::Emergency,
@@ -651,6 +672,9 @@ impl DaemonService {
                     return Err(Status::failed_precondition("another conversation is running"));
                 }
                 run.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(broker) = &run.approvals {
+                    broker.close();
+                }
             }
         }
         // Keep admission blocked until the old task has persisted and killed its
@@ -723,6 +747,9 @@ impl DaemonService {
             if abort && let Some(chat) = self.state.chats.write().await.get_mut(&ws_key) {
                 chat.persist.store(false, std::sync::atomic::Ordering::SeqCst);
                 chat.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(broker) = &chat.approvals {
+                    broker.close();
+                }
                 if let Some(bus) = &chat.interrupt_bus {
                     bus.send(Interrupt {
                         priority: InterruptPriority::Emergency,

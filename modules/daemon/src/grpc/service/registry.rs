@@ -6,7 +6,8 @@ use tonic::{Request, Response, Status};
 
 use super::super::proto::{
     AddonInfo, AddonList, Empty, InstallAddonRequest, ListAddonsRequest, McpServerInfo,
-    McpServerList, NodeKindList, SetAddonEnabledRequest, ToolInfo, ToolList, UninstallAddonRequest,
+    McpServerList, NodeKindInfo, NodeKindList, SetAddonEnabledRequest, ToolInfo, ToolList,
+    UninstallAddonRequest,
 };
 use super::*;
 
@@ -34,10 +35,40 @@ impl DaemonService {
         &self,
         _request: Request<Empty>,
     ) -> Result<Response<NodeKindList>, Status> {
-        let mut kinds = self.state.registry.node_kinds();
-        kinds.sort();
+        let catalog = self.state.registry.node_signatures();
+        let kinds = catalog.keys().cloned().collect();
+        let infos = catalog
+            .values()
+            .map(|signature| NodeKindInfo {
+                kind: signature.kind.clone(),
+                node_type: format!("{:?}", signature.node_type),
+                pins: signature
+                    .pins
+                    .iter()
+                    .map(|pin| super::super::proto::Pin {
+                        id: String::new(),
+                        key: pin.key.clone(),
+                        name: pin.name.clone(),
+                        pin_type: format!("{:?}", pin.pin_type),
+                        data_type: pin.data_type.to_string(),
+                        default_json: pin
+                            .default
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_default(),
+                        optional: pin.optional,
+                        choices: pin.choices.clone(),
+                        description: pin.description.clone().unwrap_or_default(),
+                    })
+                    .collect(),
+                description: signature.description.clone(),
+                dynamic_pins: signature.dynamic_pins,
+            })
+            .collect();
         Ok(Response::new(NodeKindList {
             kinds,
+            infos,
+            signature_version: 1,
         }))
     }
 

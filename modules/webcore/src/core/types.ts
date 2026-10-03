@@ -215,6 +215,8 @@ export interface BlueprintNode {
   id: string
   /** Node type name, e.g. `Start`, `CallLLM`, `Tool`. */
   type: string
+  nodeType?: string
+  data?: Record<string, unknown>
   category: NodeCategory
   title: string
   summary?: string
@@ -225,6 +227,21 @@ export interface BlueprintNode {
   /** Default values keyed by data-input pin id (Unreal-style inline editors). */
   values?: Record<string, string>
   selected?: boolean
+}
+
+/** Daemon-owned execution metadata, separate from visual presets. */
+export interface NodeKindInfo {
+  kind: string
+  nodeType: string
+  pins: BlueprintPin[]
+  description: string
+  dynamicPins: boolean
+}
+export interface NodeCatalog {
+  kinds: string[]
+  nodes: NodeKindInfo[]
+  signatureVersion: number
+  ready: boolean
 }
 
 /** A single pin/handle on a blueprint node. */
@@ -269,7 +286,7 @@ export interface Blueprint {
 }
 
 /** Execution lifecycle observed by the UI. */
-export type ExecStatus = 'idle' | 'running' | 'paused' | 'finished' | 'cancelled'
+export type ExecStatus = 'idle' | 'running' | 'paused' | 'finished' | 'cancelled' | 'failed'
 
 /** A region of the live LLM context, reported by a CallLLM node. */
 export interface ContextRegion {
@@ -358,7 +375,7 @@ export interface UsageSummary {
 export interface ExecutionInfo {
   runId: string
   blueprintId: string
-  /** Running | Suspended | Completed | Failed */
+  /** Running | Suspended | RecoveryRequired | Completed | Cancelled | Failed */
   status: string
   startedAt: number
   updatedAt: number
@@ -376,6 +393,9 @@ export interface McpServerInfo {
 
 /** One signature pin of a blueprint function. */
 export interface FnPinInfo {
+  default?: unknown
+  optional?: boolean
+  description?: string
   name: string
   /** string | number | int | bool | list | object */
   type: string
@@ -650,4 +670,13 @@ export interface DaemonConfig {
   daemon?: DaemonSettings
   /** Extension keys for future Addon use. */
   [key: string]: unknown
+}
+
+/** Raw file plus the daemon's compatible editing layer and runtime values. */
+export interface ConfigState {
+  defaults: DaemonConfig
+  raw: DaemonConfig
+  overrides: DaemonConfig
+  effective: DaemonConfig
+  legacy: boolean
 }

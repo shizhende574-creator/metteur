@@ -9,16 +9,14 @@ pub mod policy;
 pub mod predict;
 
 use std::hash::Hasher;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-
-use crate::error::DaemonResult;
+use crate::error::{DaemonError, DaemonResult};
 use crate::execution::ExecutionEvent;
 use crate::execution::context::ExecutionContext;
 
-use approval::Decision;
+use approval::{ApprovalResponse, Decision};
 use grant::GrantStore;
 pub use mode::PermissionMode;
 use predict::Risk as policy_risk;
@@ -33,6 +31,11 @@ const DEFAULT_APPROVAL_TIMEOUT_SECS: u64 = 300;
 /// When no approval channel is attached (e.g. unit tests), non-whitelisted
 /// commands fail closed.
 pub async fn authorize(ctx: &ExecutionContext, command: &str) -> DaemonResult<bool> {
+    if ctx.cancel_requested.load(Ordering::SeqCst)
+        || ctx.approvals.as_ref().is_some_and(|broker| broker.is_closed())
+    {
+        return Ok(false);
+    }
     let config = match &ctx.config {
         Some(config) => config.read().await.clone(),
         None => metteur_shared::config::Config::default(),
@@ -58,7 +61,7 @@ pub async fn authorize(ctx: &ExecutionContext, command: &str) -> DaemonResult<bo
         if !allow {
             ctx.audit("sandbox.denied", serde_json::json!({ "command": command }));
         }
-        return Ok(allow);
+        return Ok(allow && !ctx.cancel_requested.load(Ordering::SeqCst));
     }
 
     // 3. Whitelisted commands run directly (except in `ask`, where the user
@@ -108,40 +111,20 @@ pub async fn authorize(ctx: &ExecutionContext, command: &str) -> DaemonResult<bo
             "sandbox.review",
             serde_json::json!({ "command": command, "outcome": if allow { "allowed" } else { "denied" } }),
         );
-        return Ok(allow);
+        return Ok(allow
+            && !ctx.cancel_requested.load(Ordering::SeqCst)
+            && !ctx.approvals.as_ref().is_some_and(|broker| broker.is_closed()));
     }
 
     // 6. Otherwise the user answers, through the channel attached to this run.
-    let Some(broker) = &ctx.approvals else {
-        ctx.audit(
-            "sandbox.approval",
-            serde_json::json!({ "command": command, "outcome": "denied", "reason": "no approval channel" }),
-        );
-        return Ok(false);
-    };
-
-    let (request_id, rx) = broker.open_request(hash, command.to_string());
-    if let Some(events) = &ctx.events {
-        let _ = events.send(ExecutionEvent::ApprovalRequested {
-            node_id: ctx.current_node,
-            request_id: request_id.clone(),
-            detail: detail.to_string(),
-        });
-    }
-    ctx.audit(
-        "sandbox.approval",
-        serde_json::json!({ "command": command, "request_id": request_id, "outcome": "pending" }),
-    );
-
-    let timeout_secs = approval_timeout(&config.sandbox);
-    let outcome = tokio::select! {
-        response = rx => response.unwrap_or(Decision::Deny),
-        _ = tokio::time::sleep(Duration::from_secs(timeout_secs)) => Decision::Deny,
-        _ = wait_cancelled(ctx.cancel_requested.clone()) => Decision::Deny,
-    };
-
-    let allow = outcome == Decision::Allow;
-    broker.record_run_grant(hash, allow);
+    let response =
+        match request_user_approval(ctx, hash, command, detail, approval_timeout(&config.sandbox))
+            .await
+        {
+            Ok(response) => response,
+            Err(_) => return Ok(false),
+        };
+    let allow = response.decision == Decision::Allow;
     if let Some(metrics) = &ctx.metrics {
         use std::sync::atomic::Ordering;
         if allow {
@@ -150,14 +133,6 @@ pub async fn authorize(ctx: &ExecutionContext, command: &str) -> DaemonResult<bo
             metrics.sandbox_approvals_denied.fetch_add(1, Ordering::Relaxed);
         }
     }
-    ctx.audit(
-        "sandbox.approval",
-        serde_json::json!({
-            "command": command,
-            "request_id": request_id,
-            "outcome": if allow { "allowed" } else { "denied" },
-        }),
-    );
     Ok(allow)
 }
 
@@ -172,15 +147,18 @@ pub async fn authorize(ctx: &ExecutionContext, command: &str) -> DaemonResult<bo
 /// - `full`: writes outside the workspace are reviewed by the model, then by the
 ///   user if it cannot answer.
 ///
-/// File mutations never fail closed: refusing to write inside the workspace
-/// would make the agent useless, so only the confirmation step is skipped or
-/// delegated.
+/// A required confirmation fails closed when its broker is unavailable.
 pub async fn authorize_write(
     ctx: &ExecutionContext,
     path: &std::path::Path,
     subject: &str,
     summary: &str,
 ) -> DaemonResult<bool> {
+    if ctx.cancel_requested.load(Ordering::SeqCst)
+        || ctx.approvals.as_ref().is_some_and(|broker| broker.is_closed())
+    {
+        return Ok(false);
+    }
     let config = match &ctx.config {
         Some(config) => config.read().await.clone(),
         None => metteur_shared::config::Config::default(),
@@ -195,6 +173,18 @@ pub async fn authorize_write(
         "outside_workspace": !inside_workspace,
     });
 
+    // Preserve the existing normalized-subject key and database boundaries.
+    let hash = command_hash(&policy::normalize(subject));
+    let grants = GrantStore::new(ctx.workspace_db.clone(), ctx.global_db.clone());
+    if grants.lookup(hash) == Some(false) {
+        return Ok(false);
+    }
+    if let Some(allow) = ctx.approvals.as_ref().and_then(|broker| broker.run_grant(hash)) {
+        return Ok(allow);
+    }
+    if grants.lookup(hash) == Some(true) {
+        return Ok(true);
+    }
     if mode == PermissionMode::Sandbox && inside_workspace {
         return Ok(true);
     }
@@ -218,49 +208,69 @@ pub async fn authorize_write(
                 serde_json::json!({ "path": subject, "outcome": "denied" }),
             );
         }
-        return Ok(allow);
+        return Ok(allow
+            && !ctx.cancel_requested.load(Ordering::SeqCst)
+            && !ctx.approvals.as_ref().is_some_and(|broker| broker.is_closed()));
     }
 
-    // The user answers. The request is keyed by the path so a decision can be
-    // remembered for the run, exactly like a command.
-    let hash = command_hash(&policy::normalize(subject));
-    if let Some(allow) = ctx.approvals.as_ref().and_then(|b| b.run_grant(hash)) {
-        return Ok(allow);
+    Ok(request_user_approval(ctx, hash, subject, detail, approval_timeout(&config.sandbox))
+        .await
+        .is_ok_and(|response| response.decision == Decision::Allow))
+}
+
+/// Emits and awaits one user request without losing its scope or failure cause.
+pub(crate) async fn request_user_approval(
+    ctx: &ExecutionContext,
+    hash: u64,
+    subject: &str,
+    detail: serde_json::Value,
+    timeout_secs: u64,
+) -> DaemonResult<ApprovalResponse> {
+    let result = async {
+        let broker = ctx.approvals.as_ref().ok_or_else(|| {
+            DaemonError::Sandbox("no approval broker available".into())
+        })?;
+        let request = broker.open_request(
+            hash, subject, Duration::from_secs(timeout_secs), ctx.cancel_requested.clone(),
+        ).map_err(|error| DaemonError::Sandbox(error.to_string()))?;
+        let request_id = request.id().to_string();
+        if let Some(events) = &ctx.events {
+            events.send(ExecutionEvent::ApprovalRequested {
+                node_id: ctx.current_node,
+                request_id: request_id.clone(),
+                detail: detail.to_string(),
+            }).map_err(|_| DaemonError::Sandbox("approval event channel closed".into()))?;
+        }
+        ctx.audit("sandbox.approval", serde_json::json!({
+            "subject": subject, "request_id": request_id, "outcome": "pending",
+        }));
+        match request.wait().await {
+            Ok(response) => {
+                ctx.audit("sandbox.approval", serde_json::json!({
+                    "subject": subject, "request_id": response.request_id,
+                    "outcome": if response.decision == Decision::Allow { "allowed" } else { "denied" },
+                    "scope": format!("{:?}", response.scope),
+                }));
+                Ok(response)
+            }
+            Err(error) => {
+                ctx.audit("sandbox.approval", serde_json::json!({
+                    "subject": subject, "request_id": request_id,
+                    "outcome": "unavailable", "reason": error.to_string(),
+                }));
+                Err(DaemonError::Sandbox(error.to_string()))
+            }
+        }
+    }.await;
+    if let Err(error) = &result {
+        ctx.audit(
+            "sandbox.approval_failed",
+            serde_json::json!({
+                "subject": subject, "reason": error.to_string(),
+            }),
+        );
     }
-    let Some(broker) = &ctx.approvals else {
-        // Without an approval channel (tests, blueprint runs without a client)
-        // the write is allowed: the file-system jail already bounds it.
-        return Ok(true);
-    };
-    let (request_id, rx) = broker.open_request(hash, subject.to_string());
-    if let Some(events) = &ctx.events {
-        let _ = events.send(ExecutionEvent::ApprovalRequested {
-            node_id: ctx.current_node,
-            request_id: request_id.clone(),
-            detail: detail.to_string(),
-        });
-    }
-    ctx.audit(
-        "sandbox.approval",
-        serde_json::json!({ "path": subject, "request_id": request_id, "outcome": "pending" }),
-    );
-    let timeout_secs = approval_timeout(&config.sandbox);
-    let outcome = tokio::select! {
-        response = rx => response.unwrap_or(Decision::Deny),
-        _ = tokio::time::sleep(Duration::from_secs(timeout_secs)) => Decision::Deny,
-        _ = wait_cancelled(ctx.cancel_requested.clone()) => Decision::Deny,
-    };
-    let allow = outcome == Decision::Allow;
-    broker.record_run_grant(hash, allow);
-    ctx.audit(
-        "sandbox.approval",
-        serde_json::json!({
-            "path": subject,
-            "request_id": request_id,
-            "outcome": if allow { "allowed" } else { "denied" },
-        }),
-    );
-    Ok(allow)
+    result
 }
 
 /// Seconds to wait for an approval before denying it.
@@ -272,16 +282,6 @@ fn approval_timeout(config: &metteur_shared::config::SandboxConfig) -> u64 {
         config.approval_timeout_secs
     } else {
         DEFAULT_APPROVAL_TIMEOUT_SECS
-    }
-}
-
-/// Polls the shared cancel flag until it is set.
-async fn wait_cancelled(flag: Arc<std::sync::atomic::AtomicBool>) {
-    loop {
-        if flag.load(Ordering::SeqCst) {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
@@ -361,6 +361,7 @@ fn truncate_chars(text: &str, max_bytes: usize, from_end: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn command_hash_is_stable_and_normalized_input_only() {

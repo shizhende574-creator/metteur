@@ -34,6 +34,10 @@ pub enum DaemonError {
     #[error("execution error: {0}")]
     Execution(String),
 
+    /// Durable execution state could not be committed; new effects must stop.
+    #[error("persistence failure: {0}")]
+    Persistence(String),
+
     /// An LLM request failed.
     #[error("llm error: {0}")]
     Llm(String),
@@ -107,6 +111,7 @@ impl DaemonError {
             DaemonError::PermissionDenied(_) => tonic::Code::PermissionDenied,
             DaemonError::Locked(_) => tonic::Code::FailedPrecondition,
             DaemonError::Execution(_) | DaemonError::Llm(_) => tonic::Code::Internal,
+            DaemonError::Persistence(_) => tonic::Code::FailedPrecondition,
             DaemonError::LlmStatus {
                 status,
                 ..

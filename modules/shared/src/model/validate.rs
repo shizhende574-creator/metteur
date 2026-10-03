@@ -79,17 +79,24 @@ impl fmt::Display for BlueprintError {
             Self::MissingEntryNode(id) => {
                 write!(f, "entry node {id} is not part of the blueprint")
             }
-            Self::UnknownEdgeNode { edge } => write!(
+            Self::UnknownEdgeNode {
+                edge,
+            } => write!(
                 f,
                 "edge {} references node {} or {}, which does not exist",
                 edge.id, edge.source_node, edge.target_node
             ),
-            Self::UnknownPin { edge } => write!(
+            Self::UnknownPin {
+                edge,
+            } => write!(
                 f,
                 "edge {} references pin {} or {}, which does not exist",
                 edge.id, edge.source_pin, edge.target_pin
             ),
-            Self::PinNotOnNode { edge, owner } => write!(
+            Self::PinNotOnNode {
+                edge,
+                owner,
+            } => write!(
                 f,
                 "edge {} claims pin {} belongs to node {}, but it belongs to node {owner}",
                 edge.id, edge.source_pin, edge.source_node
@@ -104,7 +111,9 @@ impl fmt::Display for BlueprintError {
                  execution and data pins cannot be mixed",
                 edge.id, edge.source_pin, edge.target_pin
             ),
-            Self::ExecPinDirection { edge } => write!(
+            Self::ExecPinDirection {
+                edge,
+            } => write!(
                 f,
                 "edge {} connects execution pin {} to execution pin {}: \
                  an execution output must feed an execution input",
@@ -182,13 +191,17 @@ pub fn validate(blueprint: &Blueprint) -> ValidationReport {
     for edge in &blueprint.edges {
         if blueprint.node(edge.source_node).is_none() || blueprint.node(edge.target_node).is_none()
         {
-            errors.push(BlueprintError::UnknownEdgeNode { edge: edge.clone() });
+            errors.push(BlueprintError::UnknownEdgeNode {
+                edge: edge.clone(),
+            });
             continue;
         }
         let (Some(source), Some(target)) =
             (blueprint.pin(edge.source_pin), blueprint.pin(edge.target_pin))
         else {
-            errors.push(BlueprintError::UnknownPin { edge: edge.clone() });
+            errors.push(BlueprintError::UnknownPin {
+                edge: edge.clone(),
+            });
             continue;
         };
         // A pin id that resolves globally but sits on another node would
@@ -239,7 +252,8 @@ pub fn validate(blueprint: &Blueprint) -> ValidationReport {
                     });
                 }
             }
-            (PinType::ExecOutput, PinType::DataInput) | (PinType::DataOutput, PinType::ExecInput) => {
+            (PinType::ExecOutput, PinType::DataInput)
+            | (PinType::DataOutput, PinType::ExecInput) => {
                 errors.push(BlueprintError::PinKindMismatch {
                     edge: edge.clone(),
                     source_kind: source.pin_type,
@@ -256,7 +270,9 @@ pub fn validate(blueprint: &Blueprint) -> ValidationReport {
 
     for node in &blueprint.nodes {
         for pin in node.pins.iter().filter(|p| p.pin_type == PinType::DataInput) {
-            let filled = connected_inputs.contains(&(node.id, pin.id)) || pin.default.is_some();
+            let filled = connected_inputs.contains(&(node.id, pin.id))
+                || pin.default.is_some()
+                || crate::node_catalog::inline_value(node, pin).is_some();
             if !filled && !pin.optional {
                 warnings.push(BlueprintError::UnconnectedRequiredInput {
                     node_id: node.id,
@@ -271,7 +287,35 @@ pub fn validate(blueprint: &Blueprint) -> ValidationReport {
         errors.push(BlueprintError::ExecCycle);
     }
 
-    ValidationReport { errors, warnings }
+    ValidationReport {
+        errors,
+        warnings,
+    }
+}
+
+/// Validates existing instance pins using the registry's canonical types and
+/// metadata. Ids, edges and dynamic function/tool pins remain instance-owned.
+/// Missing inputs remain warnings, including for legacy data-only nodes.
+pub fn validate_with_catalog(
+    blueprint: &Blueprint,
+    catalog: &crate::node_catalog::NodeCatalog,
+) -> ValidationReport {
+    let mut resolved = blueprint.clone();
+    for node in &mut resolved.nodes {
+        let Some(signature) = catalog.resolve(&node.kind, &node.data) else {
+            continue;
+        };
+        for pin in &mut node.pins {
+            if let Some(spec) = signature.pin(pin) {
+                pin.data_type = spec.data_type.clone();
+                if pin.default.is_none() {
+                    pin.default = spec.default.clone();
+                }
+                pin.optional = spec.optional;
+            }
+        }
+    }
+    validate(&resolved)
 }
 
 /// Visit state for the execution-graph cycle check.
@@ -412,10 +456,7 @@ mod tests {
         );
         let report = validate(&bp);
         assert!(
-            report
-                .errors
-                .iter()
-                .any(|e| matches!(e, BlueprintError::IncompatibleTypes { .. })),
+            report.errors.iter().any(|e| matches!(e, BlueprintError::IncompatibleTypes { .. })),
             "expected a type error, got {report:?}"
         );
     }
@@ -478,10 +519,7 @@ mod tests {
         bad.target_pin = Uuid::new_v4();
         let bp = blueprint(vec![producer, consumer], vec![bad]);
         assert!(
-            validate(&bp)
-                .errors
-                .iter()
-                .any(|e| matches!(e, BlueprintError::UnknownPin { .. })),
+            validate(&bp).errors.iter().any(|e| matches!(e, BlueprintError::UnknownPin { .. })),
         );
     }
 
@@ -504,10 +542,7 @@ mod tests {
     fn detects_exec_cycle() {
         let a = node("A", vec![pin(PinType::ExecOutput, DataType::Void)]);
         let b = node("B", vec![pin(PinType::ExecOutput, DataType::Void)]);
-        let bp = blueprint(
-            vec![a.clone(), b.clone()],
-            vec![connect(&a, &b), connect(&b, &a)],
-        );
+        let bp = blueprint(vec![a.clone(), b.clone()], vec![connect(&a, &b), connect(&b, &a)]);
         assert!(validate(&bp).errors.contains(&BlueprintError::ExecCycle));
     }
 
@@ -516,10 +551,7 @@ mod tests {
         // A feedback node legitimately points back at an earlier data input.
         let a = node("A", vec![pin(PinType::DataOutput, DataType::Int)]);
         let b = node("B", vec![pin(PinType::DataInput, DataType::Int)]);
-        let bp = blueprint(
-            vec![a.clone(), b.clone()],
-            vec![connect(&a, &b), connect(&b, &a)],
-        );
+        let bp = blueprint(vec![a.clone(), b.clone()], vec![connect(&a, &b), connect(&b, &a)]);
         assert!(!validate(&bp).errors.contains(&BlueprintError::ExecCycle));
     }
 }

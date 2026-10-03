@@ -81,7 +81,7 @@ fn process_alive(pid: u32) -> bool {
 #[cfg(not(windows))]
 fn libc_kill(pid: u32, sig: i32) -> i32 {
     // Minimal libc binding to avoid an extra dependency.
-    extern "C" {
+    unsafe extern "C" {
         fn kill(pid: i32, sig: i32) -> i32;
     }
     unsafe { kill(pid as i32, sig) }

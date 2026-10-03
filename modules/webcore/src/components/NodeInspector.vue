@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X } from '@lucide/vue'
 import { DATA_COLORS } from '@/lib/blueprint'
+import { valueText } from '@/core/node-catalog'
 import type { BlueprintPin } from '@/core'
 
 /** The pin data of a selected flow node (its `data` payload). */
@@ -30,7 +31,7 @@ function pinColor(pin: BlueprintPin): string {
 }
 
 function valueOf(pin: BlueprintPin): string {
-  return props.node.values?.[pin.id] ?? ''
+  return props.node.values?.[pin.id] ?? valueText(pin.default)
 }
 
 /** The inspector edits data inputs only; exec pins carry no parameters. */

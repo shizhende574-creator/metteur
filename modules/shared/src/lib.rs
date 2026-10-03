@@ -19,11 +19,11 @@ pub use llm::{
     ReasoningEffort, Role, SystemFragment, TodoItem, TodoStatus, ToolCall, ToolDefinition,
     ToolResult, ToolResultLifetime, Usage,
 };
+pub use model::types::{coerce, compatible};
+pub use model::validate::{BlueprintError, validate};
 pub use model::{
     Blueprint, DataType, Edge, EdgeId, Node, NodeId, NodeType, Pin, PinId, PinType, Value,
 };
-pub use model::types::{coerce, compatible};
-pub use model::validate::{BlueprintError, validate};
 pub use uri::Uri;
 
 #[doc(inline)]
@@ -31,3 +31,6 @@ pub use model::function::{
     CALL_FUNCTION_KIND, FUNCTION_ENTRY_KIND, FUNCTION_EXIT_KIND, FnPin, FunctionEntry,
     FunctionSignature, FunctionSource,
 };
+
+/// Canonical node contracts and immutable registry snapshots.
+pub mod node_catalog;

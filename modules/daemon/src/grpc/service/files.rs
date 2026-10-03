@@ -87,10 +87,8 @@ impl DaemonService {
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(io_status)?;
-        }
-        std::fs::write(&path, req.content.as_bytes()).map_err(io_status)?;
+        let _admission = ws.activity_gate.lock().await;
+        mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -143,10 +141,11 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let meta = std::fs::symlink_metadata(&path).map_err(io_status)?;
+        let _admission = ws.activity_gate.lock().await;
         if meta.is_dir() {
             std::fs::remove_dir_all(&path).map_err(io_status)?;
         } else {
-            std::fs::remove_file(&path).map_err(io_status)?;
+            mutate_regular_file(&ws, &path, None).map_err(to_status)?;
         }
         Ok(Response::new(Empty {}))
     }
@@ -237,6 +236,31 @@ impl DaemonService {
         });
         Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx_stream)))
     }
+}
+
+/// User file RPCs receive their own operation identity, outside an agent run.
+fn mutate_regular_file(
+    ws: &crate::workspace::manager::Workspace,
+    path: &std::path::Path,
+    after: Option<&[u8]>,
+) -> crate::error::DaemonResult<()> {
+    use crate::execution::file_journal::{DbFileJournal, FileJournal, FileOrigin};
+    let log = crate::execution::TransactionLog::new().with_journal(FileJournal::new(
+        ws.root.clone(),
+        std::sync::Arc::new(DbFileJournal(ws.db.clone())),
+    ));
+    log.mutate_file(
+        ws.root(),
+        path,
+        after,
+        FileOrigin {
+            run_id: uuid::Uuid::new_v4(),
+            node_id: uuid::Uuid::nil(),
+            attempt: 1,
+            wal_position: 0,
+        },
+        None,
+    )
 }
 
 /// Opens the OS file manager with `path` selected, fire-and-forget.

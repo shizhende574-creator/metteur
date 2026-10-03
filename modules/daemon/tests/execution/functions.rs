@@ -162,6 +162,8 @@ async fn resumes_with_function_frame_from_checkpoint() {
     let mut frame_sched = Scheduler::default();
     frame_sched.seed(entry_node);
     let checkpoint = ExecutionCheckpoint {
+        transition_version: metteur_daemon::execution::checkpoint::CHECKPOINT_TRANSITION_VERSION,
+        in_flight: None,
         run_id: Uuid::new_v4(),
         blueprint_id: blueprint.id,
         status: RunStatus::Running,

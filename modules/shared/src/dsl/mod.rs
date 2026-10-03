@@ -22,6 +22,6 @@ mod decompile;
 mod parser;
 mod shorthand;
 
-pub use compile::compile;
+pub use compile::{compile, compile_with_catalog};
 pub use decompile::decompile;
-pub use shorthand::{compile_draft, compile_draft_value};
+pub use shorthand::{compile_draft, compile_draft_value, compile_draft_value_with_catalog};

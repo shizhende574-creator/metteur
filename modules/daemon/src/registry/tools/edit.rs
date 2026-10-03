@@ -183,13 +183,8 @@ impl Tool for EditFile {
         }
 
         let output = from_lf(&edited, style);
-        ctx.transaction_log.record_file_write(
-            resolved.clone(),
-            Some(original.clone().into_bytes()),
-            output.clone().into_bytes(),
-        );
-        fs.write(&path, output.as_bytes())?;
-        ctx.note_file_mutation(&resolved);
+        crate::execution::file_journal::validate_path(&ctx.workspace_root, &fs.resolve(&path)?)?;
+        ctx.write_file(&resolved, output.as_bytes(), Some(original.as_bytes()))?;
 
         let diff = render_diff(&normalized, &edited);
         Ok(Value::String(format!(
@@ -220,9 +215,9 @@ fn parse_blocks(raw: Option<Value>) -> DaemonResult<Vec<EditBlock>> {
         }
         _ => return Err(DaemonError::Execution("EditFile requires edits".to_string())),
     };
-    let array = json.as_array().ok_or_else(|| {
-        DaemonError::Execution("EditFile edits must be a JSON array".to_string())
-    })?;
+    let array = json
+        .as_array()
+        .ok_or_else(|| DaemonError::Execution("EditFile edits must be a JSON array".to_string()))?;
     array.iter().map(parse_block).collect()
 }
 
@@ -289,10 +284,7 @@ fn from_lf(text: &str, style: LineStyle) -> String {
 ///
 /// Each block resolves against the buffer produced by its predecessors, so a
 /// later edit may target text an earlier one just introduced.
-fn apply_blocks(
-    text: &str,
-    blocks: &[EditBlock],
-) -> DaemonResult<(String, EditReport)> {
+fn apply_blocks(text: &str, blocks: &[EditBlock]) -> DaemonResult<(String, EditReport)> {
     let mut buffer = text.to_string();
     let mut resolved = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
@@ -304,14 +296,16 @@ fn apply_blocks(
                 resolved.extend(edits);
             }
             Err(err) => {
-                return Err(DaemonError::Execution(format!(
-                    "edit #{} failed: {err}",
-                    index + 1
-                )));
+                return Err(DaemonError::Execution(format!("edit #{} failed: {err}", index + 1)));
             }
         }
     }
-    Ok((buffer, EditReport { edits: resolved }))
+    Ok((
+        buffer,
+        EditReport {
+            edits: resolved,
+        },
+    ))
 }
 
 /// A located occurrence of an anchor in the buffer.
@@ -412,8 +406,11 @@ fn find_line_normalized(text: &str, needle: &str, ignore_indent: bool) -> Option
     let text_norm: Vec<String> =
         text_lines.iter().map(|line| normalize_line(line, ignore_indent)).collect();
 
-    let level =
-        if ignore_indent { MatchLevel::Indentation } else { MatchLevel::TrailingWhitespace };
+    let level = if ignore_indent {
+        MatchLevel::Indentation
+    } else {
+        MatchLevel::TrailingWhitespace
+    };
     let mut out = Vec::new();
     let last_start = text_lines.len().saturating_sub(needle_lines.len());
     for start_line in 0..=last_start {
@@ -609,7 +606,11 @@ impl EditReport {
     fn summary(&self) -> String {
         let mut parts = Vec::new();
         for edit in &self.edits {
-            let scope = if edit.replace_all { "all matches" } else { "1 block" };
+            let scope = if edit.replace_all {
+                "all matches"
+            } else {
+                "1 block"
+            };
             parts.push(format!("line {} ({}, {})", edit.line, edit.level.label(), scope));
         }
         format!("{} edit(s): {}", self.edits.len(), parts.join(", "))

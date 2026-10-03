@@ -17,8 +17,8 @@
 //!   near-duplicates.
 
 use async_trait::async_trait;
-use metteur_shared::llm::ToolResultLifetime;
 use metteur_shared::Value;
+use metteur_shared::llm::ToolResultLifetime;
 
 use crate::error::{DaemonError, DaemonResult};
 use crate::execution::context::ExecutionContext;
@@ -95,8 +95,11 @@ impl Tool for DraftBlueprint {
             other => crate::execution::nodes::value_to_json(other),
         };
 
-        let blueprint = metteur_shared::dsl::compile_draft_value(&draft_json)
-            .map_err(|err| DaemonError::Execution(err.to_string()))?;
+        let blueprint = metteur_shared::dsl::compile_draft_value_with_catalog(
+            &draft_json,
+            &ctx.registry.authoring_catalog(),
+        )
+        .map_err(|err| DaemonError::Execution(err.to_string()))?;
 
         ctx.audit(
             "blueprint.draft",
@@ -156,7 +159,11 @@ fn render_report(blueprint: &metteur_shared::Blueprint, saved: bool) -> String {
     let order = execution_order(blueprint, entry);
     out.push_str("\nSteps:\n");
     for node in &order {
-        let marker = if node.id == entry { " (entry)" } else { "" };
+        let marker = if node.id == entry {
+            " (entry)"
+        } else {
+            ""
+        };
         out.push_str(&format!("- {} [{}{}]\n", node_label(node), node.kind, marker));
     }
     let unvisited: Vec<&metteur_shared::Node> = blueprint
@@ -223,16 +230,8 @@ fn node_label(node: &metteur_shared::Node) -> String {
     };
     let tool = string_at(&["tool_name"]);
     // The argument that distinguishes one call of this tool from another.
-    let detail = string_at(&[
-        "path",
-        "pattern",
-        "command",
-        "query",
-        "root",
-        "model",
-        "prompt",
-        "tool_name",
-    ]);
+    let detail =
+        string_at(&["path", "pattern", "command", "query", "root", "model", "prompt", "tool_name"]);
     match (tool, detail) {
         (Some(tool), Some(detail)) if !detail.is_empty() => {
             format!("{}: {} {}", node.kind, tool, truncate(&detail, 48))

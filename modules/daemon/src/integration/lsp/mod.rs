@@ -15,6 +15,9 @@ use crate::error::{DaemonError, DaemonResult};
 
 use client::LspClient;
 
+/// Live manager slot shared with running execution contexts.
+pub type SharedLsp = Arc<parking_lot::RwLock<Option<Arc<LspManager>>>>;
+
 /// Per-workspace manager of language server processes.
 ///
 /// Clients are started lazily on the first request touching a file whose

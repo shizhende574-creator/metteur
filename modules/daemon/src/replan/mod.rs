@@ -11,7 +11,6 @@ use metteur_shared::{Blueprint, NodeId};
 
 use crate::error::{DaemonError, DaemonResult};
 use crate::execution::context::ExecutionContext;
-use crate::execution::interpreter::ExecutionEvent;
 use crate::execution::react::{ReactOptions, run_react};
 use crate::sandbox::approval::Decision;
 
@@ -139,27 +138,32 @@ pub fn apply_edits(bp: &mut Blueprint, script: &serde_json::Value) -> Result<Str
 /// Opens an approval request on the shared broker and emits the matching
 /// `approval_request` event. Returns whether the user allowed it.
 ///
-/// A missing broker or a timeout both count as a denial.
+/// Missing, cancelled or expired approval fails without becoming a user denial.
 pub async fn await_approval(
     ctx: &mut ExecutionContext,
     request_type: &str,
     message: &str,
     detail: serde_json::Value,
 ) -> DaemonResult<bool> {
-    let broker = ctx
-        .approvals
-        .clone()
-        .ok_or_else(|| DaemonError::Execution("no approval broker available".to_string()))?;
     let detail_json = serde_json::to_string(&detail)
         .unwrap_or_else(|_| serde_json::json!({ "request_type": request_type }).to_string());
-    let command_hash = crate::sandbox::command_hash(&format!("{message}\n{detail_json}"));
-    let (request_id, rx) = broker.open_request(command_hash, format!("{message}\n{detail_json}"));
-    if let Some(tx) = &ctx.events {
-        let _ = tx.send(ExecutionEvent::ApprovalRequested {
-            node_id: ctx.current_node,
-            request_id,
-            detail: detail_json,
-        });
+    let subject = format!("{message}\n{detail_json}");
+    let command_hash = crate::sandbox::command_hash(&subject);
+    let broker = ctx
+        .approvals
+        .as_ref()
+        .ok_or_else(|| DaemonError::Sandbox("no approval broker available".into()))?;
+    if broker.is_closed() || ctx.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(DaemonError::Sandbox("approval run closed or cancelled".into()));
+    }
+    let grants =
+        crate::sandbox::grant::GrantStore::new(ctx.workspace_db.clone(), ctx.global_db.clone());
+    let persistent = grants.lookup(command_hash);
+    if persistent == Some(false) {
+        return Ok(false);
+    }
+    if let Some(allow) = broker.run_grant(command_hash).or(persistent) {
+        return Ok(allow);
     }
     let timeout_secs = ctx
         .config
@@ -167,11 +171,10 @@ pub async fn await_approval(
         .map(|c| c.try_read().map(|cfg| cfg.sandbox.approval_timeout_secs).unwrap_or(0))
         .unwrap_or(0)
         .max(30);
-    let decision = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx)
-        .await
-        .map_err(|_| DaemonError::Execution("approval request timed out".to_string()))?
-        .map_err(|_| DaemonError::Execution("approval request cancelled".to_string()))?;
-    Ok(decision == Decision::Allow)
+    let response =
+        crate::sandbox::request_user_approval(ctx, command_hash, &subject, detail, timeout_secs)
+            .await?;
+    Ok(response.decision == Decision::Allow)
 }
 
 /// Persists the edited blueprint back to the workspace database.
@@ -413,7 +416,7 @@ mod tests {
     async fn trip_and_replan_mock_applies_approved_edits() {
         use crate::llm::LlmClientFactory;
         use crate::registry::Registry;
-        use crate::sandbox::approval::{ApprovalBroker, Decision};
+        use crate::sandbox::approval::{ApprovalBroker, Decision, Scope};
         use metteur_shared::config::Config;
 
         let broker = std::sync::Arc::new(ApprovalBroker::new());
@@ -441,7 +444,7 @@ mod tests {
             let ids = broker.pending_ids();
             if !ids.is_empty() {
                 for id in ids {
-                    broker.respond(&id, Decision::Allow);
+                    broker.respond(&id, Decision::Allow, Scope::Once, &Default::default()).unwrap();
                     allowed += 1;
                 }
             }

@@ -43,7 +43,7 @@ impl Interpreter {
             tracing::info!("run {} started", sink.run_id());
         }
 
-        let result = self.run_loop(blueprint, ctx).await;
+        let mut result = self.run_loop(blueprint, ctx).await;
         if let Some(root) = self.tree_root.clone() {
             let (status, now) = match &result {
                 Ok(()) => (TreeNodeStatus::Done, now_millis()),
@@ -55,25 +55,41 @@ impl Interpreter {
         // client can tell an abandoned run from a broken one.
         let cancelled = matches!(&result, Err(DaemonError::Interrupted(_)));
         let rollback_on_cancel = self.should_rollback_on_cancel(ctx);
+        let mut rolled_back = false;
         if cancelled && rollback_on_cancel {
             // Undo the file mutations this run made, so cancelling leaves the
             // workspace as it was found. Command side effects are outside the
             // WAL and are not undone.
             match ctx.transaction_log.rollback_after(0) {
-                Ok(undone) => ctx.audit(
-                    "execution.cancel_rollback",
-                    serde_json::json!({
-                        "run_id": ctx.run_id.to_string(),
-                        "undone": undone,
-                    }),
-                ),
-                Err(err) => ctx.audit(
-                    "execution.cancel_rollback_failed",
-                    serde_json::json!({
-                        "run_id": ctx.run_id.to_string(),
-                        "error": err.to_string(),
-                    }),
-                ),
+                Ok(undone) => {
+                    rolled_back = true;
+                    ctx.audit(
+                        "execution.cancel_rollback",
+                        serde_json::json!({
+                            "run_id": ctx.run_id.to_string(), "undone": undone,
+                        }),
+                    );
+                    self.emit(ExecutionEvent::Message {
+                        node_id: ctx.current_node,
+                        message: format!("cancelled: file rollback complete ({undone} operation(s)); shell/network effects are not reversed"),
+                    });
+                }
+                Err(err) => {
+                    ctx.audit(
+                        "execution.cancel_rollback_failed",
+                        serde_json::json!({
+                            "run_id": ctx.run_id.to_string(), "error": err.to_string(),
+                        }),
+                    );
+                    let message = format!(
+                        "cancelled: {err}; manual recovery required; shell/network effects are not reversed"
+                    );
+                    self.emit(ExecutionEvent::Message {
+                        node_id: ctx.current_node,
+                        message: message.clone(),
+                    });
+                    result = Err(DaemonError::Interrupted(message));
+                }
             }
         }
         let status = match &result {
@@ -93,7 +109,7 @@ impl Interpreter {
                     serde_json::json!({
                         "run_id": ctx.run_id.to_string(),
                         "blueprint_id": bp_id.to_string(),
-                        "rolled_back": rollback_on_cancel,
+                        "rolled_back": rolled_back,
                     }),
                 );
                 RunStatus::Cancelled
@@ -109,7 +125,20 @@ impl Interpreter {
                 RunStatus::Failed
             }
         };
-        self.write_terminal_checkpoint(ctx, status, result.as_ref().err().map(|e| e.to_string()));
+        if let Err(err) = self.write_terminal_checkpoint(
+            ctx,
+            status,
+            result.as_ref().err().map(|e| e.to_string()),
+        ) {
+            if let Some(root) = &self.tree_root {
+                self.tree.finish(root, TreeNodeStatus::Failed(err.to_string()), now_millis());
+            }
+            // A transient terminal-write failure must never turn into success.
+            // Try to retain diagnostic state, but preserve the original error
+            // even if storage remains unavailable.
+            let _ = self.write_terminal_checkpoint(ctx, RunStatus::Failed, Some(err.to_string()));
+            return Err(err);
+        }
         result.map(|()| self.events.clone())
     }
 
@@ -208,6 +237,7 @@ impl Interpreter {
                 node_id,
             });
             ctx.current_node = node_id;
+            ctx.file_attempt = self.state.attempt_counts.values().copied().max().unwrap_or(0) + 1;
             ctx.audit(
                 "node.started",
                 serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),
@@ -242,10 +272,9 @@ impl Interpreter {
                     serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),
                 );
                 self.tree_end(ctx, TreeNodeStatus::Done);
-                self.write_checkpoint(ctx);
                 // Drive the body forward from the entry node (exit nodes
                 // typically have no successors, which is harmless).
-                self.fire_edges(&active_bp, node_id)?;
+                self.commit_successors(&active_bp, node_id, None, ctx)?;
                 continue;
             }
 
@@ -253,10 +282,17 @@ impl Interpreter {
                 tracing::info!("run {} executing node {node_id}", sink.run_id());
             }
 
-            let executor = self.registry.node_executor(&node.kind).ok_or_else(|| {
+            let registry = self.registry.clone();
+            let executor = registry.node_executor(&node.kind).ok_or_else(|| {
                 DaemonError::Execution(format!("no executor for node kind '{}'", node.kind))
             })?;
+            // Fence arbitrary executors before they can perform external work.
+            // If the outcome cannot be saved, restart sees uncertainty rather
+            // than an apparently unstarted node that is safe to repeat.
+            self.in_flight = Some(node_id);
+            self.write_checkpoint(ctx)?;
             let outputs = executor.execute(&node, &inputs, ctx).await?;
+            self.in_flight = None;
             self.state.data_values.extend(outputs.iter().map(|(id, v)| (*id, v.clone())));
             let function = self.active_function();
             self.emit(ExecutionEvent::NodeData {
@@ -293,19 +329,14 @@ impl Interpreter {
                 continue;
             }
 
-            // Fire execution output edges and wake data consumers.
-            self.fire_edges(&active_bp, node_id)?;
-
             // Circuit breaker: repeated validation failures trigger a
             // user-approved replan and re-run this node under the new plan.
-            self.maybe_circuit_break(node_id, &node, &outputs, ctx).await?;
-
-            // Persist only once the successors are queued. A checkpoint taken
-            // before `fire_edges` would record this node as executed while its
-            // successors are in neither `executed` nor `pending`; a crash in
-            // that window would resume into a drained queue and report the run
-            // as completed with the remaining branch silently skipped.
-            self.write_checkpoint(ctx);
+            // Decide before dispatch, so stale successors cannot outrun it.
+            if self.maybe_circuit_break(node_id, &node, &outputs, ctx).await? {
+                self.write_checkpoint(ctx)?;
+                continue;
+            }
+            self.commit_successors(&active_bp, node_id, None, ctx)?;
         }
         Ok(())
     }
