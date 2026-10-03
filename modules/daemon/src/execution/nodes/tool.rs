@@ -30,10 +30,14 @@ impl NodeExecutor for ToolExecutor {
         inputs: &HashMap<PinId, Value>,
         ctx: &mut ExecutionContext,
     ) -> DaemonResult<HashMap<PinId, Value>> {
-        let tool_name = node
-            .data
-            .get("tool_name")
-            .and_then(|v| v.as_str())
+        let connected_name = node
+            .pins
+            .iter()
+            .find(|p| p.name == "ToolName" && p.pin_type == metteur_shared::PinType::DataInput)
+            .and_then(|pin| inputs.get(&pin.id))
+            .and_then(Value::as_str);
+        let tool_name = connected_name
+            .or_else(|| node.data.get("tool_name").and_then(|v| v.as_str()))
             .ok_or_else(|| DaemonError::Execution("tool node missing tool_name".to_string()))?;
 
         let tool = ctx
@@ -43,6 +47,9 @@ impl NodeExecutor for ToolExecutor {
 
         let mut args_obj = serde_json::Map::new();
         for pin in node.pins.iter().filter(|p| p.pin_type == metteur_shared::PinType::DataInput) {
+            if pin.name == "ToolName" {
+                continue;
+            }
             // Fall back to the node's inline constant for the pin when nothing
             // is wired: DSL literals and canvas-authored values live in
             // `node.data`, and a tool argument supplied that way must reach
@@ -51,7 +58,16 @@ impl NodeExecutor for ToolExecutor {
                 Some(value) => value.clone(),
                 None => super::input_or_data(node, inputs, &pin.name).unwrap_or(Value::Null),
             };
-            args_obj.insert(pin.name.clone(), value_to_json(&value));
+            // Absent optional arguments must be omitted so the tool's own
+            // defaults apply; explicit null arguments remain representable.
+            if pin.optional
+                && !inputs.contains_key(&pin.id)
+                && metteur_shared::node_catalog::inline_value(node, pin).is_none()
+            {
+                continue;
+            }
+            args_obj
+                .insert(pin.key.clone().unwrap_or_else(|| pin.name.clone()), value_to_json(&value));
         }
         let args = vec![Value::Json(serde_json::Value::Object(args_obj.clone()))];
 

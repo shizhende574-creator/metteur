@@ -18,6 +18,21 @@ pub trait NodeExecutor: Send + Sync {
     /// The node kind this executor handles (e.g. `Start`, `Add`, `Branch`).
     fn kind(&self) -> &str;
 
+    /// Canonical contract adopted by this executor. Custom executors override
+    /// this method when they expose fixed pins; the default explicitly marks
+    /// an instance-defined contract rather than inventing a pin layout.
+    fn signature(&self) -> metteur_shared::node_catalog::NodeSignature {
+        use metteur_shared::node_catalog::{NodeSignature, builtin_signature};
+        builtin_signature(self.kind()).unwrap_or_else(|| NodeSignature {
+            kind: self.kind().to_string(),
+            executor_kind: self.kind().to_string(),
+            node_type: metteur_shared::NodeType::Function,
+            pins: Vec::new(),
+            dynamic_pins: true,
+            description: "Custom executor: pins are defined by the node instance.".to_string(),
+        })
+    }
+
     /// Executes the node and returns its data output values.
     async fn execute(
         &self,
@@ -129,6 +144,11 @@ impl NodeRegistry {
         let mut kinds: Vec<String> = self.executors.keys().cloned().collect();
         kinds.sort();
         kinds
+    }
+
+    /// Owned, sorted snapshot; readers never retain a mutable registry borrow.
+    pub fn signatures(&self) -> metteur_shared::node_catalog::NodeCatalog {
+        self.executors.iter().map(|(kind, executor)| (kind.clone(), executor.signature())).collect()
     }
 }
 

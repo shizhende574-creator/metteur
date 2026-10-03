@@ -37,7 +37,7 @@ impl DaemonService {
         let proto_blueprint =
             req.blueprint.ok_or_else(|| Status::invalid_argument("blueprint is required"))?;
         let blueprint = proto_to_blueprint(&proto_blueprint).map_err(to_status)?;
-        ensure_valid(&blueprint)?;
+        ensure_valid(&blueprint, &self.state.registry)?;
         let data = serde_json::to_vec(&blueprint).map_err(|e| Status::internal(e.to_string()))?;
         ws.db
             .put(crate::storage::persistence::cf::BLUEPRINTS, blueprint.id.as_bytes(), &data)
@@ -102,7 +102,7 @@ impl DaemonService {
                 .map_err(|e| Status::invalid_argument(format!("invalid blueprint: {e}")))?;
             // Validate before mirroring: an invalid graph must not overwrite
             // the stored copy that a later Run would pick up.
-            ensure_valid(&parsed)?;
+            ensure_valid(&parsed, &self.state.registry)?;
             let encoded =
                 serde_json::to_vec(&parsed).map_err(|e| Status::internal(e.to_string()))?;
             ws.db
@@ -113,7 +113,7 @@ impl DaemonService {
         // A blueprint saved before validation existed, or edited directly in
         // the database, is re-checked here so execution never runs a graph that
         // would fail halfway through.
-        ensure_valid(&blueprint)?;
+        ensure_valid(&blueprint, &self.state.registry)?;
         let run_id = uuid::Uuid::new_v4();
         let ws_key = ws.root().to_path_buf();
 
@@ -376,8 +376,11 @@ impl DaemonService {
         request: Request<CompileDslRequest>,
     ) -> Result<Response<Blueprint>, Status> {
         let source = request.into_inner().source;
-        let blueprint = metteur_shared::dsl::compile(&source)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let blueprint = metteur_shared::dsl::compile_with_catalog(
+            &source,
+            &self.state.registry.authoring_catalog(),
+        )
+        .map_err(|e| Status::invalid_argument(e.to_string()))?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
 
@@ -418,17 +421,18 @@ impl DaemonService {
 /// executes, by which point the checkpoint machinery, the LLM budget and any
 /// earlier file mutations are already committed. Every problem is reported at
 /// once so a client can show the full list rather than one mistake per run.
-fn ensure_valid(blueprint: &metteur_shared::Blueprint) -> Result<(), Status> {
-    let report = metteur_shared::validate(blueprint);
+fn ensure_valid(
+    blueprint: &metteur_shared::Blueprint,
+    registry: &crate::registry::Registry,
+) -> Result<(), Status> {
+    let report = metteur_shared::model::validate::validate_with_catalog(
+        blueprint,
+        &registry.node_signatures(),
+    );
     if report.is_ok() {
         return Ok(());
     }
-    let detail = report
-        .errors
-        .iter()
-        .map(|e| e.to_string())
-        .collect::<Vec<_>>()
-        .join("; ");
+    let detail = report.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; ");
     Err(Status::invalid_argument(format!(
         "blueprint is invalid ({} problem(s)): {detail}",
         report.errors.len()

@@ -39,7 +39,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::error::{SharedError, SharedResult};
 use crate::model::{Blueprint, DataType, Edge, Node, NodeId, Pin, PinId, PinType};
 
-use super::compile::{REGISTRY_TOOL_KINDS, node_type_of, template};
+use crate::node_catalog::{NodeCatalog, builtin_catalog};
 
 /// Maximum nodes a compiled blueprint may contain (mirrors the DSL limit).
 const MAX_NODES: usize = 256;
@@ -62,6 +62,14 @@ pub fn compile_draft(source: &str) -> SharedResult<Blueprint> {
 
 /// Compiles a draft from an already-parsed JSON value.
 pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint> {
+    compile_draft_value_with_catalog(value, &builtin_catalog())
+}
+
+/// Compiles a draft using the live daemon registry snapshot.
+pub fn compile_draft_value_with_catalog(
+    value: &serde_json::Value,
+    catalog: &NodeCatalog,
+) -> SharedResult<Blueprint> {
     let object = value
         .as_object()
         .ok_or_else(|| SharedError::Invalid("draft must be a JSON object".to_string()))?;
@@ -106,28 +114,22 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
             .get("kind")
             .and_then(|value| value.as_str())
             .filter(|text| !text.trim().is_empty())
-            .ok_or_else(|| {
-                SharedError::Invalid(format!("node '{alias}' is missing a `kind`"))
+            .ok_or_else(|| SharedError::Invalid(format!("node '{alias}' is missing a `kind`")))?;
+        let signature =
+            catalog.resolve(kind, &serde_json::Value::Object(draft.clone())).ok_or_else(|| {
+                SharedError::Invalid(format!(
+                    "unknown node kind '{kind}' (node '{alias}'){}",
+                    suggest_kind(kind, catalog)
+                ))
             })?;
-        let spec = template(kind).ok_or_else(|| {
-            SharedError::Invalid(format!(
-                "unknown node kind '{kind}' (node '{alias}'){}",
-                suggest_kind(kind)
-            ))
-        })?;
 
+        let spec = &signature.pins;
         let mut pins = Vec::new();
-        for entry in &spec {
-            let mut pin =
-                Pin::data(entry.name.to_string(), entry.pin_type, entry.data_type.clone(), stable_id(&format!("{alias}.{}", entry.name)));
-            if !entry.key.is_empty() {
-                pin.key = Some(entry.key.to_string());
-            }
+        for entry in spec {
+            let pin = entry
+                .instantiate(stable_id(&format!("{alias}.{:?}.{}", entry.pin_type, entry.name)));
             if entry.pin_type == PinType::DataOutput {
-                src_pins.insert(
-                    (alias.clone(), entry.name.to_string()),
-                    (node_id, pin.id),
-                );
+                src_pins.insert((alias.clone(), entry.name.to_string()), (node_id, pin.id));
                 // Outputs may also be referenced by their semantic key.
                 if !entry.key.is_empty() {
                     src_pins
@@ -154,8 +156,8 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
             }
             let canonical = spec
                 .iter()
-                .find(|entry| entry.name == key || entry.key == key)
-                .map(|entry| entry.key)
+                .find(|entry| entry.name == *key || entry.key == *key)
+                .map(|entry| entry.key.as_str())
                 .filter(|key| !key.is_empty())
                 .unwrap_or(key.as_str());
             data.insert(canonical.to_string(), value.clone());
@@ -167,9 +169,9 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
         // name, so this matches how the canvas and the text DSL treat it.
         if kind == "Start" {
             for (key, _) in &data {
-                let known = pins.iter().any(|pin| {
-                    pin.name == *key || pin.key.as_deref() == Some(key.as_str())
-                });
+                let known = pins
+                    .iter()
+                    .any(|pin| pin.name == *key || pin.key.as_deref() == Some(key.as_str()));
                 if known {
                     continue;
                 }
@@ -201,10 +203,7 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
                 } else {
                     data.insert(arg.clone(), value.clone());
                 }
-                if pins
-                    .iter()
-                    .any(|pin| pin.name == *arg && pin.pin_type == PinType::DataInput)
-                {
+                if pins.iter().any(|pin| pin.name == *arg && pin.pin_type == PinType::DataInput) {
                     continue;
                 }
                 pins.push(Pin::data(
@@ -218,11 +217,11 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
 
         blueprint.nodes.push(Node {
             id: node_id,
-            node_type: node_type_of(kind),
+            node_type: signature.node_type,
             kind: {
                 // A named registry tool compiles to a `Tool` node carrying its
                 // own name, exactly as the text DSL does.
-                if REGISTRY_TOOL_KINDS.contains(&kind) {
+                if signature.executor_kind == "Tool" && kind != "Tool" {
                     data.insert(
                         "tool_name".to_string(),
                         serde_json::Value::String(kind.to_string()),
@@ -240,9 +239,9 @@ pub fn compile_draft_value(value: &serde_json::Value) -> SharedResult<Blueprint>
 
     // Entry: an explicit `entry`, else a Start node, else the first node.
     blueprint.entry_node_id = match &entry_alias {
-        Some(alias) => *node_ids
-            .get(alias.as_str())
-            .ok_or_else(|| SharedError::Invalid(format!("entry '{alias}' is not a declared node")))?,
+        Some(alias) => *node_ids.get(alias.as_str()).ok_or_else(|| {
+            SharedError::Invalid(format!("entry '{alias}' is not a declared node"))
+        })?,
         None => entries
             .iter()
             .find(|(_, draft)| draft.get("kind").and_then(|k| k.as_str()) == Some("Start"))
@@ -332,10 +331,7 @@ fn collect_nodes(
         }
     }
     if out.len() > MAX_NODES {
-        return Err(SharedError::Invalid(format!(
-            "too many nodes ({} > {MAX_NODES})",
-            out.len()
-        )));
+        return Err(SharedError::Invalid(format!("too many nodes ({} > {MAX_NODES})", out.len())));
     }
     Ok(out)
 }
@@ -436,9 +432,9 @@ fn add_data_wire(
     wire: &PendingWire,
 ) -> SharedResult<()> {
     let (target_alias, target_pin_name) = &wire.target;
-    let target_node = *node_ids.get(target_alias.as_str()).ok_or_else(|| {
-        SharedError::Invalid(format!("node '{target_alias}' is not declared"))
-    })?;
+    let target_node = *node_ids
+        .get(target_alias.as_str())
+        .ok_or_else(|| SharedError::Invalid(format!("node '{target_alias}' is not declared")))?;
     let (source_alias, source_pin_name) = parse_reference(&format!("${}", wire.reference))
         .ok_or_else(|| SharedError::Invalid(format!("invalid reference '${}'", wire.reference)))?;
     if !node_ids.contains_key(source_alias.as_str()) {
@@ -454,18 +450,14 @@ fn add_data_wire(
             let available = node_ids
                 .get(source_alias.as_str())
                 .and_then(|id| {
-                    blueprint
-                        .nodes
-                        .iter()
-                        .find(|node| node.id == *id)
-                        .map(|node| {
-                            node.pins
-                                .iter()
-                                .filter(|pin| pin.pin_type == PinType::DataOutput)
-                                .map(|pin| pin.name.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        })
+                    blueprint.nodes.iter().find(|node| node.id == *id).map(|node| {
+                        node.pins
+                            .iter()
+                            .filter(|pin| pin.pin_type == PinType::DataOutput)
+                            .map(|pin| pin.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
                 })
                 .unwrap_or_default();
             SharedError::Invalid(format!(
@@ -532,11 +524,9 @@ fn add_exec_edge(
                 .iter()
                 .find(|pin| pin.pin_type == PinType::ExecOutput && pin.name == *name)
                 .map(|pin| pin.id),
-            None => node
-                .pins
-                .iter()
-                .find(|pin| pin.pin_type == PinType::ExecOutput)
-                .map(|pin| pin.id),
+            None => {
+                node.pins.iter().find(|pin| pin.pin_type == PinType::ExecOutput).map(|pin| pin.id)
+            }
         })
         .ok_or_else(|| {
             let available = exec_outputs_of(blueprint, source_node);
@@ -656,10 +646,11 @@ fn stable_id(seed: &str) -> uuid::Uuid {
 }
 
 /// Suggests a close kind name for a typo, keeping the message actionable.
-fn suggest_kind(kind: &str) -> String {
+fn suggest_kind(kind: &str, catalog: &NodeCatalog) -> String {
     let lowered = kind.to_ascii_lowercase();
-    let candidates: Vec<&str> = super::compile::known_kinds()
-        .into_iter()
+    let candidates: Vec<&str> = catalog
+        .keys()
+        .map(String::as_str)
         .filter(|candidate| candidate.to_ascii_lowercase().contains(&lowered))
         .take(5)
         .collect();
