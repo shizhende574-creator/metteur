@@ -109,7 +109,11 @@ impl Interpreter {
                 RunStatus::Failed
             }
         };
-        if let Err(err) = self.write_terminal_checkpoint(ctx, status, result.as_ref().err().map(|e| e.to_string())) {
+        if let Err(err) = self.write_terminal_checkpoint(
+            ctx,
+            status,
+            result.as_ref().err().map(|e| e.to_string()),
+        ) {
             if let Some(root) = &self.tree_root {
                 self.tree.finish(root, TreeNodeStatus::Failed(err.to_string()), now_millis());
             }
@@ -217,6 +221,7 @@ impl Interpreter {
                 node_id,
             });
             ctx.current_node = node_id;
+            ctx.file_attempt = self.state.attempt_counts.values().copied().max().unwrap_or(0) + 1;
             ctx.audit(
                 "node.started",
                 serde_json::json!({ "node_id": node_id.to_string(), "kind": node.kind }),

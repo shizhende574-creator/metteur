@@ -142,6 +142,7 @@ impl Interpreter {
 
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
         ctx.transaction_log = TransactionLog::from_entries(resume.transaction_log);
+        ctx.attach_file_journal();
         // Checkpoints predating frame variables resume with an empty stack;
         // restore the root frame so VariableSet has somewhere to write.
         ctx.variables = if resume.variables.is_empty() {
@@ -220,6 +221,7 @@ impl Interpreter {
             ctx.jobs = Arc::clone(jobs);
         }
         ctx.todos = self.resume_todos.clone();
+        ctx.attach_file_journal();
         ctx
     }
 }

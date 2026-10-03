@@ -356,7 +356,7 @@ fn file_change_status(prev: Option<&str>, cur: Option<&str>) -> Option<FileChang
 }
 
 /// Computes a content hash for a byte buffer.
-fn hash_content(data: &[u8]) -> String {
+pub(crate) fn hash_content(data: &[u8]) -> String {
     let mut hasher = XxHash64::with_seed(0);
     hasher.write(data);
     format!("{:016x}", hasher.finish())

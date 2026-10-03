@@ -19,6 +19,8 @@ pub mod cf {
     pub const AUDIT_LOG: &str = "audit_log";
     /// Stores execution checkpoints keyed by run id.
     pub const EXECUTION_STATE: &str = "execution_state";
+    /// Durable file-operation intents; content lives in the shared blob store.
+    pub const FILE_INTENTS: &str = "file_intents";
     /// Stores persistent sandbox grants keyed by command hash.
     pub const GRANTS: &str = "grants";
     /// Stores blueprint functions keyed by function name.
@@ -77,6 +79,7 @@ impl Db {
             ColumnFamilyDescriptor::new(cf::FILE_BLOBS, rocksdb::Options::default()),
             ColumnFamilyDescriptor::new(cf::AUDIT_LOG, rocksdb::Options::default()),
             ColumnFamilyDescriptor::new(cf::EXECUTION_STATE, rocksdb::Options::default()),
+            ColumnFamilyDescriptor::new(cf::FILE_INTENTS, rocksdb::Options::default()),
             ColumnFamilyDescriptor::new(cf::GRANTS, rocksdb::Options::default()),
             ColumnFamilyDescriptor::new(cf::FUNCTIONS, rocksdb::Options::default()),
             ColumnFamilyDescriptor::new(cf::CHAT_SESSIONS, rocksdb::Options::default()),

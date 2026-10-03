@@ -1,7 +1,7 @@
 //! Extism plugin invocation with permission-gated host functions.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use extism::{Manifest as ExtismManifest, PTR, PluginBuilder, UserData, Wasm};
@@ -48,6 +48,7 @@ pub struct InvocationContext {
     pub registry: Arc<crate::registry::Registry>,
     pub workspace_fs: Option<Arc<crate::workspace::fs::WorkspaceFs>>,
     pub transaction_log: crate::execution::transaction::TransactionLog,
+    pub file_origin: crate::execution::file_journal::FileOrigin,
     pub llm_factory: crate::llm::LlmClientFactory,
     pub config: Option<Arc<tokio::sync::RwLock<metteur_shared::config::Config>>>,
     pub audit: Option<crate::observability::audit::AuditWriter>,
@@ -134,10 +135,8 @@ extism::host_fn!(hf_fs_write(user_data: Ctx; path: String, data: Vec<u8>) -> () 
     let fs = ctx.workspace_fs.as_ref().ok_or_else(|| {
         extism::Error::msg("filesystem access requires an active workspace")
     })?;
-    // Capture prior content so the write stays reversible.
-    let old = fs.read(&path).ok();
-    fs.write(&path, &data).map_err(host_error)?;
-    ctx.transaction_log.record_file_write(PathBuf::from(&path), old, data);
+    let resolved = fs.resolve(&path).map_err(host_error)?;
+    ctx.transaction_log.mutate_file(fs.root(), &resolved, Some(&data), ctx.file_origin.clone(), None).map_err(host_error)?;
     Ok(())
 });
 
@@ -212,6 +211,10 @@ fn build_exec_context(
         ctx.llm_factory.clone(),
         ctx.workspace_fs.as_ref().map(|fs| fs.root().to_path_buf()).unwrap_or_default(),
     );
+    exec_ctx.transaction_log = ctx.transaction_log.clone();
+    exec_ctx.run_id = ctx.file_origin.run_id;
+    exec_ctx.current_node = ctx.file_origin.node_id;
+    exec_ctx.file_attempt = ctx.file_origin.attempt;
     if let Some(config) = &ctx.config {
         exec_ctx.config = Some(config.clone());
     }

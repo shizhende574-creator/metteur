@@ -402,6 +402,7 @@ impl Tool for AddonTool {
         ctx: &mut crate::execution::context::ExecutionContext,
     ) -> DaemonResult<Value> {
         let input = serde_json::json!({"args": args_to_object(args)}).to_string();
+        ctx.attach_file_journal();
         let call_context = Arc::new(runtime::InvocationContext {
             runtime: tokio::runtime::Handle::current(),
             permissions: self.permissions.clone(),
@@ -411,6 +412,12 @@ impl Tool for AddonTool {
                 ctx.workspace_root.clone(),
             ))),
             transaction_log: ctx.transaction_log.clone(),
+            file_origin: crate::execution::file_journal::FileOrigin {
+                run_id: ctx.run_id,
+                node_id: ctx.current_node,
+                attempt: ctx.file_attempt,
+                wal_position: 0,
+            },
             llm_factory: ctx.llm_factory.clone(),
             config: ctx.config.clone(),
             audit: ctx.audit.clone(),

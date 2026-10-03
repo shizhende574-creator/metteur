@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use super::file_journal::{FileJournal, FileOrigin, FilePhase, read_optional, validate_path};
+use crate::error::{DaemonError, DaemonResult};
 use metteur_shared::Value;
 
 /// A single recorded mutation during execution.
@@ -15,6 +17,8 @@ pub enum TransactionEntry {
         old_content: Option<Vec<u8>>,
         /// The new content.
         new_content: Vec<u8>,
+        #[serde(default)]
+        reverted: bool,
     },
     /// A file was deleted.
     FileDelete {
@@ -22,6 +26,12 @@ pub enum TransactionEntry {
         path: PathBuf,
         /// The content before deletion.
         content: Vec<u8>,
+        #[serde(default)]
+        reverted: bool,
+    },
+    /// A durable operation; before/after content is in the shared blob store.
+    FileOperation {
+        operation_id: uuid::Uuid,
     },
     /// A tool was invoked.
     ToolCall {
@@ -40,6 +50,9 @@ pub enum TransactionEntry {
 #[derive(Debug, Default, Clone)]
 pub struct TransactionLog {
     entries: std::sync::Arc<std::sync::Mutex<Vec<TransactionEntry>>>,
+    journal: std::sync::Arc<std::sync::Mutex<Option<FileJournal>>>,
+    failure: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    owner: std::sync::Arc<std::sync::Mutex<Option<uuid::Uuid>>>,
 }
 
 impl TransactionLog {
@@ -59,6 +72,7 @@ impl TransactionLog {
             path,
             old_content,
             new_content,
+            reverted: false,
         });
     }
 
@@ -67,6 +81,7 @@ impl TransactionLog {
         self.lock().push(TransactionEntry::FileDelete {
             path,
             content,
+            reverted: false,
         });
     }
 
@@ -87,7 +102,101 @@ impl TransactionLog {
     pub fn from_entries(entries: Vec<TransactionEntry>) -> Self {
         Self {
             entries: std::sync::Arc::new(std::sync::Mutex::new(entries)),
+            ..Self::default()
         }
+    }
+
+    /// Attaches the workspace journal once; clones share it with nested runs.
+    pub fn with_journal(self, journal: FileJournal) -> Self {
+        self.attach_journal(journal);
+        self
+    }
+
+    pub fn attach_journal(&self, journal: FileJournal) {
+        let mut current = self.journal.lock().unwrap();
+        if current.is_none() {
+            *current = Some(journal);
+        }
+    }
+
+    /// Nested interpreters without their own checkpoint retain the root run.
+    pub fn bind_run(&self, run_id: uuid::Uuid) {
+        if !run_id.is_nil() {
+            self.owner.lock().unwrap().get_or_insert(run_id);
+        }
+    }
+
+    /// A failed durable write poisons the shared run, including nested tools.
+    pub fn ensure_healthy(&self) -> DaemonResult<()> {
+        if let Some(error) = self.failure.lock().unwrap().as_ref() {
+            return Err(DaemonError::Persistence(error.clone()));
+        }
+        Ok(())
+    }
+
+    /// Writes/deletes a regular file. Production workspace contexts attach a
+    /// durable journal; standalone ephemeral contexts retain in-memory rollback.
+    pub fn mutate_file(
+        &self,
+        root: &std::path::Path,
+        path: &std::path::Path,
+        after: Option<&[u8]>,
+        mut origin: FileOrigin,
+        expected: Option<&[u8]>,
+    ) -> DaemonResult<()> {
+        self.ensure_healthy()?;
+        validate_path(root, path)?;
+        let mut entries = self.lock();
+        origin.wal_position = entries.len();
+        origin.run_id = self.owner.lock().unwrap().unwrap_or(origin.run_id);
+        let journal = self.journal.lock().unwrap().clone();
+        if let Some(journal) = journal {
+            let result = (|| {
+                let mut operation = journal.prepare(path, after, origin, expected)?;
+                entries.push(TransactionEntry::FileOperation {
+                    operation_id: operation.operation_id,
+                });
+                journal.apply(&mut operation)
+            })();
+            if let Err(error) = result {
+                let message = format!(
+                    "file persistence/application failed for {}: {error}; recovery required",
+                    path.display()
+                );
+                *self.failure.lock().unwrap() = Some(message.clone());
+                return Err(DaemonError::Persistence(message));
+            }
+        } else {
+            let before = read_optional(path)?;
+            if expected.is_some_and(|value| before.as_deref() != Some(value)) {
+                return Err(DaemonError::Execution("file changed before edit".into()));
+            }
+            match after {
+                Some(bytes) => {
+                    entries.push(TransactionEntry::FileWrite {
+                        path: path.into(),
+                        old_content: before,
+                        new_content: bytes.to_vec(),
+                        reverted: false,
+                    });
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(path, bytes)?;
+                }
+                None => {
+                    if let Some(content) = before {
+                        entries.push(TransactionEntry::FileDelete {
+                            path: path.into(),
+                            content,
+                            reverted: false,
+                        });
+                        std::fs::remove_file(path)?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Vec<TransactionEntry>> {
@@ -106,7 +215,7 @@ impl TransactionLog {
     ///
     /// File writes restore the previous content (or delete the file if it did
     /// not exist); file deletes restore the deleted file.
-    pub fn rollback(&self) -> std::io::Result<()> {
+    pub fn rollback(&self) -> DaemonResult<()> {
         self.rollback_after(0).map(|_| ())
     }
 
@@ -117,16 +226,20 @@ impl TransactionLog {
     /// duplicated entries a re-executed node records after a crash/resume.
     /// Shell side effects (e.g. `ExecuteCommand`) are not captured by the WAL
     /// and therefore cannot be undone.
-    pub fn rollback_after(&self, mark: usize) -> std::io::Result<usize> {
-        let entries = self.lock();
+    pub fn rollback_after(&self, mark: usize) -> DaemonResult<usize> {
+        let mut entries = self.lock();
         let mut undone = 0;
-        for entry in entries.iter().skip(mark).rev() {
+        for entry in entries.iter_mut().skip(mark).rev() {
             match entry {
                 TransactionEntry::FileWrite {
                     path,
                     old_content,
+                    reverted,
                     ..
                 } => {
+                    if *reverted {
+                        continue;
+                    }
                     match old_content {
                         Some(content) => std::fs::write(path, content)?,
                         None => {
@@ -136,15 +249,43 @@ impl TransactionLog {
                         }
                     }
                     undone += 1;
+                    *reverted = true;
                 }
                 TransactionEntry::FileDelete {
                     path,
                     content,
+                    reverted,
                 } => {
+                    if *reverted {
+                        continue;
+                    }
                     if let Some(parent) = path.parent() {
                         std::fs::create_dir_all(parent)?;
                     }
                     std::fs::write(path, content)?;
+                    undone += 1;
+                    *reverted = true;
+                }
+                TransactionEntry::FileOperation {
+                    operation_id,
+                } => {
+                    let journal = self.journal.lock().unwrap().clone().ok_or_else(|| {
+                        DaemonError::Persistence("file journal unavailable for rollback".into())
+                    })?;
+                    let mut operation = journal
+                        .store
+                        .operations()?
+                        .into_iter()
+                        .find(|op| op.operation_id == *operation_id)
+                        .ok_or_else(|| {
+                            DaemonError::Persistence("file operation missing for rollback".into())
+                        })?;
+                    if operation.phase == FilePhase::Reverted {
+                        continue;
+                    }
+                    journal.restore(&operation.path, &operation.before)?;
+                    operation.phase = FilePhase::Reverted;
+                    journal.save(&operation)?;
                     undone += 1;
                 }
                 TransactionEntry::ToolCall {
