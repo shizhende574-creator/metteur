@@ -10,7 +10,9 @@
 //! snapshots.
 
 mod restore;
+mod blueprint_files;
 pub mod watcher;
+pub use blueprint_files::VersionRef;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hasher;
@@ -72,6 +74,7 @@ pub struct FileHistoryEntry {
 
 /// Manages version snapshots for a single workspace.
 pub struct VersionManager {
+    pub(crate) blueprint_gate: parking_lot::Mutex<()>,
     db: Db,
     root: PathBuf,
     /// Prevent the watcher from capturing a half-applied restore.
@@ -82,6 +85,7 @@ impl VersionManager {
     /// Creates a version manager backed by the workspace database.
     pub fn new(db: Db, root: PathBuf) -> Self {
         Self {
+            blueprint_gate: parking_lot::Mutex::new(()),
             db,
             root,
             operation_gate: parking_lot::Mutex::new(()),
@@ -135,6 +139,15 @@ impl VersionManager {
         description: &str,
         alias: Option<&str>,
     ) -> DaemonResult<(Snapshot, bool)> {
+        self.build_snapshot_for(description, alias, None)
+    }
+
+    fn build_snapshot_for(
+        &self,
+        description: &str,
+        alias: Option<&str>,
+        force_path: Option<&str>,
+    ) -> DaemonResult<(Snapshot, bool)> {
         let previous = self.latest_snapshot()?;
         let mut files = HashMap::new();
         let mut file_meta = HashMap::new();
@@ -156,7 +169,7 @@ impl VersionManager {
 
             // Reuse the previous hash when the file is unchanged.
             let hash = match &previous {
-                Some(prev) if prev.file_meta.get(&rel_str) == Some(&current_meta) => {
+                Some(prev) if force_path != Some(rel_str.as_str()) && prev.file_meta.get(&rel_str) == Some(&current_meta) => {
                     match prev.files.get(&rel_str) {
                         Some(h) => h.clone(),
                         None => self.store_blob(&file)?,

@@ -123,6 +123,10 @@ message WorkspaceList {
 message SaveBlueprintRequest {
   string workspace_path = 1;
   Blueprint blueprint = 2;
+  // Explicit authoritative file, relative to the workspace. Existing bindings may omit it.
+  string file_path = 3;
+  // Preserve the editor file representation; empty uses native blueprint JSON.
+  string file_json = 4;
 }
 
 message LoadBlueprintRequest {

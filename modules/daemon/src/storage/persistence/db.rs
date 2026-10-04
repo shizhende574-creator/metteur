@@ -40,6 +40,14 @@ pub struct Db {
 }
 
 impl Db {
+    /// Publish a derived graph and its file identity together in the existing family.
+    pub fn put_pair(&self, family: &str, key: &[u8], value: &[u8], second_key: &[u8], second_value: &[u8]) -> DaemonResult<()> {
+        let handle = self.inner.cf_handle(family).ok_or_else(|| DaemonError::Internal("missing column family".into()))?;
+        let mut batch = rocksdb::WriteBatch::default();
+        batch.put_cf(handle, key, value);
+        batch.put_cf(handle, second_key, second_value);
+        self.inner.write(batch).map_err(|e| DaemonError::Persistence(e.to_string()))
+    }
     /// Atomically replaces a chat thread and removes invalidated checkpoints.
     pub fn commit_chat_rewind(
         &self,

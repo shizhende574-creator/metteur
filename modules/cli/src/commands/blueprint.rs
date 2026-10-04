@@ -33,6 +33,8 @@ pub(crate) async fn handle_save_bp(
     client
         .save_blueprint(SaveBlueprintRequest {
             workspace_path: ws,
+            file_path: file.clone(),
+            file_json: to_json(&blueprint)?,
             blueprint: Some(blueprint),
         })
         .await
@@ -257,11 +259,13 @@ pub(crate) async fn handle_bp_compile(
         client
             .save_blueprint(SaveBlueprintRequest {
                 workspace_path: ws,
+                file_path: format!("{file}.blueprint"),
+                file_json: to_json(&blueprint)?,
                 blueprint: Some(blueprint),
             })
             .await
             .map_err(status)?;
-        Ok(Outcome::Printed(format!("blueprint compiled and saved as {id}")))
+        Ok(Outcome::Printed(format!("blueprint compiled and saved as {id} at {file}.blueprint")))
     } else {
         Ok(Outcome::Printed(to_json(&blueprint)?))
     }

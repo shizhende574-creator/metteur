@@ -38,10 +38,13 @@ impl DaemonService {
             req.blueprint.ok_or_else(|| Status::invalid_argument("blueprint is required"))?;
         let blueprint = proto_to_blueprint(&proto_blueprint).map_err(to_status)?;
         ensure_valid(&blueprint, &self.state.registry)?;
-        let data = serde_json::to_vec(&blueprint).map_err(|e| Status::internal(e.to_string()))?;
-        ws.db
-            .put(crate::storage::persistence::cf::BLUEPRINTS, blueprint.id.as_bytes(), &data)
-            .map_err(to_status)?;
+        let _admission = ws.activity_gate.lock().await;
+        let uri = if req.file_path.is_empty() {
+            crate::storage::blueprint_files::binding(&ws.db, blueprint.id).map_err(to_status)?
+                .ok_or_else(|| Status::failed_precondition("choose an authoritative blueprint file path before saving"))?.blueprint_uri
+        } else { req.file_path };
+        let bytes = if req.file_json.is_empty() { serde_json::to_vec_pretty(&blueprint).map_err(|e| Status::internal(e.to_string()))? } else { req.file_json.into_bytes() };
+        crate::storage::blueprint_files::save(&ws.db, &ws.version_manager, &blueprint, &uri, &bytes, None).map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 

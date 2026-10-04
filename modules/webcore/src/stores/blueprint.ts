@@ -352,7 +352,7 @@ export const useBlueprintStore = defineStore('blueprint', () => {
       if (!file.ok) throw new Error(file.error)
       fileWritten = true
       savedKeys.value[filePath] = snapshotKey
-      const mirror = await gateway.saveBlueprint(path, blueprint)
+      const mirror = await gateway.saveBlueprint(path, blueprint, filePath)
       if (!mirror.ok) throw new Error(mirror.error)
       delete saveErrors.value[filePath]
       saved.value = currentFile.value === filePath && keyFor(nodes.value, edges.value) === snapshotKey

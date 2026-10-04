@@ -17,7 +17,7 @@ fn context(with_db: bool) -> (ExecutionContext, std::path::PathBuf) {
         root.clone(),
     );
     if with_db {
-        let db = metteur_daemon::storage::persistence::Db::open(&root.join("db")).unwrap();
+        let db = metteur_daemon::storage::persistence::Db::open(&root.join(".metteur/db")).unwrap();
         ctx.workspace_db = Some(db);
     }
     (ctx, root)
@@ -110,6 +110,9 @@ async fn saves_the_compiled_blueprint_when_asked() {
     let decoded: metteur_shared::Blueprint = serde_json::from_slice(&stored).unwrap();
     assert_eq!(decoded.name, "Keep me");
     assert_eq!(decoded.nodes.len(), 2);
+    let version = metteur_daemon::storage::blueprint_files::binding(&db, blueprint.id).unwrap().unwrap();
+    let versions = metteur_daemon::storage::versioning::VersionManager::new(db, ctx.workspace_root.clone());
+    assert_eq!(metteur_daemon::storage::blueprint_files::decode(versions.file_at_snapshot(version.snapshot_id, &version.blueprint_uri).unwrap().unwrap().1.as_bytes()).unwrap(), decoded);
 }
 
 #[tokio::test]

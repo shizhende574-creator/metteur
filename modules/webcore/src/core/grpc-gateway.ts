@@ -995,9 +995,9 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async saveBlueprint(workspacePath: string, blueprint: Blueprint): Promise<Result<void>> {
+  async saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath = ''): Promise<Result<void>> {
     try {
-      await this.client.saveBlueprint({ workspacePath, blueprint: toProtoBlueprint(blueprint) })
+      await this.client.saveBlueprint({ workspacePath, blueprint: toProtoBlueprint(blueprint), filePath, fileJson: JSON.stringify(blueprint, null, 2) })
       return ok(undefined)
     } catch (e) {
       return toErr(e)

@@ -156,7 +156,7 @@ export interface DaemonGateway {
   listFunctions(workspacePath: string): Promise<Result<FunctionItem[]>>
   compileDsl(source: string): Promise<Result<Blueprint>>
   decompileBlueprint(workspacePath: string, blueprintOrId: Blueprint | string): Promise<Result<string>>
-  saveBlueprint(workspacePath: string, blueprint: Blueprint): Promise<Result<void>>
+  saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath?: string): Promise<Result<void>>
   loadBlueprint(workspacePath: string, blueprintId: string): Promise<Result<Blueprint>>
 
   // Execution ------------------------------------------------------------------

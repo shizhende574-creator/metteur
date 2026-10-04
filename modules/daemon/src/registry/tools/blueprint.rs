@@ -101,18 +101,6 @@ impl Tool for DraftBlueprint {
         )
         .map_err(|err| DaemonError::Execution(err.to_string()))?;
 
-        ctx.audit(
-            "blueprint.draft",
-            serde_json::json!({
-                "run_id": ctx.run_id.to_string(),
-                "blueprint_id": blueprint.id.to_string(),
-                "name": blueprint.name,
-                "nodes": blueprint.nodes.len(),
-                "edges": blueprint.edges.len(),
-                "saved": save,
-            }),
-        );
-
         let saved = if save {
             let db = ctx.workspace_db.clone().ok_or_else(|| {
                 DaemonError::Execution(
@@ -122,7 +110,16 @@ impl Tool for DraftBlueprint {
             let encoded = serde_json::to_vec(&blueprint).map_err(|err| {
                 DaemonError::Execution(format!("failed to encode blueprint: {err}"))
             })?;
-            db.put(crate::storage::persistence::cf::BLUEPRINTS, blueprint.id.as_bytes(), &encoded)
+            let versions = ctx.version_manager.clone().unwrap_or_else(|| {
+                std::sync::Arc::new(crate::storage::versioning::VersionManager::new(
+                    db.clone(),
+                    ctx.workspace_root.clone(),
+                ))
+            });
+            let uri = crate::storage::blueprint_files::binding(&db, blueprint.id)?
+                .map(|v| v.blueprint_uri)
+                .unwrap_or_else(|| format!("blueprints/{}.blueprint", blueprint.id));
+            crate::storage::blueprint_files::save(&db, &versions, &blueprint, &uri, &encoded, None)
                 .map_err(|err| {
                     DaemonError::Execution(format!("failed to save blueprint: {err}"))
                 })?;
@@ -130,6 +127,18 @@ impl Tool for DraftBlueprint {
         } else {
             false
         };
+
+        ctx.audit(
+            "blueprint.draft",
+            serde_json::json!({
+                "run_id": ctx.run_id.to_string(),
+                "blueprint_id": blueprint.id.to_string(),
+                "name": blueprint.name,
+                "nodes": blueprint.nodes.len(),
+                "edges": blueprint.edges.len(),
+                "saved": saved,
+            }),
+        );
 
         Ok(Value::String(render_report(&blueprint, saved)))
     }

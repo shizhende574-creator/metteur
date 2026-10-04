@@ -88,7 +88,11 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let _admission = ws.activity_gate.lock().await;
-        mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
+        if path.extension().is_some_and(|ext| ext == "blueprint") {
+            ws.version_manager.write_blueprint_file(&req.path, req.content.as_bytes(), None).map_err(to_status)?;
+        } else {
+            mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
+        }
         Ok(Response::new(Empty {}))
     }
 
