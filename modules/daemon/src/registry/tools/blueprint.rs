@@ -47,7 +47,7 @@ impl Tool for DraftBlueprint {
          chains steps with \"->\" and may route a specific output \
          (\"br.True -> ok\"); node positions and ids are generated. Registry \
          tools are named directly (ReadFile, Grep, EditFile, LspCheck, ...). \
-         Set `save` to true to store the blueprint in the workspace; otherwise \
+         Set `save` to true to request user approval to save under blueprints/<id>.blueprint (or its existing file); otherwise \
          the compiled plan is returned for review only. Fix any reported error \
          and call again with the corrected draft."
     }
@@ -101,32 +101,12 @@ impl Tool for DraftBlueprint {
         )
         .map_err(|err| DaemonError::Execution(err.to_string()))?;
 
-        let saved = if save {
-            let db = ctx.workspace_db.clone().ok_or_else(|| {
-                DaemonError::Execution(
-                    "saving a blueprint needs a workspace database; the run has none".to_string(),
-                )
-            })?;
-            let encoded = serde_json::to_vec(&blueprint).map_err(|err| {
-                DaemonError::Execution(format!("failed to encode blueprint: {err}"))
-            })?;
-            let versions = ctx.version_manager.clone().unwrap_or_else(|| {
-                std::sync::Arc::new(crate::storage::versioning::VersionManager::new(
-                    db.clone(),
-                    ctx.workspace_root.clone(),
-                ))
-            });
-            let uri = crate::storage::blueprint_files::binding(&db, blueprint.id)?
-                .map(|v| v.blueprint_uri)
-                .unwrap_or_else(|| format!("blueprints/{}.blueprint", blueprint.id));
-            crate::storage::blueprint_files::save(&db, &versions, &blueprint, &uri, &encoded, None)
-                .map_err(|err| {
-                    DaemonError::Execution(format!("failed to save blueprint: {err}"))
-                })?;
-            true
+        let version = if save {
+            Some(crate::replan::draft::save(ctx, &blueprint).await?)
         } else {
-            false
+            None
         };
+        let saved = version.is_some();
 
         ctx.audit(
             "blueprint.draft",
@@ -140,7 +120,14 @@ impl Tool for DraftBlueprint {
             }),
         );
 
-        Ok(Value::String(render_report(&blueprint, saved)))
+        let mut report = render_report(&blueprint, saved);
+        if let Some(version) = version {
+            report.push_str(&format!(
+                "\nFile: {}\nSnapshot: {}\n",
+                version.blueprint_uri, version.snapshot_id
+            ));
+        }
+        Ok(Value::String(report))
     }
 }
 

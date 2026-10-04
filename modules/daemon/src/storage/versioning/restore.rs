@@ -107,6 +107,7 @@ impl VersionManager {
         snapshot_id: Uuid,
         commit: impl FnOnce() -> DaemonResult<T>,
     ) -> DaemonResult<T> {
+        crate::replan::application::ensure_resolved(&self.db)?;
         let _guard = self.operation_gate.lock();
         let encoded = self
             .db

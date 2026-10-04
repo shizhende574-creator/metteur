@@ -154,6 +154,18 @@ pub async fn authorize_write(
     subject: &str,
     summary: &str,
 ) -> DaemonResult<bool> {
+    if let (Some(graph), Some(db), Some(versions)) =
+        (&ctx.blueprint, &ctx.workspace_db, &ctx.version_manager)
+    {
+        let id = graph.read().id;
+        if let Some(bound) = crate::storage::blueprint_files::binding(db, id)?
+            && versions.blueprint_path(&bound.blueprint_uri)? == path
+        {
+            return Err(DaemonError::PermissionDenied(
+                "use ReplanBlueprint to modify the executing blueprint".into(),
+            ));
+        }
+    }
     if ctx.cancel_requested.load(Ordering::SeqCst)
         || ctx.approvals.as_ref().is_some_and(|broker| broker.is_closed())
     {

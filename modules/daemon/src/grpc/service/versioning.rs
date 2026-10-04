@@ -86,6 +86,15 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
+        let _admission = ws.activity_gate.lock().await;
+        if self.state.running.read().await.contains_key(&ws.root)
+            || self.state.chats.read().await.contains_key(&ws.root)
+        {
+            return Err(Status::failed_precondition(
+                "stop the active execution/chat before restoring workspace files",
+            ));
+        }
+        ws.reconcile_files().map_err(to_status)?;
         if !req.alias.is_empty() {
             ws.version_manager.rollback_by_alias(&req.alias).map_err(to_status)?;
         } else {
@@ -218,13 +227,23 @@ impl DaemonService {
         if !checkpoint.status.resumable() {
             return Err(Status::failed_precondition("execution is not resumable"));
         }
-        let data = ws
-            .db
-            .get(crate::storage::persistence::cf::BLUEPRINTS, checkpoint.blueprint_id.as_bytes())
-            .map_err(to_status)?
-            .ok_or_else(|| Status::not_found("blueprint not found"))?;
-        let blueprint: metteur_shared::Blueprint =
-            serde_json::from_slice(&data).map_err(|e| Status::internal(e.to_string()))?;
+        crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
+        let blueprint = crate::storage::blueprint_files::load(
+            &ws.db,
+            &ws.version_manager,
+            checkpoint.blueprint_id,
+        )
+        .map_err(to_status)?;
+        let bound = crate::storage::blueprint_files::binding(&ws.db, checkpoint.blueprint_id)
+            .map_err(to_status)?;
+        let identity = |v: &Option<crate::storage::versioning::VersionRef>| {
+            v.as_ref().map(|v| (v.blueprint_uri.clone(), v.blob_hash.clone()))
+        };
+        if identity(&bound) != identity(&checkpoint.blueprint_version) {
+            return Err(Status::failed_precondition(
+                "blueprint differs from the run checkpoint; explicitly start a new run",
+            ));
+        }
         let ws_key = ws.root().to_path_buf();
 
         let interrupt_bus = InterruptBus::new();

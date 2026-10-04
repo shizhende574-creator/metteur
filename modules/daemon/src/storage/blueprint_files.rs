@@ -19,10 +19,65 @@ pub fn binding(db: &Db, id: Uuid) -> DaemonResult<Option<VersionRef>> {
         .transpose()
 }
 
+pub fn bindings(db: &Db) -> DaemonResult<Vec<(Uuid, VersionRef)>> {
+    db.scan(cf::BLUEPRINTS)?
+        .into_iter()
+        .filter(|(k, _)| k.starts_with(b"blueprint-file:"))
+        .map(|(k, v)| {
+            let id = std::str::from_utf8(&k[b"blueprint-file:".len()..])
+                .ok()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or_else(|| DaemonError::Persistence("invalid blueprint file binding".into()))?;
+            let version = serde_json::from_slice(&v)
+                .map_err(|e| DaemonError::Serialization(e.to_string()))?;
+            Ok((id, version))
+        })
+        .collect()
+}
+
+/// Manual load/new execution reads the file. A watcher never calls this or
+/// changes a running SharedBlueprint. Old database-only graphs remain readable.
+pub fn load(db: &Db, versions: &VersionManager, id: Uuid) -> DaemonResult<Blueprint> {
+    let _guard = versions.blueprint_gate.lock();
+    let Some(bound) = binding(db, id)? else {
+        return decode(
+            &db.get(cf::BLUEPRINTS, id.as_bytes())?
+                .ok_or_else(|| DaemonError::NotFound("blueprint not found".into()))?,
+        );
+    };
+    crate::replan::application::ensure_resolved(db)?;
+    let bytes = std::fs::read(versions.blueprint_path(&bound.blueprint_uri)?)?;
+    let graph = decode(&bytes)?;
+    if graph.id != id {
+        return Err(DaemonError::Execution(
+            "authoritative file now contains a different blueprint id".into(),
+        ));
+    }
+    let version = versions.capture_blueprint(&bound.blueprint_uri)?;
+    if crate::storage::versioning::hash_content(&bytes) != version.blob_hash {
+        return Err(DaemonError::Execution("blueprint changed while loading; retry".into()));
+    }
+    db.put_pair(
+        cf::BLUEPRINTS,
+        id.as_bytes(),
+        &encode_native(&graph)?,
+        &binding_key(id),
+        &serde_json::to_vec(&version).map_err(|e| DaemonError::Serialization(e.to_string()))?,
+    )?;
+    Ok(graph)
+}
+
 /// Decode both existing native/CLI JSON and the editor's canvas representation.
 pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
     let mut doc: Value =
         serde_json::from_slice(bytes).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    let mut null_defaults: Vec<String> = doc["explicit_null_defaults"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
     if doc.get("entry_node_id").is_none() {
         let mut nodes = Vec::new();
         for node in doc["nodes"]
@@ -38,6 +93,9 @@ pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
                 for pin in node[field].as_array().into_iter().flatten() {
                     let kind = pin["kind"].as_str().unwrap_or("");
                     let id = pin["id"].as_str().unwrap_or("");
+                    if pin.get("default") == Some(&Value::Null) {
+                        null_defaults.push(id.to_owned());
+                    }
                     let key = pin["key"].as_str().unwrap_or("");
                     let name = pin["name"].as_str().filter(|s| !s.is_empty()).unwrap_or(key);
                     let ty = pin["type"].as_str().unwrap_or(if kind.starts_with("exec") {
@@ -45,8 +103,21 @@ pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
                     } else {
                         "any"
                     });
+                    let raw = node["values"]
+                        .get(id)
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .or_else(|| {
+                            [name, key, id]
+                                .into_iter()
+                                .filter(|key| !key.is_empty())
+                                .find_map(|key| data.get(key))
+                                .map(|v| {
+                                    v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())
+                                })
+                        });
                     if kind == "data-in"
-                        && let Some(raw) = node["values"].get(id).and_then(Value::as_str)
+                        && let Some(raw) = raw.as_deref()
                     {
                         let object = data.as_object_mut().ok_or_else(|| {
                             DaemonError::Execution("node data must be an object".into())
@@ -56,7 +127,7 @@ pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
                         object.remove(id);
                         if !raw.is_empty() {
                             let value = match ty {
-                                "int" | "float" => raw
+                                "int" | "float" | "number" => raw
                                     .parse::<f64>()
                                     .ok()
                                     .filter(|v| v.is_finite())
@@ -102,7 +173,14 @@ pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
         let edges: Vec<_> = doc["edges"].as_array().into_iter().flatten().filter(|e| ids.contains(&e["source"].as_str().unwrap_or("")) && ids.contains(&e["target"].as_str().unwrap_or(""))).map(|e| json!({"id":e["id"],"source_node":e["source"],"source_pin":e["sourceHandle"],"target_node":e["target"],"target_pin":e["targetHandle"]})).collect();
         doc = json!({"id":doc["id"],"name":doc["name"],"entry_node_id":entry,"nodes":nodes,"edges":edges});
     }
-    serde_json::from_value(doc).map_err(|e| DaemonError::Serialization(e.to_string()))
+    let mut graph: Blueprint =
+        serde_json::from_value(doc).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    for pin in graph.nodes.iter_mut().flat_map(|n| &mut n.pins) {
+        if null_defaults.contains(&pin.id.to_string()) {
+            pin.default = Some(Value::Null);
+        }
+    }
+    Ok(graph)
 }
 
 pub fn save(
@@ -113,7 +191,7 @@ pub fn save(
     bytes: &[u8],
     expected: Option<&VersionRef>,
 ) -> DaemonResult<VersionRef> {
-    save_with_origin(db, versions, blueprint, uri, bytes, expected, None)
+    save_with_origin(db, versions, blueprint, uri, bytes, expected.into(), None)
         .map(|(version, _)| version)
 }
 
@@ -123,7 +201,7 @@ pub(crate) fn save_with_origin(
     blueprint: &Blueprint,
     uri: &str,
     bytes: &[u8],
-    expected: Option<&VersionRef>,
+    expected: super::versioning::ExpectedFile<'_>,
     origin: Option<crate::execution::file_journal::FileOrigin>,
 ) -> DaemonResult<(VersionRef, Option<Uuid>)> {
     let _guard = versions.blueprint_gate.lock();
@@ -149,12 +227,18 @@ pub(crate) fn save_with_origin(
             }
         }
     }
-    let (version, operation_id) = match origin {
-        Some(origin) => versions.write_blueprint_with_origin(uri, bytes, expected, origin)?,
-        None => (versions.write_blueprint_file(uri, bytes, expected)?, None),
-    };
-    let graph =
-        serde_json::to_vec(blueprint).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    let (version, operation_id) = versions.write_blueprint_with_origin(
+        uri,
+        bytes,
+        expected,
+        origin.unwrap_or(crate::execution::file_journal::FileOrigin {
+            run_id: Uuid::nil(),
+            node_id: Uuid::nil(),
+            attempt: 0,
+            wal_position: 0,
+        }),
+    )?;
+    let graph = encode_native(blueprint)?;
     let metadata =
         serde_json::to_vec(&version).map_err(|e| DaemonError::Serialization(e.to_string()))?;
     db.put_pair(
@@ -172,8 +256,7 @@ pub fn encode_changes(original: &[u8], graph: &Blueprint) -> DaemonResult<Vec<u8
     let mut doc: Value =
         serde_json::from_slice(original).map_err(|e| DaemonError::Serialization(e.to_string()))?;
     if doc.get("entry_node_id").is_some() {
-        return serde_json::to_vec_pretty(graph)
-            .map_err(|e| DaemonError::Serialization(e.to_string()));
+        return encode_native(graph);
     }
     for node in doc["nodes"]
         .as_array_mut()
@@ -206,4 +289,22 @@ pub fn encode_changes(original: &[u8], graph: &Blueprint) -> DaemonResult<Vec<u8
         ));
     }
     Ok(bytes)
+}
+
+/// Native JSON historically encodes both absent defaults and explicit null as
+/// null. Preserve that legacy meaning and annotate only explicit null defaults.
+pub fn encode_native(graph: &Blueprint) -> DaemonResult<Vec<u8>> {
+    let mut doc =
+        serde_json::to_value(graph).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    let nulls: Vec<_> = graph
+        .nodes
+        .iter()
+        .flat_map(|n| &n.pins)
+        .filter(|p| p.default == Some(Value::Null))
+        .map(|p| p.id.to_string())
+        .collect();
+    if !nulls.is_empty() {
+        doc["explicit_null_defaults"] = json!(nulls);
+    }
+    serde_json::to_vec_pretty(&doc).map_err(|e| DaemonError::Serialization(e.to_string()))
 }

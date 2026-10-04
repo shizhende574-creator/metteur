@@ -27,6 +27,7 @@ use super::super::proto::{AddonInfo, ExecutionEvent};
 /// The control state of a running execution.
 #[derive(Clone)]
 pub(crate) struct RunningExecution {
+    pub(crate) blueprint_id: Uuid,
     /// Bus for injecting interrupts into the execution.
     pub(crate) interrupt_bus: Option<InterruptBus>,
     /// Set when a pause has been requested (shared with the execution).
@@ -161,7 +162,9 @@ impl AppState {
     /// workspace definition winning on an alias collision (the more specific
     /// scope). Section-level timeouts keep the global value, since one host
     /// carries only one.
-    pub async fn merged_mcp_config(&self) -> crate::error::DaemonResult<metteur_shared::config::McpConfig> {
+    pub async fn merged_mcp_config(
+        &self,
+    ) -> crate::error::DaemonResult<metteur_shared::config::McpConfig> {
         let global = self.global_config.read().await.mcp.clone();
         let mut workspace_configs = Vec::new();
         let mut workspaces = self.workspaces.list().await;
@@ -190,10 +193,17 @@ impl AppState {
             return Ok(());
         };
         host.sync(&config).await;
-        let failures: Vec<_> = host.statuses().into_iter()
+        let failures: Vec<_> = host
+            .statuses()
+            .into_iter()
             .filter(|s| s.state == crate::integration::mcp::StatusKind::Failed)
-            .map(|s| format!("{}: {}", s.alias, s.error)).collect();
-        if failures.is_empty() { Ok(()) } else { Err(DaemonError::Mcp(failures.join("; "))) }
+            .map(|s| format!("{}: {}", s.alias, s.error))
+            .collect();
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(DaemonError::Mcp(failures.join("; ")))
+        }
     }
 
     /// Attaches the addon host and loads the global addon directory.
@@ -359,6 +369,7 @@ pub(crate) async fn spawn_execution(
         running.insert(
             ws_key.clone(),
             RunningExecution {
+                blueprint_id: blueprint.id,
                 interrupt_bus: Some(interrupt_bus.clone()),
                 pause_requested: pause_flag.clone(),
                 cancel_requested: cancel_flag.clone(),

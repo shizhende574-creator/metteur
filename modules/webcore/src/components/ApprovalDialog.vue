@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { ShieldAlert, X } from '@lucide/vue'
 import { useExecutionStore } from '@/stores/execution'
 import { useChatStore } from '@/stores/chat'
+import { blueprintApproval } from '@/core/blueprint-approval'
 
 /**
  * The approval dialog, for both surfaces that can be blocked on a decision: a
@@ -27,6 +28,8 @@ const request = computed(() => {
   const pending = chat.approval
   if (!pending) return null
   const payload = parseDetail(pending.detail)
+  const plan = blueprintApproval(payload)
+  if (plan) return { ...plan, respond: (allow: boolean) => void chat.respondApproval(allow) }
   const path = typeof payload.path === 'string' ? payload.path : ''
   const command = typeof payload.command === 'string' ? payload.command : ''
   const subject = command || path
@@ -62,7 +65,7 @@ function parseDetail(raw: string): Record<string, unknown> {
         role="dialog"
         aria-modal="true"
       >
-        <div class="glass w-full max-w-md rounded-xl p-5">
+        <div class="glass max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl p-5">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 text-danger">
               <ShieldAlert class="h-5 w-5" />
@@ -77,7 +80,7 @@ function parseDetail(raw: string): Record<string, unknown> {
 
           <pre
             v-if="request.command"
-            class="mt-3 overflow-x-auto rounded-lg bg-surface-muted p-3 font-mono text-[12px] leading-5 text-foreground"
+            class="mt-3 max-h-[50vh] overflow-auto rounded-lg bg-surface-muted p-3 font-mono text-[12px] leading-5 text-foreground"
             >{{ request.command }}</pre>
 
           <div class="mt-5 flex justify-end gap-2">

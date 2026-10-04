@@ -1,3 +1,4 @@
+import { blueprintApproval } from '@/core/blueprint-approval'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { gateway } from '@/core'
@@ -122,8 +123,7 @@ export const useExecutionStore = defineStore('execution', () => {
     todos.value = []
     status.value = 'running'
     runId.value = null
-    // Passing the canvas makes Run execute what the editor shows, independent
-    // of whether the daemon-side mirror is current.
+    // Assert the canvas matches the authoritative file saved before Run.
     const result = await gateway.executeBlueprint(
       ws.path,
       blueprintId,
@@ -132,6 +132,7 @@ export const useExecutionStore = defineStore('execution', () => {
       if (ev.kind === 'approval_request') {
         const detail = (ev.detail ?? {}) as Record<string, unknown>
         const requestType = String(detail.request_type ?? 'sandbox')
+        const plan = blueprintApproval(detail)
         const title =
           requestType === 'circuit_tripped'
             ? 'Circuit breaker: allow auto-replan?'
@@ -140,10 +141,10 @@ export const useExecutionStore = defineStore('execution', () => {
               : 'Approve shell command'
         approval.value = {
           id: String(detail.requestId ?? detail.approvalId ?? ev.message ?? ''),
-          title,
+          title: plan?.title ?? title,
           tool: String(detail.tool ?? ''),
-          command: ev.message,
-          detail: detail.command ? String(detail.command) : ev.message,
+          command: plan?.command ?? ev.message,
+          detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
           requestType,
         }
       }

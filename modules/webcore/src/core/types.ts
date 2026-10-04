@@ -319,7 +319,7 @@ export interface ApprovalRequest {
   tool: string
   command?: string
   detail: string
-  /** sandbox | circuit_tripped | replan_proposal */
+  /** sandbox | circuit_tripped | replan_proposal | blueprint_save */
   requestType?: string
 }
 

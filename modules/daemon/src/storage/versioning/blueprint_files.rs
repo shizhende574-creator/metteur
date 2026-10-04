@@ -18,6 +18,18 @@ pub struct VersionRef {
     pub blob_hash: String,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ExpectedFile<'a> {
+    Any,
+    Absent,
+    Version(&'a VersionRef),
+}
+impl<'a> From<Option<&'a VersionRef>> for ExpectedFile<'a> {
+    fn from(value: Option<&'a VersionRef>) -> Self {
+        value.map(Self::Version).unwrap_or(Self::Any)
+    }
+}
+
 impl VersionManager {
     pub fn blueprint_path(&self, uri: &str) -> DaemonResult<std::path::PathBuf> {
         let relative = std::path::PathBuf::from(uri.replace('\\', "/"));
@@ -92,7 +104,7 @@ impl VersionManager {
         self.write_blueprint_with_origin(
             uri,
             bytes,
-            expected,
+            expected.into(),
             FileOrigin {
                 run_id: Uuid::nil(),
                 node_id: Uuid::nil(),
@@ -107,12 +119,12 @@ impl VersionManager {
         &self,
         uri: &str,
         bytes: &[u8],
-        expected: Option<&VersionRef>,
+        expected: ExpectedFile<'_>,
         origin: FileOrigin,
     ) -> DaemonResult<(VersionRef, Option<Uuid>)> {
         let path = self.blueprint_path(uri)?;
         let _guard = self.operation_gate.lock();
-        if let Some(base) = expected {
+        if let ExpectedFile::Version(base) = expected {
             if self.blueprint_path(&base.blueprint_uri)? != path {
                 return Err(DaemonError::Execution(
                     "blueprint path does not match proposal".into(),
@@ -122,9 +134,14 @@ impl VersionManager {
         }
         let mut operation_id = None;
         let before = read_optional(&path)?;
-        if expected.is_some_and(|base| {
-            before.as_deref().map(hash_content).as_ref() != Some(&base.blob_hash)
-        }) {
+        let mismatch = match expected {
+            ExpectedFile::Any => false,
+            ExpectedFile::Absent => before.is_some(),
+            ExpectedFile::Version(base) => {
+                before.as_deref().map(hash_content).as_ref() != Some(&base.blob_hash)
+            }
+        };
+        if mismatch {
             return Err(DaemonError::Execution("blueprint changed before preparation".into()));
         }
         if before.as_deref() != Some(bytes) {

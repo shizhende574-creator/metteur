@@ -185,6 +185,7 @@ pub async fn await_approval(
 }
 
 pub mod application;
+pub(crate) mod draft;
 
 /// Approve an exact proposal; the interpreter commits it at a safe boundary.
 pub async fn approve_and_apply(

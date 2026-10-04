@@ -324,13 +324,13 @@ async fn discover_run(
 
 // --- Blueprint JSON <-> proto conversions (from the former `bp` module). ---
 //
-// The on-disk format mirrors `metteur_shared::Blueprint`: camelCase fields,
+// The on-disk format mirrors `metteur_shared::Blueprint`: snake_case fields,
 // node positions as `[x, y]` pairs and node data embedded as raw JSON.
 
 /// Parses a blueprint JSON document into its proto form.
 pub(crate) fn from_json(text: &str) -> anyhow::Result<Blueprint> {
     let doc: Value = serde_json::from_str(text).context("blueprint file is not valid JSON")?;
-    Ok(Blueprint {
+    let mut blueprint = Blueprint {
         id: uuid_field(&doc, "id")?,
         name: str_field(&doc, "name"),
         entry_node_id: uuid_field(&doc, "entry_node_id")?,
@@ -346,7 +346,14 @@ pub(crate) fn from_json(text: &str) -> anyhow::Result<Blueprint> {
             .map(|edges| edges.iter().map(parse_edge).collect())
             .transpose()?
             .unwrap_or_default(),
-    })
+    };
+    let nulls = doc["explicit_null_defaults"].as_array();
+    for pin in blueprint.nodes.iter_mut().flat_map(|n| &mut n.pins) {
+        if nulls.is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(&pin.id))) {
+            pin.default_json = "null".into();
+        }
+    }
+    Ok(blueprint)
 }
 
 /// Renders a proto blueprint as pretty JSON text.
@@ -355,6 +362,7 @@ pub(crate) fn to_json(bp: &Blueprint) -> anyhow::Result<String> {
         "id": bp.id,
         "name": bp.name,
         "entry_node_id": bp.entry_node_id,
+        "explicit_null_defaults": bp.nodes.iter().flat_map(|n| &n.pins).filter(|p| p.default_json == "null").map(|p| &p.id).collect::<Vec<_>>(),
         "nodes": bp.nodes.iter().map(node_value).collect::<Vec<_>>(),
         "edges": bp.edges.iter().map(edge_value).collect::<Vec<_>>(),
     }))
@@ -395,7 +403,21 @@ fn parse_pin(pin: &Value) -> anyhow::Result<Pin> {
         name: str_field(pin, "name"),
         pin_type: str_field(pin, "pin_type"),
         data_type: str_field(pin, "data_type"),
-        ..Default::default()
+        key: str_field(pin, "key"),
+        default_json: pin
+            .get("default")
+            .filter(|v| !v.is_null())
+            .map(Value::to_string)
+            .unwrap_or_default(),
+        optional: pin["optional"].as_bool().unwrap_or(false),
+        choices: pin["choices"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        description: str_field(pin, "description"),
     })
 }
 
@@ -439,6 +461,10 @@ fn node_value(node: &Node) -> Value {
             "name": p.name,
             "pin_type": p.pin_type,
             "data_type": p.data_type,
+            "key": if p.key.is_empty() { None } else { Some(&p.key) },
+            "default": serde_json::from_str::<Value>(&p.default_json).ok(),
+            "optional": p.optional, "choices": p.choices,
+            "description": if p.description.is_empty() { None } else { Some(&p.description) },
         })).collect::<Vec<_>>(),
         "data": serde_json::from_str::<Value>(&node.data_json).unwrap_or(Value::Null),
     })
@@ -452,4 +478,36 @@ fn edge_value(edge: &Edge) -> Value {
         "target_node": edge.target_node,
         "target_pin": edge.target_pin,
     })
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+    #[test]
+    fn native_file_preserves_pin_metadata_and_explicit_null() {
+        let graph = Blueprint {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "pins".into(),
+            entry_node_id: uuid::Uuid::new_v4().to_string(),
+            nodes: vec![Node {
+                id: uuid::Uuid::new_v4().to_string(),
+                pins: vec![Pin {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: "Value".into(),
+                    key: "value".into(),
+                    pin_type: "DataInput".into(),
+                    data_type: "any".into(),
+                    default_json: "null".into(),
+                    optional: true,
+                    choices: vec!["one".into()],
+                    description: "Keep this".into(),
+                }],
+                data_json: "{}".into(),
+                ..Default::default()
+            }],
+            edges: vec![],
+        };
+        let restored = from_json(&to_json(&graph).unwrap()).unwrap();
+        assert_eq!(restored, graph);
+    }
 }

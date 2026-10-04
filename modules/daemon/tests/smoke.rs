@@ -3068,12 +3068,12 @@ beta
     }"#;
     let blueprint = metteur_shared::dsl::compile_draft(draft).expect("the draft must compile");
 
-    // Execution takes the compiled JSON directly (`blueprint_json`), which is
-    // also how the GUI runs an unsaved canvas.
+    // Save establishes file authority; inline JSON asserts what the caller expects to run.
+    client.write_file(WriteFileRequest { workspace_path: ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3131,10 +3131,11 @@ wait -> stop
     // Start, StartCommand, WaitJob, End.
     assert_eq!(blueprint.nodes.len(), 4, "unexpected node count");
 
+    client.write_file(WriteFileRequest { workspace_path: ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3193,10 +3194,11 @@ wait -> stop
 "#;
     let blueprint =
         metteur_shared::dsl::compile(source).expect("the job tools must compile from the DSL");
+    client.write_file(WriteFileRequest { workspace_path: ws_path.to_string(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.to_string(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3364,10 +3366,11 @@ pause -> stop
     let mut run_client = client.clone();
     let run_ws_path = ws_path.clone();
     let run = tokio::spawn(async move {
+        run_client.write_file(WriteFileRequest { workspace_path: run_ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
         let mut stream = run_client
             .execute_blueprint(ExecuteBlueprintRequest {
                 workspace_path: run_ws_path.clone(),
-                blueprint_id: String::new(),
+                blueprint_id: blueprint.id.to_string(),
                 blueprint_json: serde_json::to_string(&blueprint).unwrap(),
             })
             .await
@@ -3985,3 +3988,6 @@ async fn config_presence_survives_rpc_file_and_reset() {
     assert_eq!(before, std::fs::read(workspace.join(".metteur/config.toml")).unwrap());
     client.close_workspace(CloseWorkspaceRequest { path }).await.unwrap();
 }
+
+#[path = "smoke/blueprint_entrypoints.rs"]
+mod blueprint_entrypoints;

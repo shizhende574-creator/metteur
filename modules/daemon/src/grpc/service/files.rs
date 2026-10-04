@@ -88,8 +88,27 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let _admission = ws.activity_gate.lock().await;
-        if path.extension().is_some_and(|ext| ext == "blueprint") {
-            ws.version_manager.write_blueprint_file(&req.path, req.content.as_bytes(), None).map_err(to_status)?;
+        let bound = crate::storage::blueprint_files::bindings(&ws.db)
+            .map_err(to_status)?
+            .into_iter()
+            .any(|(_, v)| {
+                ws.version_manager.blueprint_path(&v.blueprint_uri).is_ok_and(|p| p == path)
+            });
+        if bound || path.extension().is_some_and(|ext| ext == "blueprint") {
+            let graph = crate::storage::blueprint_files::decode(req.content.as_bytes())
+                .map_err(to_status)?;
+            super::blueprint::ensure_valid(&graph, &self.state.registry)?;
+            self.ensure_blueprint_idle(&ws.root, graph.id).await?;
+            crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
+            crate::storage::blueprint_files::save(
+                &ws.db,
+                &ws.version_manager,
+                &graph,
+                &req.path,
+                req.content.as_bytes(),
+                None,
+            )
+            .map_err(to_status)?;
         } else {
             mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
         }
@@ -146,6 +165,7 @@ impl DaemonService {
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let meta = std::fs::symlink_metadata(&path).map_err(io_status)?;
         let _admission = ws.activity_gate.lock().await;
+        protect_blueprint_identity(&ws, &path)?;
         if meta.is_dir() {
             std::fs::remove_dir_all(&path).map_err(io_status)?;
         } else {
@@ -167,6 +187,9 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let from = resolve_ws_path(ws.root(), &req.from)?;
         let to = resolve_ws_path(ws.root(), &req.to)?;
+        let _admission = ws.activity_gate.lock().await;
+        protect_blueprint_identity(&ws, &from)?;
+        protect_blueprint_identity(&ws, &to)?;
         std::fs::rename(&from, &to).map_err(io_status)?;
         Ok(Response::new(Empty {}))
     }
@@ -284,4 +307,25 @@ fn reveal(path: &std::path::Path) {
             .arg(format!("xdg-open '{}' >/dev/null 2>&1 &", parent.display()))
             .spawn();
     }
+}
+
+/// A path binding is stable. Moving/deleting an authority needs an explicit
+/// identity migration, rather than silently leaving a stale database mirror.
+fn protect_blueprint_identity(
+    ws: &crate::workspace::manager::Workspace,
+    path: &std::path::Path,
+) -> Result<(), Status> {
+    for (_, version) in crate::storage::blueprint_files::bindings(&ws.db).map_err(to_status)? {
+        if ws
+            .version_manager
+            .blueprint_path(&version.blueprint_uri)
+            .map_err(to_status)?
+            .starts_with(path)
+        {
+            return Err(Status::failed_precondition(
+                "path contains an authoritative blueprint; identity migration is not supported",
+            ));
+        }
+    }
+    Ok(())
 }

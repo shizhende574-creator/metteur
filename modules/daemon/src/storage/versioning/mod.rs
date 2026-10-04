@@ -9,9 +9,10 @@
 //! The optional [`watcher`] module turns file system changes into automatic
 //! snapshots.
 
-mod restore;
 mod blueprint_files;
+mod restore;
 pub mod watcher;
+pub(crate) use blueprint_files::ExpectedFile;
 pub use blueprint_files::VersionRef;
 
 use std::collections::{HashMap, HashSet};
@@ -169,7 +170,10 @@ impl VersionManager {
 
             // Reuse the previous hash when the file is unchanged.
             let hash = match &previous {
-                Some(prev) if force_path != Some(rel_str.as_str()) && prev.file_meta.get(&rel_str) == Some(&current_meta) => {
+                Some(prev)
+                    if force_path != Some(rel_str.as_str())
+                        && prev.file_meta.get(&rel_str) == Some(&current_meta) =>
+                {
                     match prev.files.get(&rel_str) {
                         Some(h) => h.clone(),
                         None => self.store_blob(&file)?,

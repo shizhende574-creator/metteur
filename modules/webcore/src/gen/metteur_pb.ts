@@ -171,9 +171,8 @@ export type ExecuteBlueprintRequest = Message<"metteur.ExecuteBlueprintRequest">
   blueprintId: string;
 
   /**
-   * Blueprint JSON to execute as-is (the canvas the client is looking at).
-   * When set it takes precedence over `blueprint_id` and is mirrored into the
-   * workspace database, so the stored copy matches what actually ran.
+   * Optional canvas/native JSON asserting the saved graph the caller expects.
+   * Save first: mismatched content cannot overwrite file authority or the mirror.
    *
    * @generated from field: string blueprint_json = 3;
    */

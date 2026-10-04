@@ -121,6 +121,22 @@ pub(crate) fn attach(
     Ok(())
 }
 
+/// External edits are recorded by Version Flow, but cannot silently replace the
+/// plan used by a running node/tool loop.
+pub(crate) fn verify_current(ctx: &ExecutionContext) -> DaemonResult<()> {
+    let state = ctx.blueprint_apply.lock();
+    if state.blocked {
+        return Err(DaemonError::Persistence("blueprint application requires recovery".into()));
+    }
+    if let Some(version) = &state.version {
+        ctx.version_manager
+            .as_ref()
+            .ok_or_else(|| rejected("Version Flow unavailable"))?
+            .verify_blueprint(version)?;
+    }
+    Ok(())
+}
+
 pub fn ensure_resolved(db: &Db) -> DaemonResult<()> {
     for (key, bytes) in db.scan(cf::EXECUTION_STATE)? {
         if key.starts_with(INTENT_PREFIX) {
@@ -314,7 +330,7 @@ fn commit(
         &p.after,
         &p.base.blueprint_uri,
         &p.file,
-        Some(&p.base),
+        Some(&p.base).into(),
         Some(crate::execution::file_journal::FileOrigin {
             run_id: ctx.run_id,
             node_id: ctx.current_node,
