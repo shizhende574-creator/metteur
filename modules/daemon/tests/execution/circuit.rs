@@ -32,22 +32,58 @@ async fn approved_replan_saves_only_the_rerun_before_its_successor() {
     use metteur_daemon::sandbox::approval::{ApprovalBroker, Decision, Scope};
     use std::sync::atomic::AtomicBool;
 
-    let bp = crate::checkpoint_transitions::failing_validator_blueprint(1);
+    let registry = Arc::new(Registry::with_builtins());
+    let bp = metteur_shared::dsl::compile_draft_value_with_catalog(&serde_json::json!({
+        "name":"circuit", "nodes":{"s":{"kind":"Start"},"v":{"kind":"Validator","Actual":5,"Expected":99,"mode":"eq"},"e":{"kind":"End"}},"flow":["s -> v -> e"]
+    }), &registry.authoring_catalog()).unwrap();
+    let root = std::env::temp_dir().join(format!("circuit-version-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let db = metteur_daemon::storage::persistence::Db::open(&root.join(".metteur/db")).unwrap();
+    let versions = Arc::new(metteur_daemon::storage::versioning::VersionManager::new(
+        db.clone(),
+        root.clone(),
+    ));
+    metteur_daemon::storage::blueprint_files::save(
+        &db,
+        &versions,
+        &bp,
+        "circuit.blueprint",
+        &serde_json::to_vec(&bp).unwrap(),
+        None,
+    )
+    .unwrap();
     let validator = bp.nodes.iter().find(|n| n.kind == "Validator").unwrap().id;
     let end = bp.nodes.iter().find(|n| n.kind == "End").unwrap().id;
     let bp = shared(bp);
-    let script = r#"[{"op":"set_data","match":{"kind":"Validator"},"data":{"mode":"not_empty"}}]"#;
+    let script =
+        r#"[{"op":"set_pin","match":{"kind":"Validator"},"pin":"mode","value":"not_empty"}]"#;
     let broker = Arc::new(ApprovalBroker::new());
     let sink = Arc::new(MemorySink::new());
+    struct DurableRecorder(Arc<MemorySink>, metteur_daemon::execution::DbCheckpointSink);
+    impl CheckpointSink for DurableRecorder {
+        fn run_id(&self) -> Uuid {
+            self.0.run_id()
+        }
+        fn write(&self, cp: &ExecutionCheckpoint) -> DaemonResult<()> {
+            self.1.write(cp)?;
+            self.0.write(cp)
+        }
+    }
+    let durable = Arc::new(DurableRecorder(
+        sink.clone(),
+        metteur_daemon::execution::DbCheckpointSink::new(db.clone(), sink.run_id()),
+    ));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut runner = Interpreter::new(
         Arc::new(Registry::with_builtins()),
         LlmClientFactory::with_override(Arc::new(MockClient::text(script))),
-        std::env::temp_dir(),
+        root.clone(),
     )
+    .with_workspace_db(db.clone())
+    .with_version_manager(versions.clone())
     .with_config(circuit_config(1))
     .with_approvals(broker.clone())
-    .with_checkpoint_sink(sink.clone())
+    .with_checkpoint_sink(durable)
     .with_event_tx(tx);
     let approvals = tokio::spawn(async move {
         let mut count = 0;
@@ -96,7 +132,9 @@ async fn approved_replan_saves_only_the_rerun_before_its_successor() {
         .clone();
     assert_eq!(rerun.circuit_failures, 0);
     let output = Arc::new(MemorySink::new());
-    let resumed = new_interpreter()
+    let resumed = Interpreter::new(registry, LlmClientFactory::new(), root)
+        .with_workspace_db(db)
+        .with_version_manager(versions)
         .with_config(circuit_config(1))
         .with_checkpoint_sink(output.clone())
         .resume_with_control(

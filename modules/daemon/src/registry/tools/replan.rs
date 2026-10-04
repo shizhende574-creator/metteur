@@ -28,7 +28,7 @@ impl Tool for ReplanBlueprint {
          `summary` describes the change; `edits` is a JSON array of \
          {\"op\":\"set_data\"|\"set_pin\",\"match\":{\"kind\":\",\"nth\":},\"data\"|\"pin\"+\"value\"} \
          operations matching existing nodes by kind and occurrence. Data-level \
-         edits apply immediately to the rest of the run."
+         edits commit at the next safe node boundary after approval."
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -62,11 +62,11 @@ impl Tool for ReplanBlueprint {
         })?;
         let edits_json = match &edits {
             Value::Json(j) => j.clone(),
-            other => serde_json::json!([other]),
+            other => crate::execution::nodes::value_to_json(other),
         };
         let applied = crate::replan::approve_and_apply(ctx, &summary, &edits_json).await?;
         Ok(Value::String(format!(
-            "Replan approved and applied: {applied}. Data-level edits affect the rest of this run; structural changes take effect on the next run."
+            "Replan {applied}. Await replan.applied before reporting completion. Structural changes are not supported."
         )))
     }
 }

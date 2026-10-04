@@ -503,6 +503,7 @@ pub fn checkpoint_after_start(blueprint: &Blueprint) -> ExecutionCheckpoint {
     let start_b = start_node.pins.iter().find(|p| p.name == "B").unwrap().id;
     let add = blueprint.nodes.iter().find(|n| n.kind == "Add").unwrap().id;
     ExecutionCheckpoint {
+        blueprint_version: None,
         transition_version: metteur_daemon::execution::checkpoint::CHECKPOINT_TRANSITION_VERSION,
         in_flight: None,
         run_id: Uuid::new_v4(),

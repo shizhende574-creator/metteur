@@ -35,6 +35,9 @@ pub enum TransactionEntry {
         #[serde(default)]
         phase: FilePhase,
     },
+    /// A user-approved plan change, retained across validation/cancel rollback.
+    /// Its file operation still belongs to this checkpoint for resume checks.
+    BlueprintApplication { operation_id: uuid::Uuid },
     /// A tool was invoked.
     ToolCall {
         /// The tool name.
@@ -93,6 +96,10 @@ impl TransactionLog {
             name,
             args,
         });
+    }
+
+    pub(crate) fn record_blueprint_application(&self, operation_id: uuid::Uuid) {
+        self.lock().push(TransactionEntry::BlueprintApplication { operation_id });
     }
 
     /// Returns a snapshot of the recorded entries.
@@ -225,6 +232,7 @@ impl TransactionLog {
                     operation_id,
                     phase,
                 } => Some((*operation_id, *phase)),
+                TransactionEntry::BlueprintApplication { operation_id } => Some((*operation_id, FilePhase::Applied)),
                 _ => None,
             })
             .collect();
@@ -342,9 +350,7 @@ impl TransactionLog {
                     }
                     (operation.path, result)
                 }
-                TransactionEntry::ToolCall {
-                    ..
-                } => continue,
+                TransactionEntry::ToolCall { .. } | TransactionEntry::BlueprintApplication { .. } => continue,
             };
             match result {
                 Ok(changed) => undone += usize::from(changed),

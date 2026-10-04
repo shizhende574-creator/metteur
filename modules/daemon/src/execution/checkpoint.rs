@@ -65,6 +65,8 @@ pub struct ExecutionCheckpoint {
     pub run_id: uuid::Uuid,
     /// The blueprint being executed.
     pub blueprint_id: uuid::Uuid,
+    #[serde(default)]
+    pub blueprint_version: Option<crate::storage::versioning::VersionRef>,
     /// The run status.
     pub status: RunStatus,
     /// Execution start time in milliseconds since the Unix epoch.
@@ -132,6 +134,7 @@ impl ExecutionCheckpoint {
             in_flight: None,
             run_id,
             blueprint_id,
+            blueprint_version: None,
             status: RunStatus::Running,
             started_at,
             updated_at: started_at,
@@ -195,7 +198,8 @@ impl DbCheckpointSink {
     /// Lists all checkpoints in the database, oldest first.
     pub fn list(db: &Db) -> DaemonResult<Vec<ExecutionCheckpoint>> {
         let mut out = Vec::new();
-        for (_, value) in db.scan(cf::EXECUTION_STATE)? {
+        for (key, value) in db.scan(cf::EXECUTION_STATE)? {
+            if key.starts_with(crate::replan::application::INTENT_PREFIX) { continue; }
             let checkpoint: ExecutionCheckpoint = serde_json::from_slice(&value)
                 .map_err(|e| DaemonError::Serialization(e.to_string()))?;
             out.push(checkpoint);

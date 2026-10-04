@@ -61,11 +61,12 @@ impl Interpreter {
         status: RunStatus,
         error: Option<String>,
     ) -> DaemonResult<()> {
-        let checkpoint = ExecutionCheckpoint {
+        let mut checkpoint = ExecutionCheckpoint {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
             in_flight: self.in_flight,
             run_id: sink.run_id(),
             blueprint_id: self.blueprint_id,
+            blueprint_version: None,
             status,
             started_at: self.started_at,
             updated_at: now_millis(),
@@ -87,7 +88,7 @@ impl Interpreter {
             circuit_failures: self.circuit_failures,
             error,
         };
-        sink.write(&checkpoint).map_err(|err| {
+        crate::replan::application::commit_boundary(ctx, &mut checkpoint, sink.as_ref()).map_err(|err| {
             let message = format!(
                 "run {} checkpoint failed: {err}; no new effects will start; uncommitted external outcomes require manual recovery",
                 sink.run_id(),

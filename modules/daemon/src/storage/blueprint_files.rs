@@ -113,6 +113,19 @@ pub fn save(
     bytes: &[u8],
     expected: Option<&VersionRef>,
 ) -> DaemonResult<VersionRef> {
+    save_with_origin(db, versions, blueprint, uri, bytes, expected, None)
+        .map(|(version, _)| version)
+}
+
+pub(crate) fn save_with_origin(
+    db: &Db,
+    versions: &VersionManager,
+    blueprint: &Blueprint,
+    uri: &str,
+    bytes: &[u8],
+    expected: Option<&VersionRef>,
+    origin: Option<crate::execution::file_journal::FileOrigin>,
+) -> DaemonResult<(VersionRef, Option<Uuid>)> {
     let _guard = versions.blueprint_gate.lock();
     if decode(bytes)? != *blueprint {
         return Err(DaemonError::Execution("blueprint file and executable graph disagree".into()));
@@ -136,7 +149,10 @@ pub fn save(
             }
         }
     }
-    let version = versions.write_blueprint_file(uri, bytes, expected)?;
+    let (version, operation_id) = match origin {
+        Some(origin) => versions.write_blueprint_with_origin(uri, bytes, expected, origin)?,
+        None => (versions.write_blueprint_file(uri, bytes, expected)?, None),
+    };
     let graph =
         serde_json::to_vec(blueprint).map_err(|e| DaemonError::Serialization(e.to_string()))?;
     let metadata =
@@ -148,5 +164,46 @@ pub fn save(
         &binding_key(blueprint.id),
         &metadata,
     )?;
-    Ok(version)
+    Ok((version, operation_id))
+}
+
+/// Preserve canvas-only fields while applying parameter edits to its executable graph.
+pub fn encode_changes(original: &[u8], graph: &Blueprint) -> DaemonResult<Vec<u8>> {
+    let mut doc: Value =
+        serde_json::from_slice(original).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    if doc.get("entry_node_id").is_some() {
+        return serde_json::to_vec_pretty(graph)
+            .map_err(|e| DaemonError::Serialization(e.to_string()));
+    }
+    for node in doc["nodes"]
+        .as_array_mut()
+        .ok_or_else(|| DaemonError::Execution("missing canvas nodes".into()))?
+    {
+        let Some(graph_node) =
+            graph.nodes.iter().find(|n| Some(n.id.to_string()).as_deref() == node["id"].as_str())
+        else {
+            continue;
+        };
+        node["data"] = graph_node.data.clone();
+        let mut values = serde_json::Map::new();
+        for pin in &graph_node.pins {
+            if pin.pin_type == metteur_shared::PinType::DataInput {
+                let raw = graph_node
+                    .data
+                    .get(&pin.name)
+                    .map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))
+                    .unwrap_or_default();
+                values.insert(pin.id.to_string(), Value::String(raw));
+            }
+        }
+        node["values"] = Value::Object(values);
+    }
+    let bytes =
+        serde_json::to_vec_pretty(&doc).map_err(|e| DaemonError::Serialization(e.to_string()))?;
+    if decode(&bytes)? != *graph {
+        return Err(DaemonError::Execution(
+            "canvas changes do not round-trip; save the file explicitly".into(),
+        ));
+    }
+    Ok(bytes)
 }

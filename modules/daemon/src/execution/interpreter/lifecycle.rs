@@ -61,6 +61,7 @@ impl Interpreter {
         self.shared_blueprint = Some(blueprint.clone());
         self.reset_run(blueprint);
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
+        crate::replan::application::attach(&ctx, None)?;
         self.write_checkpoint(&ctx)?;
         self.execute(blueprint, &mut ctx).await
     }
@@ -110,6 +111,10 @@ impl Interpreter {
                 resume.run_id
             )));
         }
+        // Verify version identity before moving fields out of the checkpoint.
+        self.shared_blueprint = Some(blueprint.clone());
+        let probe = self.make_context(None, pause_requested.clone(), cancel_requested.clone());
+        crate::replan::application::attach(&probe, Some(&resume))?;
         self.in_flight = None;
         self.shared_blueprint = Some(blueprint.clone());
         self.state = ExecutionState {
@@ -141,6 +146,7 @@ impl Interpreter {
         self.current_tree = resume.current_tree.clone();
 
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
+        ctx.blueprint_apply = probe.blueprint_apply;
         ctx.transaction_log = TransactionLog::from_entries(resume.transaction_log);
         ctx.attach_file_journal();
         ctx.transaction_log.validate_resume(resume.run_id)?;

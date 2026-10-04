@@ -89,6 +89,27 @@ impl VersionManager {
         bytes: &[u8],
         expected: Option<&VersionRef>,
     ) -> DaemonResult<VersionRef> {
+        self.write_blueprint_with_origin(
+            uri,
+            bytes,
+            expected,
+            FileOrigin {
+                run_id: Uuid::nil(),
+                node_id: Uuid::nil(),
+                attempt: 0,
+                wal_position: 0,
+            },
+        )
+        .map(|(version, _)| version)
+    }
+
+    pub(crate) fn write_blueprint_with_origin(
+        &self,
+        uri: &str,
+        bytes: &[u8],
+        expected: Option<&VersionRef>,
+        origin: FileOrigin,
+    ) -> DaemonResult<(VersionRef, Option<Uuid>)> {
         let path = self.blueprint_path(uri)?;
         let _guard = self.operation_gate.lock();
         if let Some(base) = expected {
@@ -99,7 +120,13 @@ impl VersionManager {
             }
             self.verify_blueprint(base)?;
         }
+        let mut operation_id = None;
         let before = read_optional(&path)?;
+        if expected.is_some_and(|base| {
+            before.as_deref().map(hash_content).as_ref() != Some(&base.blob_hash)
+        }) {
+            return Err(DaemonError::Execution("blueprint changed before preparation".into()));
+        }
         if before.as_deref() != Some(bytes) {
             // Even first-save absence must have an explicit pre-change snapshot.
             let rel = path.strip_prefix(&self.root).unwrap().to_string_lossy().replace('\\', "/");
@@ -110,17 +137,7 @@ impl VersionManager {
             }
             let journal =
                 FileJournal::new(self.root.clone(), Arc::new(DbFileJournal(self.db.clone())));
-            let mut operation = journal.prepare(
-                &path,
-                Some(bytes),
-                FileOrigin {
-                    run_id: Uuid::nil(),
-                    node_id: Uuid::nil(),
-                    attempt: 0,
-                    wal_position: 0,
-                },
-                before.as_deref(),
-            )?;
+            let mut operation = journal.prepare(&path, Some(bytes), origin, before.as_deref())?;
             if operation.before != before.as_deref().map(hash_content) {
                 operation.phase = crate::execution::file_journal::FilePhase::Conflict;
                 journal.save(&operation)?;
@@ -129,7 +146,8 @@ impl VersionManager {
                 ));
             }
             journal.apply(&mut operation)?;
+            operation_id = Some(operation.operation_id);
         }
-        self.capture_blueprint_locked(&path)
+        Ok((self.capture_blueprint_locked(&path)?, operation_id))
     }
 }
