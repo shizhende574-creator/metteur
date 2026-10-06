@@ -47,7 +47,7 @@ impl Tool for DraftBlueprint {
          chains steps with \"->\" and may route a specific output \
          (\"br.True -> ok\"); node positions and ids are generated. Registry \
          tools are named directly (ReadFile, Grep, EditFile, LspCheck, ...). \
-         Set `save` to true to store the blueprint in the workspace; otherwise \
+         Set `save` to true to request user approval to save under blueprints/<id>.blueprint (or its existing file); otherwise \
          the compiled plan is returned for review only. Fix any reported error \
          and call again with the corrected draft."
     }
@@ -101,6 +101,13 @@ impl Tool for DraftBlueprint {
         )
         .map_err(|err| DaemonError::Execution(err.to_string()))?;
 
+        let version = if save {
+            Some(crate::replan::draft::save(ctx, &blueprint).await?)
+        } else {
+            None
+        };
+        let saved = version.is_some();
+
         ctx.audit(
             "blueprint.draft",
             serde_json::json!({
@@ -109,29 +116,18 @@ impl Tool for DraftBlueprint {
                 "name": blueprint.name,
                 "nodes": blueprint.nodes.len(),
                 "edges": blueprint.edges.len(),
-                "saved": save,
+                "saved": saved,
             }),
         );
 
-        let saved = if save {
-            let db = ctx.workspace_db.clone().ok_or_else(|| {
-                DaemonError::Execution(
-                    "saving a blueprint needs a workspace database; the run has none".to_string(),
-                )
-            })?;
-            let encoded = serde_json::to_vec(&blueprint).map_err(|err| {
-                DaemonError::Execution(format!("failed to encode blueprint: {err}"))
-            })?;
-            db.put(crate::storage::persistence::cf::BLUEPRINTS, blueprint.id.as_bytes(), &encoded)
-                .map_err(|err| {
-                    DaemonError::Execution(format!("failed to save blueprint: {err}"))
-                })?;
-            true
-        } else {
-            false
-        };
-
-        Ok(Value::String(render_report(&blueprint, saved)))
+        let mut report = render_report(&blueprint, saved);
+        if let Some(version) = version {
+            report.push_str(&format!(
+                "\nFile: {}\nSnapshot: {}\n",
+                version.blueprint_uri, version.snapshot_id
+            ));
+        }
+        Ok(Value::String(report))
     }
 }
 

@@ -45,6 +45,7 @@ pub struct Workspace {
 impl Workspace {
     /// Admission holds activity_gate and verifies that no run is active first.
     pub fn reconcile_files(&self) -> DaemonResult<()> {
+        crate::replan::application::ensure_resolved(&self.db)?;
         crate::execution::file_journal::FileJournal::new(
             self.root.clone(),
             Arc::new(crate::execution::file_journal::DbFileJournal(self.db.clone())),

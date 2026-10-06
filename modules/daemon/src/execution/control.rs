@@ -38,5 +38,6 @@ pub async fn wait_while_paused(ctx: &ExecutionContext) -> DaemonResult<()> {
 /// Honours both control flags at a yield point between units of work.
 pub async fn gate(ctx: &ExecutionContext) -> DaemonResult<()> {
     check_cancelled(ctx)?;
-    wait_while_paused(ctx).await
+    wait_while_paused(ctx).await?;
+    crate::replan::application::verify_current(ctx)
 }

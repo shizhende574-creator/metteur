@@ -598,7 +598,7 @@ async fn smoke_open_save_execute() {
     // Save a blueprint.
     let blueprint = build_blueprint();
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -650,7 +650,7 @@ async fn smoke_completed_run_cannot_continue() {
         .unwrap();
     let blueprint = build_blueprint();
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -705,7 +705,7 @@ async fn smoke_cancel_marks_run_cancelled() {
         .unwrap();
     let blueprint = build_cancel_blueprint(300);
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -807,7 +807,7 @@ async fn smoke_audit_log() {
         .unwrap();
     let blueprint = build_blueprint();
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -1137,7 +1137,7 @@ async fn prepare(
         .await
         .unwrap();
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.to_string(),
             blueprint: Some(bp.clone()),
         })
@@ -1410,7 +1410,7 @@ async fn smoke_abstract_node_expands_and_runs() {
     };
 
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -1614,7 +1614,7 @@ async fn smoke_addon_install_call_uninstall() {
         entry_node_id: start.to_string(),
     };
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -2076,7 +2076,7 @@ res -> check
         .into_inner();
     assert_eq!(compiled.nodes.len(), 4);
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(compiled.clone()),
         })
@@ -2351,7 +2351,7 @@ async fn smoke_function_library_save_execute() {
         entry_node_id: start.to_string(),
     };
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(root.clone()),
         })
@@ -2433,7 +2433,7 @@ mod -> e
 
     // Persist, then decompile from the DB to mirror the webcore export path.
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(compiled.clone()),
         })
@@ -2462,6 +2462,28 @@ mod -> e
         .expect("inline decompile must succeed")
         .into_inner();
     assert!(inline.source.contains("Modulo"));
+}
+
+#[tokio::test]
+async fn rejected_blueprint_mirror_preserves_the_previous_graph() {
+    let (mut client, workspace) = start_server(metteur_shared::config::Config::default()).await;
+    let ws_path = workspace.to_string_lossy().to_string();
+    client.open_workspace(OpenWorkspaceRequest { path: ws_path.clone() }).await.unwrap();
+    let compiled = client.compile_dsl(CompileDslRequest {
+        source: "blueprint \"Saved\"\nentry start: Start\ne: End\nstart -> e\n".into(),
+    }).await.unwrap().into_inner();
+    client.save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
+        workspace_path: ws_path.clone(), blueprint: Some(compiled.clone()),
+    }).await.unwrap();
+    let load = proto::LoadBlueprintRequest { workspace_path: ws_path.clone(), blueprint_id: compiled.id.clone() };
+    let before = client.load_blueprint(load.clone()).await.unwrap().into_inner();
+    let mut invalid = compiled;
+    invalid.entry_node_id = uuid::Uuid::new_v4().to_string();
+    assert!(client.save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
+        workspace_path: ws_path, blueprint: Some(invalid),
+    }).await.is_err());
+    let after = client.load_blueprint(load).await.unwrap().into_inner();
+    assert_eq!(before, after);
 }
 
 #[tokio::test]
@@ -2495,7 +2517,7 @@ sum -> check
         .into_inner();
     assert_eq!(compiled.nodes.len(), 3);
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(compiled.clone()),
         })
@@ -2964,7 +2986,7 @@ check -> stop
     assert_eq!(compiled.nodes.len(), 6, "unexpected node count");
 
     client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(compiled.clone()),
         })
@@ -3046,12 +3068,12 @@ beta
     }"#;
     let blueprint = metteur_shared::dsl::compile_draft(draft).expect("the draft must compile");
 
-    // Execution takes the compiled JSON directly (`blueprint_json`), which is
-    // also how the GUI runs an unsaved canvas.
+    // Save establishes file authority; inline JSON asserts what the caller expects to run.
+    client.write_file(WriteFileRequest { workspace_path: ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3109,10 +3131,11 @@ wait -> stop
     // Start, StartCommand, WaitJob, End.
     assert_eq!(blueprint.nodes.len(), 4, "unexpected node count");
 
+    client.write_file(WriteFileRequest { workspace_path: ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3171,10 +3194,11 @@ wait -> stop
 "#;
     let blueprint =
         metteur_shared::dsl::compile(source).expect("the job tools must compile from the DSL");
+    client.write_file(WriteFileRequest { workspace_path: ws_path.to_string(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
     let mut stream = client
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.to_string(),
-            blueprint_id: String::new(),
+            blueprint_id: blueprint.id.to_string(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3342,10 +3366,11 @@ pause -> stop
     let mut run_client = client.clone();
     let run_ws_path = ws_path.clone();
     let run = tokio::spawn(async move {
+        run_client.write_file(WriteFileRequest { workspace_path: run_ws_path.clone(), path: format!("blueprints/{}.blueprint", blueprint.id), content: serde_json::to_string(&blueprint).unwrap() }).await.unwrap();
         let mut stream = run_client
             .execute_blueprint(ExecuteBlueprintRequest {
                 workspace_path: run_ws_path.clone(),
-                blueprint_id: String::new(),
+                blueprint_id: blueprint.id.to_string(),
                 blueprint_json: serde_json::to_string(&blueprint).unwrap(),
             })
             .await
@@ -3731,7 +3756,7 @@ async fn smoke_rejects_narrowing_float_into_int_edge() {
 
     // Saving is where an author expects to hear about it, with the pin named.
     let err = client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -3847,7 +3872,7 @@ async fn smoke_rejects_exec_output_wired_to_data_input() {
     };
 
     let err = client
-        .save_blueprint(SaveBlueprintRequest {
+        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
             workspace_path: ws_path,
             blueprint: Some(blueprint),
         })
@@ -3963,3 +3988,6 @@ async fn config_presence_survives_rpc_file_and_reset() {
     assert_eq!(before, std::fs::read(workspace.join(".metteur/config.toml")).unwrap());
     client.close_workspace(CloseWorkspaceRequest { path }).await.unwrap();
 }
+
+#[path = "smoke/blueprint_entrypoints.rs"]
+mod blueprint_entrypoints;

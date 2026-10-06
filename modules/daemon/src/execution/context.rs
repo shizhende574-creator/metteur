@@ -271,6 +271,7 @@ pub struct ExecutionContext {
     pub addon_fragments: Vec<metteur_shared::llm::SystemFragment>,
     /// Shared handle to the executing root blueprint (replan hot-apply).
     pub blueprint: Option<Arc<parking_lot::RwLock<Blueprint>>>,
+    pub(crate) blueprint_apply: Arc<parking_lot::Mutex<crate::replan::application::ApplyState>>,
     /// Frame-scoped variable maps, innermost last. The interpreter pushes one
     /// per entered function frame; executors read and write through it.
     pub variables: Vec<HashMap<String, Value>>,
@@ -393,6 +394,7 @@ impl ExecutionContext {
             lsp_source: None,
             addon_fragments: Vec::new(),
             blueprint: None,
+            blueprint_apply: Arc::new(parking_lot::Mutex::new(Default::default())),
             variables: vec![HashMap::new()],
             tree_ops: Vec::new(),
             version_manager: None,
@@ -502,6 +504,7 @@ impl ExecutionContext {
         child.lsp_source = self.lsp_source.clone();
         child.addon_fragments = self.addon_fragments.clone();
         child.blueprint = self.blueprint.clone();
+        child.blueprint_apply = self.blueprint_apply.clone();
         child.version_manager = self.version_manager.clone();
         // The child works from the parent's plan but keeps its own copy, so a
         // sub-agent's updates cannot rewrite the caller's list.

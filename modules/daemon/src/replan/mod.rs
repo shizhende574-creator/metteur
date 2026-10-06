@@ -102,6 +102,13 @@ fn parse_selector(value: Option<&serde_json::Value>) -> Result<NodeSelector, Str
 
 /// Applies the edit script to `bp`, returning a short human summary.
 pub fn apply_edits(bp: &mut Blueprint, script: &serde_json::Value) -> Result<String, String> {
+    let mut candidate = bp.clone();
+    let summary = apply_edits_inner(&mut candidate, script)?;
+    *bp = candidate;
+    Ok(summary)
+}
+
+fn apply_edits_inner(bp: &mut Blueprint, script: &serde_json::Value) -> Result<String, String> {
     let ops = parse_edits(script)?;
     let mut summary = Vec::new();
     for op in ops {
@@ -177,59 +184,16 @@ pub async fn await_approval(
     Ok(response.decision == Decision::Allow)
 }
 
-/// Persists the edited blueprint back to the workspace database.
-fn persist(ctx: &ExecutionContext, bp: &Blueprint) -> DaemonResult<()> {
-    let Some(db) = &ctx.workspace_db else {
-        return Ok(());
-    };
-    let data = serde_json::to_vec(bp).map_err(|e| DaemonError::Serialization(e.to_string()))?;
-    db.put(crate::storage::persistence::cf::BLUEPRINTS, bp.id.as_bytes(), &data)
-}
+pub mod application;
+pub(crate) mod draft;
 
-/// Applies `script` to the shared root blueprint and persists the result.
-pub async fn apply_to_shared(
-    ctx: &mut ExecutionContext,
-    script: &serde_json::Value,
-) -> DaemonResult<String> {
-    let handle = ctx
-        .blueprint
-        .clone()
-        .ok_or_else(|| DaemonError::Execution("no shared blueprint attached".to_string()))?;
-    let summary = {
-        let mut bp = handle.write();
-        replan_apply(&mut bp, script)?
-    };
-    persist(ctx, &handle.read())?;
-    ctx.audit("replan.applied", serde_json::json!({ "script": script, "summary": &summary }));
-    Ok(summary)
-}
-
-fn replan_apply(bp: &mut Blueprint, script: &serde_json::Value) -> DaemonResult<String> {
-    apply_edits(bp, script).map_err(DaemonError::Execution)
-}
-
-/// Asks the user to approve `script` and, when allowed, applies it.
+/// Approve an exact proposal; the interpreter commits it at a safe boundary.
 pub async fn approve_and_apply(
     ctx: &mut ExecutionContext,
     summary: &str,
     script: &serde_json::Value,
 ) -> DaemonResult<String> {
-    let allow = await_approval(
-        ctx,
-        "replan_proposal",
-        summary,
-        serde_json::json!({
-            "request_type": "replan_proposal",
-            "tool": "ReplanBlueprint",
-            "summary": summary,
-            "edits": script,
-        }),
-    )
-    .await?;
-    if !allow {
-        return Err(DaemonError::Execution("replan denied by user".to_string()));
-    }
-    apply_to_shared(ctx, script).await
+    application::approve(ctx, summary, script, application::Source::ModelTool).await
 }
 
 const PLAN_AGENT_SYSTEM: &str = "You are the Metteur plan agent. The task has \
@@ -330,10 +294,13 @@ async fn trip_and_replan_core(
         return Err(DaemonError::Execution("circuit tripped; aborted by user".to_string()));
     }
     let edits = run_plan_agent(ctx, &task, plan_mock).await?;
-    approve_and_apply(
+    application::approve(
         ctx,
         &format!("Plan agent produced a revised plan for {failing_node}"),
         &edits,
+        application::Source::Circuit {
+            failing_node,
+        },
     )
     .await
 }
@@ -410,49 +377,5 @@ mod tests {
     #[test]
     fn strips_code_fence() {
         assert_eq!(strip_code_fence("```json\n[{\"op\":\"x\"}]\n```"), "[{\"op\":\"x\"}]");
-    }
-
-    #[tokio::test]
-    async fn trip_and_replan_mock_applies_approved_edits() {
-        use crate::llm::LlmClientFactory;
-        use crate::registry::Registry;
-        use crate::sandbox::approval::{ApprovalBroker, Decision, Scope};
-        use metteur_shared::config::Config;
-
-        let broker = std::sync::Arc::new(ApprovalBroker::new());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut ctx = crate::execution::context::ExecutionContext::new(
-            std::sync::Arc::new(Registry::with_builtins()),
-            LlmClientFactory::new(),
-            std::env::temp_dir(),
-        );
-        let shared = std::sync::Arc::new(parking_lot::RwLock::new(bp()));
-        ctx.blueprint = Some(shared.clone());
-        ctx.approvals = Some(broker.clone());
-        ctx.events = Some(tx);
-        ctx.config = Some(std::sync::Arc::new(tokio::sync::RwLock::new(Config::default())));
-
-        let node_id = NodeId::nil();
-        let mock = r#"[{"op":"set_pin","match":{"kind":"CallLLM","nth":1},"pin":"temperature","value":0.2}]"#
-            .to_string();
-        let task =
-            tokio::spawn(async move { trip_and_replan_mock(&mut ctx, node_id, 3, mock).await });
-
-        // Allow both the circuit-tripped and the replan-proposal requests.
-        let mut allowed = 0u32;
-        while allowed < 2 {
-            let ids = broker.pending_ids();
-            if !ids.is_empty() {
-                for id in ids {
-                    broker.respond(&id, Decision::Allow, Scope::Once, &Default::default()).unwrap();
-                    allowed += 1;
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        let summary = task.await.unwrap().unwrap();
-        assert!(summary.contains("temperature"), "summary: {summary}");
-        let edited = shared.read();
-        assert_eq!(edited.nodes[1].data["temperature"], 0.2);
     }
 }

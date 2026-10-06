@@ -995,9 +995,9 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async saveBlueprint(workspacePath: string, blueprint: Blueprint): Promise<Result<void>> {
+  async saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath = ''): Promise<Result<void>> {
     try {
-      await this.client.saveBlueprint({ workspacePath, blueprint: toProtoBlueprint(blueprint) })
+      await this.client.saveBlueprint({ workspacePath, blueprint: toProtoBlueprint(blueprint), filePath, fileJson: JSON.stringify(blueprint, null, 2) })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -1021,9 +1021,8 @@ export class GrpcGateway implements DaemonGateway {
     blueprint?: Blueprint,
   ): Promise<Result<void>> {
     try {
-      // Sending the canvas makes Run independent of the stored mirror, which
-      // may lag behind (or have failed to update) after an edit.
-      const blueprintJson = blueprint ? JSON.stringify(toProtoBlueprint(blueprint)) : ''
+      // The daemon verifies this canvas against the authoritative saved file.
+      const blueprintJson = blueprint ? JSON.stringify(blueprint) : ''
       for await (const ev of this.client.executeBlueprint({
         workspacePath,
         blueprintId,

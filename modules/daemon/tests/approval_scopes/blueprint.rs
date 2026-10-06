@@ -30,6 +30,15 @@ async fn disconnecting_a_blueprint_stream_withdraws_its_pending_approval() {
         }, "flow":["start -> write -> end"]
     }))
     .unwrap();
+    metteur_daemon::storage::blueprint_files::save(
+        &ws.db,
+        &ws.version_manager,
+        &blueprint,
+        "approval.blueprint",
+        &serde_json::to_vec(&blueprint).unwrap(),
+        None,
+    )
+    .unwrap();
     let mut stream = Daemon::execute_blueprint(
         &service,
         Request::new(ExecuteBlueprintRequest {

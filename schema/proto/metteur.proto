@@ -123,6 +123,10 @@ message WorkspaceList {
 message SaveBlueprintRequest {
   string workspace_path = 1;
   Blueprint blueprint = 2;
+  // Explicit authoritative file, relative to the workspace. Existing bindings may omit it.
+  string file_path = 3;
+  // Preserve the editor file representation; empty uses native blueprint JSON.
+  string file_json = 4;
 }
 
 message LoadBlueprintRequest {
@@ -133,9 +137,8 @@ message LoadBlueprintRequest {
 message ExecuteBlueprintRequest {
   string workspace_path = 1;
   string blueprint_id = 2;
-  // Blueprint JSON to execute as-is (the canvas the client is looking at).
-  // When set it takes precedence over `blueprint_id` and is mirrored into the
-  // workspace database, so the stored copy matches what actually ran.
+  // Optional canvas/native JSON asserting the saved graph the caller expects.
+  // Save first: mismatched content cannot overwrite file authority or the mirror.
   string blueprint_json = 3;
 }
 

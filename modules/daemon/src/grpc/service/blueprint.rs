@@ -23,6 +23,19 @@ use super::super::proto::{
 use super::*;
 
 impl DaemonService {
+    pub(super) async fn ensure_blueprint_idle(
+        &self,
+        root: &std::path::Path,
+        id: uuid::Uuid,
+    ) -> Result<(), Status> {
+        if self.state.running.read().await.get(root).is_some_and(|run| run.blueprint_id == id) {
+            return Err(Status::failed_precondition(
+                "blueprint is running; use an approved replan or stop the run before saving",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) async fn save_blueprint(
         &self,
         request: Request<SaveBlueprintRequest>,
@@ -38,10 +51,35 @@ impl DaemonService {
             req.blueprint.ok_or_else(|| Status::invalid_argument("blueprint is required"))?;
         let blueprint = proto_to_blueprint(&proto_blueprint).map_err(to_status)?;
         ensure_valid(&blueprint, &self.state.registry)?;
-        let data = serde_json::to_vec(&blueprint).map_err(|e| Status::internal(e.to_string()))?;
-        ws.db
-            .put(crate::storage::persistence::cf::BLUEPRINTS, blueprint.id.as_bytes(), &data)
-            .map_err(to_status)?;
+        let _admission = ws.activity_gate.lock().await;
+        self.ensure_blueprint_idle(&ws.root, blueprint.id).await?;
+        crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
+        let uri = if req.file_path.is_empty() {
+            crate::storage::blueprint_files::binding(&ws.db, blueprint.id)
+                .map_err(to_status)?
+                .ok_or_else(|| {
+                    Status::failed_precondition(
+                        "choose an authoritative blueprint file path before saving",
+                    )
+                })?
+                .blueprint_uri
+        } else {
+            req.file_path
+        };
+        let bytes = if req.file_json.is_empty() {
+            crate::storage::blueprint_files::encode_native(&blueprint).map_err(to_status)?
+        } else {
+            req.file_json.into_bytes()
+        };
+        crate::storage::blueprint_files::save(
+            &ws.db,
+            &ws.version_manager,
+            &blueprint,
+            &uri,
+            &bytes,
+            None,
+        )
+        .map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -58,13 +96,9 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let id = uuid::Uuid::parse_str(&req.blueprint_id)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        let data = ws
-            .db
-            .get(crate::storage::persistence::cf::BLUEPRINTS, id.as_bytes())
-            .map_err(to_status)?
-            .ok_or_else(|| Status::not_found("blueprint not found"))?;
-        let blueprint: metteur_shared::Blueprint =
-            serde_json::from_slice(&data).map_err(|e| Status::internal(e.to_string()))?;
+        let blueprint = crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
+            .map_err(to_status)?;
+        ensure_valid(&blueprint, &self.state.registry)?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
 
@@ -84,32 +118,46 @@ impl DaemonService {
             .get(&ws_path)
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        // The client may hand over the blueprint it is editing. That copy wins
-        // over the stored one: mirroring happens on save, and a failed mirror
-        // must not make Run execute a stale graph. The stored copy is refreshed
-        // so later loads (and the CLI) agree with what actually ran.
-        let blueprint: metteur_shared::Blueprint = if req.blueprint_json.trim().is_empty() {
-            let id = uuid::Uuid::parse_str(&req.blueprint_id)
-                .map_err(|e| Status::invalid_argument(e.to_string()))?;
-            let data = ws
-                .db
-                .get(crate::storage::persistence::cf::BLUEPRINTS, id.as_bytes())
-                .map_err(to_status)?
-                .ok_or_else(|| Status::not_found("blueprint not found"))?;
-            serde_json::from_slice(&data).map_err(|e| Status::internal(e.to_string()))?
+        if self.state.running.read().await.contains_key(&ws.root)
+            || self.state.chats.read().await.contains_key(&ws.root)
+        {
+            return Err(Status::failed_precondition(
+                "workspace already has an active execution or chat",
+            ));
+        }
+        // Inline content is a consistency assertion, never a hidden persistence path.
+        let inline = if req.blueprint_json.trim().is_empty() {
+            None
         } else {
-            let parsed: metteur_shared::Blueprint = serde_json::from_str(&req.blueprint_json)
+            let parsed = crate::storage::blueprint_files::decode(req.blueprint_json.as_bytes())
                 .map_err(|e| Status::invalid_argument(format!("invalid blueprint: {e}")))?;
-            // Validate before mirroring: an invalid graph must not overwrite
-            // the stored copy that a later Run would pick up.
             ensure_valid(&parsed, &self.state.registry)?;
-            let encoded =
-                serde_json::to_vec(&parsed).map_err(|e| Status::internal(e.to_string()))?;
-            ws.db
-                .put(crate::storage::persistence::cf::BLUEPRINTS, parsed.id.as_bytes(), &encoded)
-                .map_err(to_status)?;
-            parsed
+            Some(parsed)
         };
+        let id = if req.blueprint_id.is_empty() {
+            inline
+                .as_ref()
+                .map(|b| b.id)
+                .ok_or_else(|| Status::invalid_argument("blueprint id is required"))?
+        } else {
+            uuid::Uuid::parse_str(&req.blueprint_id)
+                .map_err(|e| Status::invalid_argument(e.to_string()))?
+        };
+        if inline.as_ref().is_some_and(|b| b.id != id) {
+            return Err(Status::invalid_argument("inline blueprint id does not match request"));
+        }
+        let blueprint = crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
+            .map_err(|error| match error {
+                DaemonError::NotFound(_) if inline.is_some() => Status::failed_precondition(
+                    "save the blueprint to an explicit file before running it",
+                ),
+                other => to_status(other),
+            })?;
+        if inline.as_ref().is_some_and(|graph| graph != &blueprint) {
+            return Err(Status::failed_precondition(
+                "canvas differs from the saved blueprint; save successfully before running",
+            ));
+        }
         // A blueprint saved before validation existed, or edited directly in
         // the database, is re-checked here so execution never runs a graph that
         // would fail halfway through.
@@ -402,12 +450,8 @@ impl DaemonService {
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
             let id = uuid::Uuid::parse_str(&req.blueprint_id)
                 .map_err(|e| Status::invalid_argument(e.to_string()))?;
-            let data = ws
-                .db
-                .get(crate::storage::persistence::cf::BLUEPRINTS, id.as_bytes())
+            crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
                 .map_err(to_status)?
-                .ok_or_else(|| Status::not_found("blueprint not found"))?;
-            serde_json::from_slice(&data).map_err(|e| Status::internal(e.to_string()))?
         };
         Ok(Response::new(DecompileDslResponse {
             source: metteur_shared::dsl::decompile(&blueprint),
@@ -421,7 +465,7 @@ impl DaemonService {
 /// executes, by which point the checkpoint machinery, the LLM budget and any
 /// earlier file mutations are already committed. Every problem is reported at
 /// once so a client can show the full list rather than one mistake per run.
-fn ensure_valid(
+pub(super) fn ensure_valid(
     blueprint: &metteur_shared::Blueprint,
     registry: &crate::registry::Registry,
 ) -> Result<(), Status> {
