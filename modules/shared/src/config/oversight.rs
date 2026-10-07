@@ -18,6 +18,7 @@ pub struct OversightConfig {
     pub triggers: Triggers,
     pub blackboard: BlackboardConfig,
     pub structure_edit_limit: u32,
+    pub delegation: Delegation,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -71,6 +72,7 @@ impl Default for OversightConfig {
             triggers: Triggers::default(),
             blackboard: BlackboardConfig::default(),
             structure_edit_limit: 5,
+            delegation: Delegation::default(),
         }
     }
 }
@@ -90,6 +92,11 @@ impl OversightConfig {
             || value.max_output_tokens == 0
             || value.blackboard.max_entries == 0
             || value.blackboard.digest_chars == 0
+            || value.delegation.blueprint_edits.iter().any(|g| {
+                g.node_id.is_nil()
+                    || g.fields.is_empty()
+                    || g.fields.iter().any(|f| f.trim().is_empty() || f == "*")
+            })
         {
             return Err(<serde_json::Error as serde::de::Error>::custom(
                 "invalid oversight settings",
@@ -97,4 +104,18 @@ impl OversightConfig {
         }
         Ok(value)
     }
+}
+
+/// Explicit user configuration. Empty by default; models cannot create grants.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Delegation {
+    pub pause_run: bool,
+    pub blueprint_edits: Vec<EditDelegation>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditDelegation {
+    pub node_id: uuid::Uuid,
+    pub fields: Vec<String>,
 }

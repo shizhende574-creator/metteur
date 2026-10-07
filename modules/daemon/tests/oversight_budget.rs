@@ -108,3 +108,39 @@ async fn timeout_keeps_reservation_and_does_not_fall_back() {
     assert_eq!(calls[0].state, "usage_unknown");
     assert_eq!(calls[0].charged, calls[0].reserved);
 }
+
+#[test]
+fn explicit_delegation_revocation_and_invalid_scopes_fail_closed() {
+    let node = uuid::Uuid::new_v4();
+    let mut user = metteur_shared::config::Config::default();
+    user.extra.insert("oversight".into(),serde_json::json!({"mode":"autonomous","delegation":{"pause_run":true,"blueprint_edits":[{"node_id":node,"fields":["prompt"]}]}}));
+    let mut workspace = metteur_shared::config::Config::default();
+    workspace.extra.insert(
+        "oversight".into(),
+        serde_json::json!({"delegation":{"pause_run":false,"blueprint_edits":[]}}),
+    );
+    let layer: ConfigLayer = serde_json::from_value(
+        serde_json::json!({"config_version":2,"oversight":workspace.extra["oversight"]}),
+    )
+    .unwrap();
+    let merged = layer.merge(&user).unwrap();
+    let settings =
+        metteur_shared::config::oversight::OversightConfig::from_config(&merged).unwrap();
+    assert!(!settings.delegation.pause_run);
+    assert!(settings.delegation.blueprint_edits.is_empty());
+    assert_eq!(settings.mode, "autonomous");
+    for grant in [
+        serde_json::json!({"node_id":node,"fields":["*"]}),
+        serde_json::json!({"node_id":node,"fields":[]}),
+        serde_json::json!({"node_id":uuid::Uuid::nil(),"fields":["prompt"]}),
+        serde_json::json!({"node_id":node,"fields":["prompt"],"approve_all":true}),
+    ] {
+        workspace.extra.insert(
+            "oversight".into(),
+            serde_json::json!({"delegation":{"blueprint_edits":[grant]}}),
+        );
+        assert!(
+            metteur_shared::config::oversight::OversightConfig::from_config(&workspace).is_err()
+        );
+    }
+}

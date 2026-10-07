@@ -22,6 +22,8 @@ pub struct Proposal {
     pub binding: Value,
     pub result_refs: Vec<String>,
     pub reason: String,
+    #[serde(default)]
+    pub decision_source: String,
 }
 fn error(text: &str) -> DaemonError {
     DaemonError::Execution(text.into())
@@ -107,6 +109,7 @@ pub(crate) fn register(
         binding,
         result_refs: vec![],
         reason: String::new(),
+        decision_source: String::new(),
     };
     for request in &mut q.requests {
         if r.source_request_ids.contains(&request.request_id) {
@@ -245,7 +248,7 @@ pub(crate) fn apply_control(
     apply: impl FnOnce() -> DaemonResult<()>,
 ) -> DaemonResult<()> {
     let reason = format!(
-        "{kind} requested after independent user confirmation. Inspect the execution outcome for completion and rollback results."
+        "{kind} requested under the recorded decision source. Inspect the execution outcome for completion and rollback results."
     );
     transition_with(
         db,
@@ -276,6 +279,23 @@ impl Guard {
             .flat_map(|r| &r.proposals)
             .find(|p| p.proposal_id == self.id)
             .ok_or_else(|| error("Proposal unavailable"))?;
+        let review = s
+            .reviews
+            .iter()
+            .find(|r| r.review_id == p.review_id)
+            .ok_or_else(|| error("Review unavailable"))?;
+        if super::policy::delegated(ctx, review, p) {
+            decision_source(&self.db, self.run, self.id, "delegated")?;
+            transition(
+                &self.db,
+                self.run,
+                self.id,
+                State::ApprovedPendingApply,
+                vec![],
+                "Existing scoped delegation permits this system action; application is not complete",
+            )?;
+            return Ok(true);
+        }
         let queue = requests::load(&self.db, self.run)?;
         let original:Vec<_>=queue.requests.iter().filter(|r|p.source_request_ids.contains(&r.request_id)).map(|r|json!({"request_id":r.request_id,"original_text":r.original_text,"concierge_note":r.concierge_note})).collect();
         let mut detail = p.binding.clone();
@@ -295,6 +315,7 @@ impl Guard {
             120,
         )
         .await?;
+        decision_source(&self.db, self.run, self.id, "human")?;
         if response.decision == crate::sandbox::approval::Decision::Deny {
             transition(
                 &self.db,
@@ -338,4 +359,41 @@ impl Drop for Guard {
             );
         }
     }
+}
+
+fn decision_source(db: &Db, run: Uuid, id: Uuid, source: &str) -> DaemonResult<()> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
+    let mut s = scheduler::load(db, run)?.ok_or_else(|| error("Review unavailable"))?;
+    if s.closed {
+        return Err(error("Run closed"));
+    }
+    let p = s
+        .reviews
+        .iter_mut()
+        .flat_map(|r| &mut r.proposals)
+        .find(|p| p.proposal_id == id && p.state == State::AwaitingConfirmation)
+        .ok_or_else(|| error("Proposal is no longer awaiting a decision"))?;
+    p.decision_source = source.into();
+    scheduler::save(db, run, &s)
+}
+pub(crate) fn authorize_application(ctx: &ExecutionContext, id: Uuid) -> DaemonResult<()> {
+    enabled(ctx)?;
+    let db = ctx.workspace_db.as_ref().ok_or_else(|| error("Workspace unavailable"))?;
+    let s = scheduler::load(db, ctx.run_id)?.ok_or_else(|| error("Review unavailable"))?;
+    if s.closed || requests::load(db, ctx.run_id)?.closed {
+        return Err(error("Review closed"));
+    }
+    let r = s
+        .reviews
+        .iter()
+        .find(|r| r.proposals.iter().any(|p| p.proposal_id == id))
+        .ok_or_else(|| error("Proposal unavailable"))?;
+    let p = r.proposals.iter().find(|p| p.proposal_id == id).expect("selected proposal");
+    if p.state != State::ApprovedPendingApply || p.run_id != ctx.run_id {
+        return Err(error("Proposal is not approved for this run"));
+    }
+    if p.decision_source == "delegated" && !super::policy::delegated(ctx, r, p) {
+        return Err(error("Delegation no longer permits this action"));
+    }
+    Ok(())
 }

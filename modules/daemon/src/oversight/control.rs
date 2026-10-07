@@ -89,6 +89,7 @@ pub(crate) async fn propose(
         &ctx.pause_requested
     };
     actions::apply_control(db, ctx.run_id, id, kind, || {
+        actions::authorize_application(ctx, id)?;
         if snapshot(ctx)? != before {
             return Err(error(
                 "Control proposal is stale; execution state or rollback scope changed",
@@ -99,7 +100,9 @@ pub(crate) async fn propose(
         Ok(())
     })?;
     guard.staged();
-    if kind == "CancelRun" && let Some(broker) = &ctx.approvals {
+    if kind == "CancelRun"
+        && let Some(broker) = &ctx.approvals
+    {
         broker.close();
     }
     ctx.audit(

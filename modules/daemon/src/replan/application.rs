@@ -346,7 +346,13 @@ pub(crate) fn commit_boundary(
     };
     // The completed node's successor queue is already constructed. Only future
     // parameter changes are permitted; a circuit retry has already been queued.
-    let verification = verify(ctx, &proposal);
+    let verification = verify(ctx, &proposal).and_then(|()| {
+        if matches!(proposal.source, Source::Supervisor { .. }) {
+            crate::oversight::actions::authorize_application(ctx, proposal.id)
+        } else {
+            Ok(())
+        }
+    });
     if matches!(proposal.source, Source::Supervisor { .. })
         && (verification.is_err()
             || proposal.affected.iter().any(|id| checkpoint.executed.contains(id)))

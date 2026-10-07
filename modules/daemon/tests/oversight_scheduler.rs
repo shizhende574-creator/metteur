@@ -204,3 +204,26 @@ fn interrupted_claim_keeps_lineage_and_fails_without_replaying_a_model() {
     assert_eq!(scheduler::load(&db, run).unwrap().unwrap().reviews[0].status, Status::Cancelled);
     assert!(scheduler::claim(&db, run, 100000).unwrap().is_none());
 }
+
+#[test]
+fn settling_a_pending_request_never_erases_its_provenance_or_reopens_it() {
+    let (db, run) = setup();
+    let id = receive(&db, run);
+    let record = requests::load(&db, run).unwrap().requests[0].clone();
+    requests::transition(
+        &db,
+        run,
+        id,
+        record.revision,
+        requests::Transition::Finish {
+            state: State::Rejected,
+            refs: vec![],
+        },
+    )
+    .unwrap();
+    scheduler::trigger(&db, run, "interval", 1).unwrap();
+    let review = scheduler::claim(&db, run, u64::MAX).unwrap().unwrap();
+    assert!(review.source_request_ids.contains(&id));
+    assert!(review.triggers.contains("request"));
+    assert_eq!(requests::load(&db, run).unwrap().requests[0].state, State::Rejected);
+}

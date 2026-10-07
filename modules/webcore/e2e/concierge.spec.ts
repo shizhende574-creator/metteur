@@ -202,3 +202,16 @@ test('gate dispositions remain separate from model conclusions and action status
   await expect(panel.getByText('Human disposition: continue without validation')).toBeVisible()
   await expect(panel.getByText('action taken', { exact: true })).toBeVisible()
 })
+
+
+test('delegated decisions are shown separately from human confirmation', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [{ review_id: 'delegated-review', status: 'completed', verdict: 'action_taken', summary: 'Pause requested', source_request_ids: [], triggers: ['interval'], actual_action_refs: [], work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, proposals: [{ proposal_id: 'proposal', state: 'applied', kind: 'PauseRun', reason: 'Inspect execution outcome', decision_source: 'delegated', result_refs: [] }], usage: [] }] } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Supervisor reviews' })
+  await expect(panel.getByText('Decision: existing user delegation', { exact: false })).toBeVisible()
+  await expect(panel.getByText('human confirmation', { exact: false })).toHaveCount(0)
+})

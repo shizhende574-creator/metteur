@@ -291,11 +291,12 @@ pub fn claim(db: &Db, run: Uuid, at: u64) -> DaemonResult<Option<Review>> {
     }
     let review =
         s.reviews.iter_mut().find(|r| r.status == Status::Pending).expect("due pending review");
-    review.source_request_ids.retain(|id| {
-        queue.requests.iter().any(|r| r.request_id == *id && r.state == requests::State::Received)
-    });
+    // Pending provenance is immutable even if a request was independently
+    // settled before claim. Such a request must not become an autonomous grant.
     for request in &mut queue.requests {
-        if review.source_request_ids.contains(&request.request_id) {
+        if review.source_request_ids.contains(&request.request_id)
+            && request.state == requests::State::Received
+        {
             request.state = requests::State::Reviewing;
             request.review_id = Some(review.review_id);
             request.revision += 1;
