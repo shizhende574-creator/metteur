@@ -33,6 +33,7 @@ import { gateway } from '@/core'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { fileNameOf, useBlueprintStore } from '@/stores/blueprint'
+import { useSurfaceNavigation } from '@/lib/surface'
 import { useExecutionStore } from '@/stores/execution'
 import { useTabsStore } from '@/stores/tabs'
 import { useRightPanelStore } from '@/stores/right-panel'
@@ -47,6 +48,7 @@ import { CATEGORIES, execInOf, isPinCompatible, makeCallFunctionNode, makeFlowNo
 const workspace = useWorkspaceStore()
 const store = useBlueprintStore()
 const execution = useExecutionStore()
+const { openSurface: openExecutionSurface } = useSurfaceNavigation()
 const tabs = useTabsStore()
 const rightPanel = useRightPanelStore()
 const feedback = useFeedbackStore()
@@ -1292,6 +1294,7 @@ async function handleSave(): Promise<boolean> {
 async function handleRun() {
   const ws = workspace.active
   if (!ws) return
+  if (execution.running) { openExecutionSurface('execution'); return }
   const file = fileKey.value
   const key = graphKey()
   // A failed file write or mirror must stop Run, with the draft left intact.
@@ -1310,9 +1313,9 @@ async function handleRun() {
     nodes: store.nodes,
     edges: store.edges,
   }
-  auditOpen.value = true
+  openExecutionSurface('execution')
   try {
-    await execution.run(id, blueprint)
+    await execution.run(id, blueprint, file)
   } catch (err) {
     feedback.toast('error', 'Run failed', String(err))
   }

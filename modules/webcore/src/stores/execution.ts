@@ -1,6 +1,6 @@
 import { blueprintApproval } from '@/core/blueprint-approval'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { gateway } from '@/core'
 import type {
   ApprovalRequest,
@@ -32,6 +32,14 @@ export interface EventLine {
  */
 export const useExecutionStore = defineStore('execution', () => {
   const workspace = useWorkspaceStore()
+  const blueprint = ref<Blueprint | null>(null)
+  const sourcePath = ref('')
+  const error = ref('')
+  const launching = ref(false)
+  watch(() => workspace.active?.path, () => {
+    blueprint.value = null; sourcePath.value = ''; error.value = ''; status.value = 'idle'
+    events.value = []; nodeAudits.value = new Map(); approval.value = null; runId.value = null
+  })
   const status = ref<ExecStatus>('idle')
   const events = ref<EventLine[]>([])
   const approval = ref<ApprovalRequest | null>(null)
@@ -111,9 +119,36 @@ export const useExecutionStore = defineStore('execution', () => {
     if (events.value.length > limit) events.value.splice(0, events.value.length - limit)
   }
 
-  async function run(blueprintId: string, blueprint?: Blueprint) {
+  async function reconcile() {
+    const ws = workspace.active?.path
+    if (!ws || launching.value) return
+    const result = await gateway.listExecutions(ws)
+    if (workspace.active?.path !== ws) return
+    if (!result.ok) { error.value = result.error; return }
+    const current = result.data.find(r => r.status === 'Running') ?? result.data.find(r => r.runId === runId.value) ?? result.data.at(-1)
+    if (!current) return
+    runId.value = current.runId
+    if (!running.value) status.value = ({ Running: 'running', Suspended: 'paused', Completed: 'finished', Cancelled: 'cancelled', Failed: 'failed' } as Record<string, ExecStatus>)[current.status] ?? 'failed'
+    if (!blueprint.value || blueprint.value.id !== current.blueprintId) {
+      const loaded = await gateway.loadBlueprint(ws, current.blueprintId)
+      if (workspace.active?.path === ws && loaded.ok) blueprint.value = loaded.data
+    }
+  }
+
+  async function run(blueprintId: string, graph?: Blueprint, filePath = '') {
     const ws = workspace.active
-    if (!ws) return
+    if (!ws || running.value || launching.value) return
+    launching.value = true
+    error.value = ''
+    const runsBefore = await gateway.listExecutions(ws.path)
+    if (workspace.active?.path !== ws.path) { launching.value = false; return }
+    if (!runsBefore.ok) { error.value = runsBefore.error; launching.value = false; return }
+    if (runsBefore.data.some(r => r.status === 'Running')) {
+      error.value = 'A run is already active in this workspace.'; launching.value = false; await reconcile(); return
+    }
+    blueprint.value = graph ? JSON.parse(JSON.stringify(graph)) : null
+    sourcePath.value = filePath
+    launching.value = false
     events.value = []
     contextUsage.value = null
     contextNode.value = null
@@ -128,6 +163,7 @@ export const useExecutionStore = defineStore('execution', () => {
       ws.path,
       blueprintId,
       (ev) => {
+      if (workspace.active?.path !== ws.path) return
       push(ev)
       if (ev.kind === 'approval_request') {
         const detail = (ev.detail ?? {}) as Record<string, unknown>
@@ -149,8 +185,9 @@ export const useExecutionStore = defineStore('execution', () => {
         }
       }
       },
-      blueprint,
+      graph,
     )
+    if (workspace.active?.path !== ws.path) return
     approval.value = null
     if (!result.ok && !['cancelled'].includes(status.value)) {
       status.value = 'failed'
@@ -210,6 +247,7 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   return {
+    blueprint, sourcePath, error, launching, reconcile,
     status,
     events,
     approval,
