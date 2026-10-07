@@ -323,7 +323,11 @@ impl Interpreter {
             // than an apparently unstarted node that is safe to repeat.
             self.in_flight = Some(node_id);
             self.write_checkpoint(ctx)?;
-            let outputs = executor.execute(&node, &inputs, ctx).await?;
+            let outputs = if node.kind == "OversightCheckpoint" {
+                self.oversight_checkpoint(&node, &active_bp, ctx).await?
+            } else {
+                executor.execute(&node, &inputs, ctx).await?
+            };
             self.in_flight = None;
             if matches!(node.kind.as_str(), "Validator" | "LspCheck") {
                 let passed = node

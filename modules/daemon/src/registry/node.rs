@@ -123,6 +123,7 @@ impl NodeRegistry {
         // Flow support.
         registry.register(Box::new(n::DelayExecutor));
         registry.register(Box::new(n::RequestApprovalExecutor));
+        registry.register(Box::new(n::OversightCheckpointExecutor));
         // Frame-scoped variables.
         registry.register(Box::new(n::VariableSetExecutor));
         registry.register(Box::new(n::VariableGetExecutor));

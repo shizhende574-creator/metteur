@@ -15,6 +15,7 @@ mod checkpointing;
 mod edges;
 mod events;
 mod foreach;
+mod oversight;
 mod frames;
 mod lifecycle;
 mod retry;

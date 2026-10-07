@@ -203,6 +203,9 @@ pub fn builtin_signature(kind: &str) -> Option<NodeSignature> {
             "Score with node.data.threshold (default 1), or Result with node.data.success_criteria."
         }
         "LspCheck" => "Path or node.data.paths; node.data.skip_if_unavailable defaults to true.",
+        "OversightCheckpoint" => {
+            "node.data.async defaults to false. Async returns pending; synchronous gates preserve the actual review verdict and require disposition on failure or unhandled concern."
+        }
         "ContextRelease" => {
             "Select Paths, Patterns, Tools, or node.data.all; node.data.keep_recent is retained."
         }
@@ -401,6 +404,7 @@ pub fn known_kinds() -> Vec<&'static str> {
         "Switch",
         "ForEach",
         "RequestApproval",
+        "OversightCheckpoint",
         "CallLLM",
         "Tool",
         "Validator",
@@ -723,6 +727,13 @@ fn template(kind: &str) -> Option<Vec<PinSignature>> {
             pins.push(do_("Problems", DataType::List(Box::new(DataType::Json))));
             pins
         }
+        "OversightCheckpoint" => {
+            let mut pins = exec(true);
+            for name in ["ReviewId", "Status", "Verdict", "Notes"] {
+                pins.push(do_(name, DataType::String));
+            }
+            pins
+        }
         "RequestApproval" => {
             let mut pins = vec![i("x-in")];
             pins.push(PinSignature {
@@ -892,7 +903,12 @@ fn template(kind: &str) -> Option<Vec<PinSignature>> {
 pub fn node_type_of(kind: &str) -> NodeType {
     match kind {
         "Start" | "End" | "FunctionEntry" | "FunctionExit" => NodeType::Event,
-        "Branch" | "Switch" | "ForEach" | "RequestApproval" | "LspCheck" => NodeType::Control,
+        "Branch"
+        | "Switch"
+        | "ForEach"
+        | "RequestApproval"
+        | "LspCheck"
+        | "OversightCheckpoint" => NodeType::Control,
         "Add" | "Subtract" | "Multiply" | "Divide" | "Modulo" | "Power" | "Min" | "Max" | "Abs"
         | "Round" | "Equal" | "NotEqual" | "Greater" | "Less" | "GreaterEqual" | "LessEqual"
         | "And" | "Or" | "Xor" | "Not" | "Concat" | "Length" | "Upper" | "Lower" | "Trim"

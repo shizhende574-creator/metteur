@@ -48,6 +48,10 @@ pub struct Review {
     pub finished_at: Option<u64>,
     pub summary: String,
     pub verdict: Option<String>,
+    #[serde(default)]
+    pub model_verdict: Option<String>,
+    #[serde(default)]
+    pub human_dispositions: Vec<serde_json::Value>,
     pub notes: Vec<String>,
     pub actual_action_refs: Vec<String>,
     #[serde(default)]
@@ -111,6 +115,8 @@ fn enqueue(
             finished_at: None,
             summary: String::new(),
             verdict: None,
+            model_verdict: None,
+            human_dispositions: vec![],
             notes: vec![],
             actual_action_refs: vec![],
             work: Work::default(),
@@ -235,7 +241,7 @@ pub(crate) fn checkpoint_locked(db: &Db, cp: &ExecutionCheckpoint) -> DaemonResu
     Ok(())
 }
 /// Explicit trusted triggers, including future checkpoint and circuit ownership.
-pub fn trigger(db: &Db, run: Uuid, reason: &str, at: u64) -> DaemonResult<()> {
+pub fn trigger(db: &Db, run: Uuid, reason: &str, at: u64) -> DaemonResult<Uuid> {
     if !matches!(reason, "interval" | "checkpoint" | "circuit") {
         return Err(error("unknown oversight trigger"));
     }
@@ -245,7 +251,10 @@ pub fn trigger(db: &Db, run: Uuid, reason: &str, at: u64) -> DaemonResult<()> {
         return Err(error("review scheduler closed"));
     }
     enqueue(&mut s, run, reason, [], reason != "interval", at);
-    save(db, run, &s)
+    let id =
+        s.reviews.iter().find(|r| r.status == Status::Pending).expect("enqueued review").review_id;
+    save(db, run, &s)?;
+    Ok(id)
 }
 pub fn due_at(schedule: &Schedule) -> Option<u64> {
     if schedule.closed || schedule.reviews.iter().any(|r| r.status == Status::Running) {
@@ -336,6 +345,7 @@ pub fn finish(db: &Db, run: Uuid, id: Uuid, outcome: Outcome) -> DaemonResult<Re
         .ok_or_else(|| error("stale review completion"))?;
     r.status = status;
     r.summary = summary;
+    r.model_verdict = verdict.map(str::to_string);
     r.verdict = if r.status == Status::Completed && !r.actual_action_refs.is_empty() {
         Some("action_taken".into())
     } else {
@@ -410,4 +420,26 @@ pub(crate) fn close_locked(db: &Db, run: Uuid) -> DaemonResult<()> {
 pub fn close(db: &Db, run: Uuid) -> DaemonResult<()> {
     let _gate = db.oversight_gate.lock().map_err(|_| error("oversight lock poisoned"))?;
     close_locked(db, run)
+}
+
+/// Only a fresh broker reply can record a gate disposition; the report is unchanged.
+pub(crate) fn disposition(
+    db: &Db,
+    run: Uuid,
+    id: Uuid,
+    node: Uuid,
+    continued: bool,
+) -> DaemonResult<()> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
+    let mut s = load(db, run)?.ok_or_else(|| error("Review unavailable"))?;
+    if s.closed {
+        return Err(error("Review closed"));
+    }
+    let r = s
+        .reviews
+        .iter_mut()
+        .find(|r| r.review_id == id)
+        .ok_or_else(|| error("Review unavailable"))?;
+    r.human_dispositions.push(serde_json::json!({"node_id":node,"at_ms":now(),"action":if continued {"continue_without_validation"} else {"retry_review"}}));
+    save(db, run, &s)
 }

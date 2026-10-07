@@ -1,6 +1,11 @@
 /** Show the exact server-bound plan change on both approval surfaces. */
 export function blueprintApproval(payload: Record<string, unknown>) {
   const type = payload.request_type
+  if (type === 'oversight_gate') return {
+    title: 'Review gate needs your decision',
+    detail: 'Allow once to continue without changing the review conclusion. Deny once to retry the review. Stop cancels the run.',
+    command: JSON.stringify({ reviewId: payload.review_id, status: payload.status, verdict: payload.verdict, summary: payload.summary }, null, 2),
+  }
   if (type === 'oversight_control') return {
     title: payload.tool === 'CancelRun' ? 'Confirm cancellation of this run' : 'Confirm pause of this run',
     detail: `${typeof payload.summary === 'string' ? payload.summary : ''} This is a separate confirmation for one specific action. ${typeof payload.rollback_notice === 'string' ? payload.rollback_notice : ''}`,

@@ -188,3 +188,17 @@ test('an applied cancellation displays incomplete file rollback rather than veri
   await expect(panel.getByText('b.txt · Reverted')).toBeVisible()
   await expect(panel.getByText('Recorded file rollback completed')).toHaveCount(0)
 })
+
+
+test('gate dispositions remain separate from model conclusions and action status', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [{ review_id: 'gate-review', status: 'completed', verdict: 'action_taken', model_verdict: 'concern', human_dispositions: [{ node_id: 'gate', at_ms: 1, action: 'continue_without_validation' }], summary: 'Still needs validation', source_request_ids: [], triggers: ['checkpoint'], actual_action_refs: [], work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, usage: [] }] } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Supervisor reviews' })
+  await expect(panel.getByText('Model conclusion: concern')).toBeVisible()
+  await expect(panel.getByText('Human disposition: continue without validation')).toBeVisible()
+  await expect(panel.getByText('action taken', { exact: true })).toBeVisible()
+})

@@ -87,6 +87,10 @@ pub async fn start(ctx: &ExecutionContext) -> Option<Runtime> {
                             break;
                         };
                         emit(&events, &review);
+                        let config = match &actions.config {
+                            Some(current) => current.read().await.clone(),
+                            None => config.clone(),
+                        };
                         let result=match super::review::client(&config,&factory) {
                         Ok((key,client))=>super::review::evaluate_with_actions(&db,&review,&config,&key,client.as_ref(), Some(&mut actions)).await,
                         Err(_)=>scheduler::finish(&db,run,review.review_id,scheduler::Outcome{status:scheduler::Status::Failed,summary:"Supervisor model is unavailable; configure oversight.model or the workspace default model.".into(),verdict:None,notes:vec![]}),

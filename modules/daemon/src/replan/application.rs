@@ -311,7 +311,17 @@ pub(crate) fn commit_boundary(
         if checkpoint.status != RunStatus::Running {
             state.pending = None;
         }
-        if checkpoint.in_flight.is_some() {
+        // The interpreter owns a synchronous oversight gate boundary. No node
+        // effects are in flight there; the gate itself cannot be edited.
+        let oversight_gate = checkpoint.in_flight.is_some_and(|id| {
+            checkpoint
+                .view
+                .root
+                .as_ref()
+                .and_then(|bp| bp.node(id))
+                .is_some_and(|node| node.kind == "OversightCheckpoint")
+        });
+        if checkpoint.in_flight.is_some() && !oversight_gate {
             None
         } else {
             state.pending.take()
@@ -435,3 +445,7 @@ fn commit(
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn has_pending(ctx: &ExecutionContext) -> bool {
+    ctx.blueprint_apply.lock().pending.is_some()
+}

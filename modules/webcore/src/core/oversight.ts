@@ -3,6 +3,8 @@ export interface OversightReview {
   run_id: string
   status: string
   verdict: string | null
+  model_verdict?: string | null
+  human_dispositions?: Array<{ node_id: string; at_ms: number; action: string }>
   summary: string
   source_request_ids: string[]
   triggers: string[]
