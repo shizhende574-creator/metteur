@@ -525,3 +525,192 @@ async fn review_timeout_withdraws_approval_and_model_authority_fields_are_reject
         }
     }
 }
+
+#[tokio::test]
+async fn model_pause_and_cancel_require_confirmation_even_with_forwarded_authority() {
+    use crate::oversight::{control, requests, scheduler};
+    for kind in ["PauseRun", "CancelRun"] {
+        let (mut ctx, _, _) = setup();
+        let review = supervisor(&mut ctx, "autonomous");
+        let run = ctx.run_id;
+        let db = db(&ctx).unwrap().clone();
+        let broker = ctx.approvals.clone().unwrap();
+        let pause = ctx.pause_requested.clone();
+        let cancel = ctx.cancel_requested.clone();
+        if kind == "CancelRun" {
+            pause.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        ctx.events = Some(tx);
+        let (result, ()) =
+            tokio::join!(control::propose(&mut ctx, review, kind, "User asked to stop"), async {
+                let crate::execution::ExecutionEvent::ApprovalRequested {
+                    request_id,
+                    detail,
+                    ..
+                } = rx.recv().await.unwrap()
+                else {
+                    panic!("approval missing")
+                };
+                let detail: serde_json::Value = serde_json::from_str(&detail).unwrap();
+                assert_eq!(detail["dangerous"], kind == "CancelRun");
+                assert_eq!(detail["source_request_ids"].as_array().unwrap().len(), 1);
+                assert!(!cancel.load(std::sync::atomic::Ordering::SeqCst));
+                assert_eq!(
+                    requests::load(&db, run).unwrap().requests[0].state,
+                    requests::State::AwaitingConfirmation
+                );
+                broker
+                    .respond(&request_id, Decision::Allow, Scope::Once, &Default::default())
+                    .unwrap();
+                assert!(
+                    broker
+                        .respond(&request_id, Decision::Allow, Scope::Once, &Default::default())
+                        .is_err()
+                );
+            });
+        result.unwrap();
+        assert!(if kind == "CancelRun" {
+            ctx.cancel_requested.load(std::sync::atomic::Ordering::SeqCst)
+        } else {
+            ctx.pause_requested.load(std::sync::atomic::Ordering::SeqCst)
+        });
+        assert_eq!(requests::load(&db, run).unwrap().requests[0].state, requests::State::Applied);
+        let report = &scheduler::load(&db, run).unwrap().unwrap().reviews[0];
+        assert_eq!(report.status, scheduler::Status::Completed);
+        assert_eq!(report.verdict.as_deref(), Some("action_taken"));
+        assert!(report.actual_action_refs.iter().any(|s| s.starts_with("control:")));
+        assert!(control::propose(&mut ctx, review, kind, "Repeat").await.is_err());
+    }
+}
+#[tokio::test]
+async fn denied_expired_stale_and_broader_scope_control_never_set_flags() {
+    use crate::oversight::control;
+    for mode in ["deny", "timeout", "stale", "broad"] {
+        let (mut ctx, sink, mut cp) = setup();
+        let review = supervisor(&mut ctx, "assisted");
+        let broker = ctx.approvals.clone().unwrap();
+        if mode == "timeout" {
+            assert!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(20),
+                    control::propose(&mut ctx, review, "CancelRun", "Cancel")
+                )
+                .await
+                .is_err()
+            );
+            assert!(broker.pending_ids().is_empty());
+        } else {
+            let (result, ()) =
+                tokio::join!(control::propose(&mut ctx, review, "CancelRun", "Cancel"), async {
+                    while broker.pending_ids().is_empty() {
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                    if mode == "stale" {
+                        cp.pending.clear();
+                        sink.write(&cp).unwrap();
+                    }
+                    let id = broker.pending_ids()[0].clone();
+                    broker
+                        .respond(
+                            &id,
+                            if mode == "deny" {
+                                Decision::Deny
+                            } else {
+                                Decision::Allow
+                            },
+                            if mode == "broad" {
+                                Scope::Run
+                            } else {
+                                Scope::Once
+                            },
+                            &Default::default(),
+                        )
+                        .unwrap();
+                });
+            assert!(result.is_err());
+        }
+        assert!(!ctx.cancel_requested.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!ctx.pause_requested.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id)
+                .unwrap()
+                .unwrap()
+                .reviews[0]
+                .actual_action_refs
+                .is_empty()
+        );
+    }
+}
+#[tokio::test]
+async fn direct_cancel_bypasses_pending_supervisor_and_zero_budget() {
+    let (mut ctx, _, _) = setup();
+    let review = supervisor(&mut ctx, "assisted");
+    ctx.config
+        .as_ref()
+        .unwrap()
+        .write()
+        .await
+        .extra
+        .insert("oversight".into(), serde_json::json!({"run_token_budget":0}));
+    let broker = ctx.approvals.clone().unwrap();
+    let cancel = ctx.cancel_requested.clone();
+    let (result, ()) = tokio::join!(
+        crate::oversight::control::propose(&mut ctx, review, "PauseRun", "Pause"),
+        async {
+            while broker.pending_ids().is_empty() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            // The same direct-control primitive used by CancelExecution; no review/budget wait.
+            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            broker.close();
+        }
+    );
+    assert!(result.is_err());
+    assert!(ctx.cancel_requested.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(!ctx.pause_requested.load(std::sync::atomic::Ordering::SeqCst));
+}
+#[test]
+fn cancellation_result_preserves_partial_conflicts_and_retained_blueprint_operations() {
+    let (mut ctx, _, _) = setup();
+    supervisor(&mut ctx, "assisted");
+    let conflict = ctx.workspace_root.join("conflict.txt");
+    let restored = ctx.workspace_root.join("restored.txt");
+    std::fs::write(&conflict, "external change").unwrap();
+    std::fs::write(&restored, "written").unwrap();
+    ctx.transaction_log.record_file_write(
+        conflict.clone(),
+        Some(b"before".to_vec()),
+        b"written".to_vec(),
+    );
+    ctx.transaction_log.record_file_write(
+        restored.clone(),
+        Some(b"before".to_vec()),
+        b"written".to_vec(),
+    );
+    ctx.transaction_log.record_blueprint_application(Uuid::new_v4());
+    let error = ctx.transaction_log.rollback_after(0).unwrap_err().to_string();
+    crate::oversight::control::record_result(&ctx, true, None, Some(error)).unwrap();
+    let result = crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id)
+        .unwrap()
+        .unwrap()
+        .cancel_result
+        .unwrap();
+    assert!(result.error.unwrap().contains("restored 1"));
+    assert_eq!(result.files.len(), 2);
+    assert_eq!(result.files[0]["phase"], "Not reverted");
+    assert_eq!(result.files[1]["phase"], "Reverted");
+    assert_eq!(std::fs::read(conflict).unwrap(), b"external change");
+    assert_eq!(std::fs::read(restored).unwrap(), b"before");
+}
+
+#[tokio::test]
+async fn approval_run_closure_wakes_existing_and_late_observers_without_polling() {
+    let broker = Arc::new(ApprovalBroker::new());
+    let observer = broker.clone();
+    let waiting = tokio::spawn(async move { observer.closed().await });
+    tokio::task::yield_now().await;
+    broker.close();
+    tokio::time::timeout(std::time::Duration::from_secs(1), waiting).await.unwrap().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), broker.closed()).await.unwrap();
+}

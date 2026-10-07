@@ -73,6 +73,11 @@ struct Edits {
     summary: String,
     edits: Value,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Control {
+    summary: String,
+}
 fn args<T: serde::de::DeserializeOwned>(value: &Value) -> DaemonResult<T> {
     serde_json::from_value(value.clone()).map_err(|_| err("Invalid supervisor tool arguments"))
 }
@@ -166,6 +171,16 @@ impl Session<'_> {
                     self.anon.anonymize(&blackboard::safe_value(&value, 0).to_string()).await;
                 Ok(json!({"summary":text.chars().take(24000).collect::<String>(),"bounded":true}))
             }
+            "PauseRun" | "CancelRun" => {
+                let arguments = args::<Control>(&call.arguments)?;
+                bounded(&arguments.summary)?;
+                let ctx = self
+                    .actions
+                    .as_deref_mut()
+                    .ok_or_else(|| err("No action adapter available"))?;
+                super::control::propose(ctx, self.review.review_id, &call.name, &arguments.summary)
+                    .await
+            }
             "ProposeBlueprintEdits" => {
                 let arguments = args::<Edits>(&call.arguments)?;
                 bounded(&arguments.summary)?;
@@ -214,6 +229,11 @@ impl Session<'_> {
         let mut definitions = tools();
         if self.actions.is_some() && self.settings.mode != "off" {
             definitions.push(ToolDefinition{name:"ProposeBlueprintEdits".into(),description:"Propose one concrete change per review to unexecuted nodes. Edits use existing operations: {op:set_pin,match:{kind,nth},pin,value} or {op:set_data,match:{kind,nth},data}. A separate per-proposal user approval is always required, including concierge requests and autonomous configuration. Confirmation only stages application at a safe boundary.".into(),parameters:json!({"type":"object","properties":{"summary":{"type":"string"},"edits":{"type":"array","items":{"type":"object"}}},"required":["summary","edits"],"additionalProperties":false})});
+        }
+        if self.actions.is_some() && self.settings.mode != "off" {
+            for name in ["PauseRun", "CancelRun"] {
+                definitions.push(ToolDefinition{name:name.into(),description:"Request one concrete run control after independent per-proposal user confirmation. CancelRun is always dangerous and may roll back recorded files; command/network effects remain. Chat text never supplies approval. A successful control ends this review.".into(),parameters:json!({"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false})});
+            }
         }
         for _ in 0..self.settings.max_review_iterations {
             checkpoint(self.db, self.review.run_id)?;
@@ -288,6 +308,20 @@ impl Session<'_> {
             context.push_message(message);
             for call in &response.tool_calls {
                 let value = self.tool(call).await?;
+                if let Some(done) = scheduler::load(self.db, self.review.run_id)?.and_then(|s| {
+                    s.reviews.into_iter().find(|r| {
+                        r.review_id == self.review.review_id
+                            && r.status == Status::Completed
+                            && !r.actual_action_refs.is_empty()
+                    })
+                }) {
+                    return Ok(Outcome {
+                        status: Status::Completed,
+                        summary: done.summary,
+                        verdict: Some("concern".into()),
+                        notes: self.work.notes.clone(),
+                    });
+                }
                 scheduler::record_work(
                     self.db,
                     self.review.run_id,
@@ -354,5 +388,14 @@ pub(crate) async fn evaluate_with_actions(
             }
         }
     };
+    if let Some(done) = scheduler::load(db, review.run_id)?.and_then(|s| {
+        s.reviews.into_iter().find(|r| {
+            r.review_id == review.review_id
+                && r.status == Status::Completed
+                && !r.actual_action_refs.is_empty()
+        })
+    }) {
+        return Ok(done);
+    }
     scheduler::finish(db, review.run_id, review.review_id, outcome)
 }

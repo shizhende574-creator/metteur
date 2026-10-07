@@ -56,6 +56,8 @@ impl Interpreter {
         let cancelled = matches!(&result, Err(DaemonError::Interrupted(_)));
         let rollback_on_cancel = self.should_rollback_on_cancel(ctx);
         let mut rolled_back = false;
+        let mut restored_operations = None;
+        let mut rollback_error = None;
         if cancelled && rollback_on_cancel {
             // Rollback can fail after restoring a prefix; none of the old results
             // may be advertised as currently valid in either outcome.
@@ -66,6 +68,7 @@ impl Interpreter {
             match ctx.transaction_log.rollback_after(0) {
                 Ok(undone) => {
                     rolled_back = true;
+                    restored_operations = Some(undone);
                     ctx.audit(
                         "execution.cancel_rollback",
                         serde_json::json!({
@@ -78,6 +81,7 @@ impl Interpreter {
                     });
                 }
                 Err(err) => {
+                    rollback_error = Some(err.to_string());
                     ctx.audit(
                         "execution.cancel_rollback_failed",
                         serde_json::json!({
@@ -94,6 +98,9 @@ impl Interpreter {
                     result = Err(DaemonError::Interrupted(message));
                 }
             }
+        }
+        if cancelled && let Err(error) = crate::oversight::control::record_result(ctx, rollback_on_cancel, restored_operations, rollback_error) {
+            tracing::warn!(%error, "Cancel outcome could not be recorded");
         }
         let status = match &result {
             Ok(()) => {

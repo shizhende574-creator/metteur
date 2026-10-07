@@ -62,40 +62,54 @@ pub async fn start(ctx: &ExecutionContext) -> Option<Runtime> {
         let run = ctx.run_id;
         let factory = ctx.llm_factory.clone();
         let events = ctx.events.clone();
+        let broker = ctx.approvals.clone();
         tokio::spawn(async move {
-            loop {
-                let notified = db.oversight_notify.notified();
-                tokio::pin!(notified);
-                notified.as_mut().enable();
-                let Ok(Some(state)) = scheduler::load(&db, run) else {
-                    break;
-                };
-                if state.closed {
-                    break;
-                }
-                let due = scheduler::due_at(&state);
-                if due.is_some_and(|at| at <= scheduler::now()) {
-                    let Ok(Some(review)) = scheduler::claim(&db, run, scheduler::now()) else {
+            let process = async {
+                loop {
+                    if actions.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                        if let Err(error) = scheduler::close(&db, run) {
+                            tracing::warn!(%error, "Review closure unavailable");
+                        }
+                        break;
+                    }
+                    let notified = db.oversight_notify.notified();
+                    tokio::pin!(notified);
+                    notified.as_mut().enable();
+                    let Ok(Some(state)) = scheduler::load(&db, run) else {
                         break;
                     };
-                    emit(&events, &review);
-                    let result=match super::review::client(&config,&factory) {
+                    if state.closed {
+                        break;
+                    }
+                    let due = scheduler::due_at(&state);
+                    if due.is_some_and(|at| at <= scheduler::now()) {
+                        let Ok(Some(review)) = scheduler::claim(&db, run, scheduler::now()) else {
+                            break;
+                        };
+                        emit(&events, &review);
+                        let result=match super::review::client(&config,&factory) {
                         Ok((key,client))=>super::review::evaluate_with_actions(&db,&review,&config,&key,client.as_ref(), Some(&mut actions)).await,
                         Err(_)=>scheduler::finish(&db,run,review.review_id,scheduler::Outcome{status:scheduler::Status::Failed,summary:"Supervisor model is unavailable; configure oversight.model or the workspace default model.".into(),verdict:None,notes:vec![]}),
                     };
-                    match result {
-                        Ok(review) => emit(&events, &review),
-                        Err(error) => {
-                            tracing::warn!(%error,"Review completion unavailable");
+                        match result {
+                            Ok(review) => emit(&events, &review),
+                            Err(error) => {
+                                tracing::warn!(%error,"Review completion unavailable");
+                            }
                         }
+                        continue;
                     }
-                    continue;
+                    if let Some(at) = due {
+                        tokio::select! { _=&mut notified=>{}, _=tokio::time::sleep(std::time::Duration::from_millis(at.saturating_sub(scheduler::now())))=>{} }
+                    } else {
+                        notified.await;
+                    }
                 }
-                if let Some(at) = due {
-                    tokio::select! { _=&mut notified=>{}, _=tokio::time::sleep(std::time::Duration::from_millis(at.saturating_sub(scheduler::now())))=>{} }
-                } else {
-                    notified.await;
-                }
+            };
+            if let Some(broker) = broker {
+                tokio::select! {_ = process => {}, _ = broker.closed() => {if let Err(error)=scheduler::close(&db,run) {tracing::warn!(%error,"Review closure unavailable");}}}
+            } else {
+                process.await;
             }
         })
     };

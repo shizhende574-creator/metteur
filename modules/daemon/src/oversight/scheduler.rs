@@ -60,6 +60,8 @@ pub struct Schedule {
     pub closed: bool,
     pub settings: OversightConfig,
     pub reviews: Vec<Review>,
+    #[serde(default)]
+    pub cancel_result: Option<super::control::CancelResult>,
     last_started: Option<u64>,
     finished_nodes: BTreeSet<u64>,
 }
@@ -80,7 +82,7 @@ pub fn load(db: &Db, run: Uuid) -> DaemonResult<Option<Schedule>> {
         .map(|v| serde_json::from_slice(&v).map_err(|e| DaemonError::Serialization(e.to_string())))
         .transpose()
 }
-fn save(db: &Db, run: Uuid, value: &Schedule) -> DaemonResult<()> {
+pub(crate) fn save(db: &Db, run: Uuid, value: &Schedule) -> DaemonResult<()> {
     db.put_durable(cf::EXECUTION_STATE, key(run).as_bytes(), &encode(value)?)?;
     db.oversight_notify.notify_one();
     Ok(())

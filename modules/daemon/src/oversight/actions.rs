@@ -136,6 +136,38 @@ pub(crate) fn transition(
     refs: Vec<String>,
     reason: &str,
 ) -> DaemonResult<()> {
+    transition_with(
+        db,
+        run,
+        id,
+        Change {
+            state,
+            refs,
+            reason,
+            completes_review: false,
+        },
+        || Ok(()),
+    )
+}
+struct Change<'a> {
+    state: State,
+    refs: Vec<String>,
+    reason: &'a str,
+    completes_review: bool,
+}
+fn transition_with(
+    db: &Db,
+    run: Uuid,
+    id: Uuid,
+    change: Change<'_>,
+    apply: impl FnOnce() -> DaemonResult<()>,
+) -> DaemonResult<()> {
+    let Change {
+        state,
+        refs,
+        reason,
+        completes_review,
+    } = change;
     let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
     let mut s = scheduler::load(db, run)?.ok_or_else(|| error("Review unavailable"))?;
     if s.closed {
@@ -161,6 +193,19 @@ pub(crate) fn transition(
     if q.closed {
         return Err(error("Requests closed"));
     }
+    if completes_review && !matches!(p.kind.as_str(), "PauseRun" | "CancelRun") {
+        return Err(error("Not a control proposal"));
+    }
+    for source in &p.source_request_ids {
+        if !q
+            .requests
+            .iter()
+            .any(|r| r.request_id == *source && r.proposals.iter().any(|p| p.proposal_id == id))
+        {
+            return Err(error("Proposal lineage missing"));
+        }
+    }
+    apply()?;
     p.state = state;
     p.result_refs = refs.clone();
     p.reason = reason.into();
@@ -184,7 +229,36 @@ pub(crate) fn transition(
             r.verdict = Some("action_taken".into());
         }
     }
+    if completes_review {
+        r.status = Status::Completed;
+        r.finished_at = Some(scheduler::now());
+        r.summary = reason.into();
+        r.verdict = Some("action_taken".into());
+    }
     save(db, run, &s, &q)
+}
+pub(crate) fn apply_control(
+    db: &Db,
+    run: Uuid,
+    id: Uuid,
+    kind: &str,
+    apply: impl FnOnce() -> DaemonResult<()>,
+) -> DaemonResult<()> {
+    let reason = format!(
+        "{kind} requested after independent user confirmation. Inspect the execution outcome for completion and rollback results."
+    );
+    transition_with(
+        db,
+        run,
+        id,
+        Change {
+            state: State::Applied,
+            refs: vec![format!("control:{kind}:{id}"), format!("run:{run}")],
+            reason: &reason,
+            completes_review: true,
+        },
+        apply,
+    )
 }
 pub(crate) struct Guard {
     db: Db,

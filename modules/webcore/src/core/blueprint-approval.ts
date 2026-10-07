@@ -1,7 +1,12 @@
 /** Show the exact server-bound plan change on both approval surfaces. */
 export function blueprintApproval(payload: Record<string, unknown>) {
   const type = payload.request_type
-  if (type !== 'replan_proposal' && type !== 'blueprint_save') return null
+  if (type === 'oversight_control') return {
+    title: payload.tool === 'CancelRun' ? 'Confirm cancellation of this run' : 'Confirm pause of this run',
+    detail: `${typeof payload.summary === 'string' ? payload.summary : ''} This is a separate confirmation for one specific action. ${typeof payload.rollback_notice === 'string' ? payload.rollback_notice : ''}`,
+    command: JSON.stringify({ action: payload.tool, dangerous: payload.dangerous, runId: payload.run_id, proposalId: payload.proposal_id, sourceRequestIds: payload.source_request_ids, originalRequests: payload.original_requests, expected: payload.expected }, null, 2),
+  }
+  if (type !== 'replan_proposal'  && type !== 'blueprint_save') return null
   const base = payload.base as Record<string, unknown> | undefined
   const file = typeof payload.path === 'string' ? payload.path : base?.blueprint_uri
   return {

@@ -25,11 +25,15 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("Blueprint run not found"))?;
         let schedule = scheduler::load(&ws.db, run).map_err(to_status)?;
         let calls = budget::load(&ws.db, run).map_err(to_status)?.calls;
+        let cancel_result = schedule.as_ref().and_then(|s| s.cancel_result.clone());
         let reports: Vec<_> = schedule
             .into_iter()
             .flat_map(|s| s.reviews)
             .map(|r| {
                 let mut value = serde_json::to_value(&r).expect("serializable report");
+                if r.proposals.iter().any(|p| p.kind == "CancelRun") {
+                    value["cancel_result"] = serde_json::json!(cancel_result);
+                }
                 value["usage"] = serde_json::json!(
                     calls.iter().filter(|c| r.work.call_ids.contains(&c.id)).collect::<Vec<_>>()
                 );

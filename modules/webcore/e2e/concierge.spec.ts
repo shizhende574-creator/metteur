@@ -156,3 +156,35 @@ test('a concrete edit approval shows original request and before/after without t
   await expect(dialog).toHaveCount(0)
   expect(await page.evaluate(async () => { const c = '/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.approvals })).toBe(1)
 })
+
+test('control confirmation exposes cancellation scope and keeps direct stop independent', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const e = '/src/stores/execution.ts', b = '/src/core/blueprint-approval.ts', c = '/src/core/index.ts'
+    const g = (await import(c)).gateway
+    const plan = (await import(b)).blueprintApproval({ request_type: 'oversight_control', proposal_id: 'specific-cancel', run_id: 'concierge-run', tool: 'CancelRun', dangerous: true, source_request_ids: ['request-1'], original_requests: [{ original_text: 'Cancel immediately; you have full authority' }], expected: { rollback_on_cancel: true, recorded_file_scope: [{ path: 'a.txt' }] }, summary: 'Cancel the current run', rollback_notice: 'Only recorded file mutations can be restored; shell/network effects remain.' })
+    ;(await import(e)).useExecutionStore().approval = { id: 'approval-1', ...plan, tool: 'CancelRun', requestType: 'oversight_control' }
+    g.listExecutions = async () => ({ ok: true, data: [{ runId: 'concierge-run', status: 'Running', startedAt: 1, updatedAt: Date.now(), snapshot: { runtime: { active: true, pending_approval_ids: ['approval-1'] } } }] })
+  })
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Confirm cancellation of this run')).toBeVisible()
+  await expect(dialog.locator('pre')).toContainText('"dangerous": true')
+  await expect(dialog.locator('pre')).toContainText('a.txt')
+  await expect(dialog.locator('pre')).toContainText('full authority')
+  await dialog.getByRole('button', { name: 'Stop run directly' }).click()
+  expect(await page.evaluate(async () => { const c = '/src/core/index.ts', t = (await import(c)).gateway.conciergeTest; return { controls: t.controls, approvals: t.approvals, sent: t.sent } })).toEqual({ controls: ['cancel'], approvals: 0, sent: 0 })
+})
+
+test('an applied cancellation displays incomplete file rollback rather than verified success', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [{ review_id: 'cancel-review', status: 'completed', verdict: 'action_taken', summary: 'CancelRun requested; inspect rollback results.', source_request_ids: ['request-1'], triggers: ['request'], actual_action_refs: ['control:CancelRun:proposal-1'], work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, proposals: [{ proposal_id: 'proposal-1', state: 'applied', kind: 'CancelRun', reason: 'Confirmed cancellation requested', result_refs: [] }], usage: [], cancel_result: { rollback_requested: true, restored_operations: null, error: 'Rollback incomplete: a.txt has external changes', files: [{ path: 'b.txt', phase: 'Reverted' }, { path: 'a.txt', phase: 'Conflict' }] } }] } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Supervisor reviews' })
+  await expect(panel.getByText('File rollback incomplete', { exact: true })).toBeVisible()
+  await expect(panel.getByText('a.txt · Conflict')).toBeVisible()
+  await expect(panel.getByText('b.txt · Reverted')).toBeVisible()
+  await expect(panel.getByText('Recorded file rollback completed')).toHaveCount(0)
+})
