@@ -8,6 +8,7 @@ export interface OversightReview {
   triggers: string[]
   finished_at: number | null
   actual_action_refs: string[]
+  proposals?: Array<{ proposal_id: string; state: string; reason: string; kind: string; result_refs: string[] }>
   work: { model: string; answers: string[]; notes: string[]; evidence: Array<{ entry_id: string; node_id: string | null; scope: string | null }> }
   usage?: Array<{ id: string; model: string; charged: number; state: string; cost_micros: number | null; currency: string }>
 }

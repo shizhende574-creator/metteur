@@ -41,6 +41,7 @@ async function lookup(entry: string) {
       <p v-for="(answer, i) in report.work.answers" :key="`a${i}`">Response: {{ answer }}</p>
       <p v-if="!report.usage?.length">No provider call recorded.</p>
       <p v-for="call in report.usage" :key="call.id">{{ call.model }} · {{ call.charged.toLocaleString() }} {{ call.state === 'reported' ? 'tokens' : 'reserved tokens · usage unknown' }}<span v-if="call.cost_micros !== null"> · {{ call.cost_micros / 1000000 }} {{ call.currency }}</span></p>
+      <p v-for="proposal in report.proposals" :key="proposal.proposal_id">{{ proposal.kind }} · {{ proposal.state.replaceAll('_', ' ') }} · {{ proposal.reason }}</p>
       <details><summary>Evidence and request lineage</summary><code>review:{{ report.review_id }}</code><p v-for="id in report.source_request_ids" :key="id">Request: {{ id }}</p>
         <div v-for="item in report.work.evidence" :key="item.entry_id"><button @click="lookup(item.entry_id)">Read evidence · {{ item.entry_id }}</button><button v-if="item.node_id && item.scope" @click="emit('inspect', item.node_id, item.scope)">Inspect node</button></div>
         <p v-for="reference in report.actual_action_refs" :key="reference">{{ reference }}</p>

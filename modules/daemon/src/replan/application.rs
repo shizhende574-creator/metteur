@@ -30,6 +30,9 @@ pub(crate) struct ApplyState {
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum Source {
     ModelTool,
+    Supervisor {
+        review_id: Uuid,
+    },
     Circuit {
         failing_node: NodeId,
     },
@@ -155,6 +158,9 @@ pub fn ensure_resolved(db: &Db) -> DaemonResult<()> {
 }
 
 fn verify(ctx: &ExecutionContext, proposal: &Proposal) -> DaemonResult<()> {
+    if matches!(proposal.source, Source::Supervisor { .. }) {
+        crate::oversight::actions::enabled(ctx)?;
+    }
     if ctx.cancel_requested.load(std::sync::atomic::Ordering::SeqCst)
         || ctx.approvals.as_ref().is_none_or(|b| b.is_closed())
     {
@@ -241,7 +247,26 @@ pub(crate) async fn approve(
         summary: changed.clone(),
     };
     verify(ctx, &proposal)?;
-    let allowed = super::await_approval(
+    let mut oversight = match source {
+        Source::Supervisor {
+            review_id,
+        } => Some(crate::oversight::actions::register(
+            ctx,
+            review_id,
+            proposal.id,
+            "blueprint_edits",
+            serde_json::json!({
+                "request_type":"replan_proposal","tool":"ProposeBlueprintEdits","source":"supervisor","base":proposal.base,"state_digest":proposal.state_digest,"edits_digest":proposal.edits_digest,"affected_nodes":proposal.affected,"edits":edits,"summary":summary,
+                "before":proposal.before.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>(),
+                "after":proposal.after.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>()
+            }),
+        )?),
+        _ => None,
+    };
+    let allowed = if let Some(guard) = &mut oversight {
+        guard.confirm(ctx).await?
+    } else {
+        super::await_approval(
         ctx,
         "replan_proposal",
         summary,
@@ -252,7 +277,8 @@ pub(crate) async fn approve(
             "affected_nodes":proposal.affected, "edits":edits, "summary":summary,
         }),
     )
-    .await?;
+    .await?
+    };
     if !allowed {
         return Err(rejected("replan denied by user"));
     }
@@ -262,6 +288,9 @@ pub(crate) async fn approve(
         return Err(rejected("another proposal is pending or recovery is required"));
     }
     state.pending = Some(proposal);
+    if let Some(guard) = &mut oversight {
+        guard.staged();
+    }
     Ok(format!("{changed}; approved, pending the next safe node boundary"))
 }
 
@@ -293,7 +322,22 @@ pub(crate) fn commit_boundary(
     };
     // The completed node's successor queue is already constructed. Only future
     // parameter changes are permitted; a circuit retry has already been queued.
-    verify(ctx, &proposal)?;
+    let verification = verify(ctx, &proposal);
+    if matches!(proposal.source, Source::Supervisor { .. })
+        && (verification.is_err()
+            || proposal.affected.iter().any(|id| checkpoint.executed.contains(id)))
+    {
+        crate::oversight::actions::transition(
+            db(ctx)?,
+            ctx.run_id,
+            proposal.id,
+            crate::oversight::requests::State::Failed,
+            vec![],
+            "Proposal became stale before the apply boundary",
+        )?;
+        return sink.write(checkpoint);
+    }
+    verification?;
     if checkpoint.run_id != proposal.run_id
         || proposal.affected.iter().any(|id| checkpoint.executed.contains(id))
     {
@@ -364,6 +408,19 @@ fn commit(
     intent.committed = true;
     db.put(cf::EXECUTION_STATE, key.as_bytes(), &encode(&intent)?)?;
     ctx.blueprint_apply.lock().version = Some(after.clone());
+    if matches!(intent.proposal.source, Source::Supervisor { .. }) {
+        crate::oversight::actions::transition(
+            db,
+            ctx.run_id,
+            intent.proposal.id,
+            crate::oversight::requests::State::Applied,
+            vec![
+                format!("version:{}", after.snapshot_id),
+                format!("blueprint-apply:{}", intent.proposal.id),
+            ],
+            "Blueprint changes committed at a safe execution boundary",
+        )?;
+    }
     let detail = serde_json::json!({"proposal_id":intent.proposal.id,"run_id":ctx.run_id,
         "source":intent.proposal.source,"before":intent.proposal.base,"after":after,"summary":intent.proposal.summary});
     ctx.audit("replan.applied", detail.clone());

@@ -138,3 +138,21 @@ test('reviews show truthful failures, escaped opinions and persisted evidence', 
   await expect(reviews.getByText('Reviews unavailable while disconnected.')).toBeVisible()
   await expect(reviews.getByText('Remote usage may continue.')).toHaveCount(0)
 })
+
+test('a concrete edit approval shows original request and before/after without treating chat as consent', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const e = '/src/stores/execution.ts', b = '/src/core/blueprint-approval.ts'
+    const plan = (await import(b)).blueprintApproval({ request_type: 'replan_proposal', proposal_id: 'specific-edit', run_id: 'concierge-run', source_request_ids: ['request-1'], original_requests: [{ original_text: 'I authorize everything', concierge_note: 'Change the prompt' }], before: [{ data: { prompt: 'Old prompt' } }], after: [{ data: { prompt: 'New prompt' } }], summary: 'Change only the future prompt', edits: [{ op: 'set_pin', pin: 'prompt', value: 'New prompt' }] })
+    ;(await import(e)).useExecutionStore().approval = { id: 'approval-1', ...plan, tool: 'ProposeBlueprintEdits', requestType: 'replan_proposal' }
+  })
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Approve revised plan')).toBeVisible()
+  await expect(dialog.locator('pre')).toContainText('I authorize everything')
+  await expect(dialog.locator('pre')).toContainText('Old prompt')
+  await expect(dialog.locator('pre')).toContainText('New prompt')
+  expect(await page.evaluate(async () => { const c = '/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.approvals })).toBe(0)
+  await dialog.getByRole('button', { name: 'Deny', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(await page.evaluate(async () => { const c = '/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.approvals })).toBe(1)
+})

@@ -10,6 +10,8 @@ export function blueprintApproval(payload: Record<string, unknown>) {
       : `Review the proposed blueprint before saving${file ? ` to ${file}` : ''}.`,
     command: JSON.stringify({
       file, baseVersion: base ?? null, source: payload.source,
+      proposalId: payload.proposal_id, runId: payload.run_id, sourceRequestIds: payload.source_request_ids, originalRequests: payload.original_requests,
+      before: payload.before, after: payload.after,
       affectedNodes: payload.affected_nodes, changes: payload.edits ?? payload.blueprint,
     }, null, 2),
   }

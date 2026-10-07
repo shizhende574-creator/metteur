@@ -56,6 +56,7 @@ pub async fn start(ctx: &ExecutionContext) -> Option<Runtime> {
     } else {
         None
     };
+    let mut actions = ctx.child_nested();
     let worker = {
         let db = db.clone();
         let run = ctx.run_id;
@@ -79,7 +80,7 @@ pub async fn start(ctx: &ExecutionContext) -> Option<Runtime> {
                     };
                     emit(&events, &review);
                     let result=match super::review::client(&config,&factory) {
-                        Ok((key,client))=>super::review::evaluate(&db,&review,&config,&key,client.as_ref()).await,
+                        Ok((key,client))=>super::review::evaluate_with_actions(&db,&review,&config,&key,client.as_ref(), Some(&mut actions)).await,
                         Err(_)=>scheduler::finish(&db,run,review.review_id,scheduler::Outcome{status:scheduler::Status::Failed,summary:"Supervisor model is unavailable; configure oversight.model or the workspace default model.".into(),verdict:None,notes:vec![]}),
                     };
                     match result {

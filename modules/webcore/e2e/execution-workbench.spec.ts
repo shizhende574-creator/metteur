@@ -1,5 +1,37 @@
 import { test, expect } from '@playwright/test'
 
+test('concurrent node and supervisor approvals keep distinct decisions and withdraw expired requests', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Workspace path').fill('D:/metteur-demo/approval-queue')
+  await page.getByRole('button', { name: 'Open', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible()
+  const result = await page.evaluate(async () => {
+    const c = '/src/core/index.ts', e = '/src/stores/execution.ts'
+    const g = (await import(c)).gateway, execution = (await import(e)).useExecutionStore()
+    let active = false, finish!: () => void
+    const pending = ['node-approval', 'supervisor-approval'], decisions: string[] = []
+    g.listExecutions = async () => ({ ok: true, data: active ? [{ runId: 'parallel', status: 'Running', startedAt: 1, updatedAt: Date.now(), snapshot: { runtime: { active: true, pending_approval_ids: pending } } }] : [] })
+    g.executeBlueprint = async (_ws, _bp, callback) => {
+      active = true
+      for (const id of pending) callback({ nodeId: 'node', kind: 'approval_request', message: id, detail: { run_id: 'parallel', request_type: id.startsWith('supervisor') ? 'replan_proposal' : 'sandbox', summary: id } })
+      await new Promise<void>(resolve => { finish = resolve })
+      return { ok: true }
+    }
+    g.respondApproval = async (_ws, id, allow) => { decisions.push(`${id}:${allow}`); pending.splice(pending.indexOf(id), 1); return { ok: true } }
+    const task = execution.run('graph', { id: 'graph', name: 'Graph', nodes: [], edges: [] }, 'graph.blueprint')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const first = execution.approval?.id
+    await execution.respond(false)
+    const second = execution.approval?.id
+    pending.length = 0
+    await execution.reconcile()
+    const expired = execution.approval === null
+    finish(); await task
+    return { first, second, expired, decisions }
+  })
+  expect(result).toEqual({ first: 'node-approval', second: 'supervisor-approval', expired: true, decisions: ['node-approval:false'] })
+})
+
 test('Execution is a workspace tab with reusable bounded panels and a disabled concierge before a run', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Workspace path').fill('D:/metteur-demo/workbench')

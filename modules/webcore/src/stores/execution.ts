@@ -48,13 +48,21 @@ export const useExecutionStore = defineStore('execution', () => {
   watch(() => workspace.active?.path, () => {
     epoch++; query++; seen.clear(); streamActive.value = false; priorRuns = new Set()
     blueprint.value = null; sourcePath.value = ''; error.value = ''; status.value = 'idle'
-    events.value = []; nodeAudits.value = new Map(); approval.value = null; runId.value = null
+    events.value = []; nodeAudits.value = new Map(); clearApprovals(); runId.value = null
     current.value = null; connected.value = false; launching.value = false; controlBusy.value = false
     contextUsage.value = null; contextByNode.value = new Map(); tree.value = null; todos.value = []
   }, { flush: 'sync' })
   const status = ref<ExecStatus>('idle')
   const events = ref<EventLine[]>([])
   const approval = ref<ApprovalRequest | null>(null)
+  const approvalQueue: ApprovalRequest[] = []
+  let approvalRevision = 0
+  function clearApprovals() { approval.value = null; approvalQueue.length = 0; approvalRevision++ }
+  function enqueueApproval(request: ApprovalRequest) {
+    approvalRevision++
+    if (!approval.value || approval.value.id === request.id) approval.value = request
+    else if (!approvalQueue.some(item => item.id === request.id)) approvalQueue.push(request)
+  }
   /** Most recent context region breakdown (from `context` events). */
   const contextUsage = ref<ContextRegion[] | null>(null)
   const contextNode = ref<string | null>(null)
@@ -101,6 +109,25 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   function push(ev: EventLine, limit = 500) {
+      if (ev.kind === 'approval_request') {
+        const detail = (ev.detail ?? {}) as Record<string, unknown>
+        const requestType = String(detail.request_type ?? 'sandbox')
+        const plan = blueprintApproval(detail)
+        const title =
+          requestType === 'circuit_tripped'
+            ? 'Circuit breaker: allow auto-replan?'
+            : requestType === 'replan_proposal'
+              ? 'Approve revised plan'
+              : 'Approve shell command'
+        enqueueApproval({
+          id: String(detail.requestId ?? detail.approvalId ?? ev.message ?? ''),
+          title: plan?.title ?? title,
+          tool: String(detail.tool ?? ''),
+          command: plan?.command ?? ev.message,
+          detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
+          requestType,
+        })
+      }
     events.value.push(ev)
     const audit = ev.nodeId ? ensureAudit(ev.nodeId) : null
     if (ev.kind === 'started' && audit) audit.startedAt = Date.now()
@@ -132,7 +159,7 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   async function reconcile() {
-    const ws = workspace.active?.path, generation = epoch, ticket = ++query
+    const ws = workspace.active?.path, generation = epoch, ticket = ++query, approvalTicket = approvalRevision
     if (!ws || launching.value) return
     try {
       const result = await gateway.listExecutions(ws)
@@ -151,7 +178,14 @@ export const useExecutionStore = defineStore('execution', () => {
       else if (!streamActive.value) blueprint.value = null
       sourcePath.value = item.snapshot?.blueprint_version?.blueprint_uri ?? sourcePath.value
       if (item.snapshot?.error) error.value = item.snapshot.error
-      if (!runtime?.active) approval.value = null
+      if (approvalTicket === approvalRevision) {
+        if (!runtime?.active) clearApprovals()
+        else if (Array.isArray(runtime.pending_approval_ids)) {
+          const valid = new Set(runtime.pending_approval_ids)
+          for (let i = approvalQueue.length - 1; i >= 0; i--) if (!valid.has(approvalQueue[i]!.id)) approvalQueue.splice(i, 1)
+          if (approval.value && !valid.has(approval.value.id)) approval.value = approvalQueue.shift() ?? null
+        }
+      }
     } catch (e) {
       if (generation !== epoch || ticket !== query) return
       connected.value = false; error.value = String(e)
@@ -206,30 +240,12 @@ export const useExecutionStore = defineStore('execution', () => {
         }
       }
       push(ev)
-      if (ev.kind === 'approval_request') {
-        const detail = (ev.detail ?? {}) as Record<string, unknown>
-        const requestType = String(detail.request_type ?? 'sandbox')
-        const plan = blueprintApproval(detail)
-        const title =
-          requestType === 'circuit_tripped'
-            ? 'Circuit breaker: allow auto-replan?'
-            : requestType === 'replan_proposal'
-              ? 'Approve revised plan'
-              : 'Approve shell command'
-        approval.value = {
-          id: String(detail.requestId ?? detail.approvalId ?? ev.message ?? ''),
-          title: plan?.title ?? title,
-          tool: String(detail.tool ?? ''),
-          command: plan?.command ?? ev.message,
-          detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
-          requestType,
-        }
-      }
+
       },
       graph,
     ) } catch (e) { result = { ok: false as const, error: String(e) } }
     if (generation !== epoch) return
-    approval.value = null
+    clearApprovals()
     if (!result.ok && !['cancelled'].includes(status.value)) {
       status.value = 'failed'
       error.value = result.error
@@ -248,7 +264,8 @@ export const useExecutionStore = defineStore('execution', () => {
       const result = await gateway.respondApproval(ws, request.id, allow)
       if (generation !== epoch) return
       if (!result.ok) throw new Error(result.error)
-      approval.value = null
+      approvalRevision++
+      if (approval.value?.id === request.id) approval.value = approvalQueue.shift() ?? null
     } catch (e) { if (generation === epoch) error.value = String(e) }
     finally { if (generation === epoch) controlBusy.value = false }
   }

@@ -156,6 +156,7 @@ pub(crate) fn close_locked(db: &Db, run: Uuid) -> DaemonResult<()> {
     queue.closed = true;
     for request in &mut queue.requests {
         if !request.state.finished() {
+            for proposal in &mut request.proposals { if !proposal.state.finished() {proposal.state=State::ClosedUnhandled;} }
             request.state = State::ClosedUnhandled;
             request.revision += 1;
         }

@@ -52,6 +52,8 @@ pub struct Review {
     pub actual_action_refs: Vec<String>,
     #[serde(default)]
     pub work: Work,
+    #[serde(default)]
+    pub proposals: Vec<super::actions::Proposal>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Schedule {
@@ -110,6 +112,7 @@ fn enqueue(
             notes: vec![],
             actual_action_refs: vec![],
             work: Work::default(),
+            proposals: vec![],
         });
         s.reviews.len() - 1
     });
@@ -331,7 +334,11 @@ pub fn finish(db: &Db, run: Uuid, id: Uuid, outcome: Outcome) -> DaemonResult<Re
         .ok_or_else(|| error("stale review completion"))?;
     r.status = status;
     r.summary = summary;
-    r.verdict = verdict.map(str::to_string);
+    r.verdict = if r.status == Status::Completed && !r.actual_action_refs.is_empty() {
+        Some("action_taken".into())
+    } else {
+        verdict.map(str::to_string)
+    };
     r.notes = notes;
     r.finished_at = Some(now());
     let result = r.clone();
@@ -380,6 +387,15 @@ pub(crate) fn close_locked(db: &Db, run: Uuid) -> DaemonResult<()> {
     }
     s.closed = true;
     for r in &mut s.reviews {
+        for proposal in &mut r.proposals {
+            if matches!(
+                proposal.state,
+                requests::State::AwaitingConfirmation | requests::State::ApprovedPendingApply
+            ) {
+                proposal.state = requests::State::ClosedUnhandled;
+                proposal.reason = "Run closed before action completed".into();
+            }
+        }
         if matches!(r.status, Status::Pending | Status::Running) {
             r.status = Status::Cancelled;
             r.finished_at = Some(now());
