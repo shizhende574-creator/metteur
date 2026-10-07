@@ -12,6 +12,8 @@ pub struct ExecutionView {
     pub invocations: Vec<Invocation>,
     pub edges: Vec<Traversal>,
     pub sequence: u64,
+    #[serde(default)]
+    pub changes: Vec<super::blackboard::Change>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invocation {
@@ -28,6 +30,12 @@ pub struct Invocation {
     pub finished_at: Option<u64>,
     pub status: String,
     pub messages: Vec<String>,
+    #[serde(default)]
+    pub check: Option<bool>,
+    #[serde(default)]
+    pub tree_id: Option<String>,
+    #[serde(default)]
+    pub owned_frame: Option<Vec<String>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Traversal {
@@ -46,8 +54,15 @@ impl ExecutionView {
         inputs: &HashMap<PinId, Value>,
         at: u64,
     ) {
-        self.sequence += 1;
         let scope = graph.id.to_string();
+        if self
+            .invocations
+            .iter()
+            .any(|i| i.current && i.node_id == node_id && i.scope == scope && i.frame == frame)
+        {
+            self.invalidate(&[node_id], &frame, super::blackboard::ChangeKind::Retry);
+        }
+        self.sequence += 1;
         self.graphs.insert(scope.clone(), graph.clone());
         let attempt = self
             .invocations
@@ -69,6 +84,9 @@ impl ExecutionView {
             finished_at: None,
             status: "Running".into(),
             messages: Vec::new(),
+            check: None,
+            tree_id: None,
+            owned_frame: None,
         });
     }
     pub fn observe(&mut self, event: &ExecutionEvent, scope: &str, at: u64) {
@@ -114,10 +132,17 @@ impl ExecutionView {
         }
     }
     pub fn traverse(&mut self, graph: &Blueprint, edge_id: uuid::Uuid, frame: Vec<String>) {
-        let Some(edge) = graph.edges.iter().find(|edge| edge.id == edge_id) else { return };
-        let Some(source) = self.invocations.iter().rev().find(|i|
-            i.node_id == edge.source_node && i.scope == graph.id.to_string() && i.frame == frame && i.current
-        ) else { return };
+        let Some(edge) = graph.edges.iter().find(|edge| edge.id == edge_id) else {
+            return;
+        };
+        let Some(source) = self.invocations.iter().rev().find(|i| {
+            i.node_id == edge.source_node
+                && i.scope == graph.id.to_string()
+                && i.frame == frame
+                && i.current
+        }) else {
+            return;
+        };
         self.edges.push(Traversal {
             edge_id,
             scope: graph.id.to_string(),
@@ -125,12 +150,57 @@ impl ExecutionView {
             sequence: source.sequence,
         });
     }
-    pub fn invalidate(&mut self, nodes: &[NodeId], frame: &[String]) {
+    pub fn invalidate(
+        &mut self,
+        nodes: &[NodeId],
+        frame: &[String],
+        reason: super::blackboard::ChangeKind,
+    ) {
+        let children: Vec<_> = self
+            .invocations
+            .iter()
+            .filter(|i| nodes.contains(&i.node_id) && i.frame == frame)
+            .filter_map(|i| i.owned_frame.clone())
+            .collect();
+        let mut invalidates = Vec::new();
         for record in &mut self.invocations {
-            if nodes.contains(&record.node_id) && record.frame == frame {
+            if record.current
+                && ((nodes.contains(&record.node_id) && record.frame == frame)
+                    || children.iter().any(|prefix| record.frame.starts_with(prefix)))
+            {
                 record.current = false;
+                invalidates.push(record.sequence);
             }
         }
+        self.record_change(reason, invalidates, None, None);
+    }
+    pub(crate) fn record_change(
+        &mut self,
+        kind: super::blackboard::ChangeKind,
+        invalidates: Vec<u64>,
+        version: Option<VersionRef>,
+        evidence: Option<String>,
+    ) {
+        self.sequence += 1;
+        self.changes.push(super::blackboard::Change {
+            sequence: self.sequence,
+            kind,
+            invalidates,
+            version,
+            evidence,
+        });
+    }
+    pub(crate) fn invalidate_all(&mut self, reason: super::blackboard::ChangeKind) {
+        let invalidates = self
+            .invocations
+            .iter_mut()
+            .filter(|i| i.current)
+            .map(|i| {
+                i.current = false;
+                i.sequence
+            })
+            .collect();
+        self.record_change(reason, invalidates, None, None);
     }
     pub fn end(&mut self, status: &str, error: Option<&str>, at: u64) {
         for record in self.invocations.iter_mut().filter(|r| r.finished_at.is_none()) {

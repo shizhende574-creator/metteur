@@ -1,5 +1,6 @@
 //! Blueprint execution engine.
 
+pub mod blackboard;
 pub mod checkpoint;
 pub mod context;
 pub mod control;

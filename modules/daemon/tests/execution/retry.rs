@@ -236,6 +236,14 @@ async fn validator_retry_rolls_back_and_reruns_segment() {
     assert_eq!(attempts[0].attempt, 1);
     assert_eq!(attempts[1].attempt, 2);
     assert_ne!(attempts[0].outputs, attempts[1].outputs);
+    assert_eq!(attempts[0].check, Some(false));
+    assert_eq!(attempts[1].check, Some(true));
+    assert!(!attempts[0].current);
+    assert!(view.changes.iter().any(|change| matches!(
+        change.kind,
+        metteur_daemon::execution::blackboard::ChangeKind::Rollback
+    )
+        && change.invalidates.contains(&attempts[0].sequence)));
     let encoded = serde_json::to_vec(checkpoints.last().unwrap()).unwrap();
     let restored: ExecutionCheckpoint = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(restored.view.invocations.len(), 9);

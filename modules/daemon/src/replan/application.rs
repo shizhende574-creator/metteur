@@ -346,6 +346,17 @@ fn commit(
     checkpoint.transaction_log = ctx.transaction_log.entries();
     checkpoint.blueprint_version = Some(after.clone());
     checkpoint.view.root = Some(p.after.clone());
+    checkpoint.view.invalidate(
+        &p.affected,
+        &[],
+        crate::execution::blackboard::ChangeKind::BlueprintChanged,
+    );
+    checkpoint.view.record_change(
+        crate::execution::blackboard::ChangeKind::BlueprintApplied,
+        Vec::new(),
+        Some(after.clone()),
+        Some(p.id.to_string()),
+    );
     intent.after_version = Some(after.clone());
     intent.checkpoint = checkpoint.clone();
     db.put(cf::EXECUTION_STATE, key.as_bytes(), &encode(&intent)?)?;

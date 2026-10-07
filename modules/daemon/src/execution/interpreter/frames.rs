@@ -71,15 +71,10 @@ impl Interpreter {
                 "function '{name}' contains an execution cycle"
             )));
         }
-        let entry_node = entry
-            .body
-            .nodes
-            .iter()
-            .find(|n| n.kind == FUNCTION_ENTRY_KIND)
-            .cloned()
-            .ok_or_else(|| {
-                DaemonError::Execution(format!("function '{name}' has no entry node"))
-            })?;
+        let entry_node =
+            entry.body.nodes.iter().find(|n| n.kind == FUNCTION_ENTRY_KIND).cloned().ok_or_else(
+                || DaemonError::Execution(format!("function '{name}' has no entry node")),
+            )?;
         // Bind each signature input to the caller's matching data pin.
         for fp in &entry.signature.inputs {
             let caller_pin = caller_node
@@ -132,6 +127,9 @@ impl Interpreter {
             now_millis(),
         );
         self.frame_trees.push(func_tree);
+        if let Some(record) = self.view.invocations.last_mut() {
+            record.owned_frame = Some(self.frame_trees.clone());
+        }
         ctx.audit(
             "function.enter",
             serde_json::json!({
@@ -155,12 +153,10 @@ impl Interpreter {
         ctx: &mut ExecutionContext,
     ) -> DaemonResult<()> {
         let caller_id = frame.node_id;
-        let exit_node = body
-            .nodes
-            .iter()
-            .find(|n| n.kind == FUNCTION_EXIT_KIND)
-            .cloned()
-            .ok_or_else(|| DaemonError::Execution("function body has no exit node".to_string()))?;
+        let exit_node =
+            body.nodes.iter().find(|n| n.kind == FUNCTION_EXIT_KIND).cloned().ok_or_else(|| {
+                DaemonError::Execution("function body has no exit node".to_string())
+            })?;
         let exit_inputs = self.gather_inputs(body, exit_node.id)?;
 
         // Resolve the caller node in the outer blueprint.

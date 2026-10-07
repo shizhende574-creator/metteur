@@ -57,6 +57,9 @@ impl Interpreter {
         let rollback_on_cancel = self.should_rollback_on_cancel(ctx);
         let mut rolled_back = false;
         if cancelled && rollback_on_cancel {
+            // Rollback can fail after restoring a prefix; none of the old results
+            // may be advertised as currently valid in either outcome.
+            self.view.invalidate_all(crate::execution::blackboard::ChangeKind::CancelRollback);
             // Undo the file mutations this run made, so cancelling leaves the
             // workspace as it was found. Command side effects are outside the
             // WAL and are not undone.
@@ -315,6 +318,17 @@ impl Interpreter {
             self.write_checkpoint(ctx)?;
             let outputs = executor.execute(&node, &inputs, ctx).await?;
             self.in_flight = None;
+            if matches!(node.kind.as_str(), "Validator" | "LspCheck") {
+                let passed = node
+                    .pins
+                    .iter()
+                    .find(|p| p.name == "Passed")
+                    .and_then(|p| outputs.get(&p.id))
+                    .and_then(|v| v.as_bool());
+                if let Some(record) = self.view.invocations.last_mut() {
+                    record.check = passed;
+                }
+            }
             self.state.data_values.extend(outputs.iter().map(|(id, v)| (*id, v.clone())));
             let function = self.active_function();
             self.emit(ExecutionEvent::NodeData {

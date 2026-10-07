@@ -154,7 +154,11 @@ impl Interpreter {
             }
         }
         let body: Vec<_> = reached.iter().copied().filter(|id| *id != node_id).collect();
-        self.view.invalidate(&body, &self.frame_trees);
+        self.view.invalidate(
+            &body,
+            &self.frame_trees,
+            crate::execution::blackboard::ChangeKind::Iteration,
+        );
         let sched = self.active_scheduler_mut();
         sched.dequeue_all(&reached);
         // The loop node itself stays completed; only its body re-runs.

@@ -97,7 +97,10 @@ impl Interpreter {
             );
             self.emit(super::ExecutionEvent::Message { node_id: ctx.current_node, message: message.clone() });
             DaemonError::Persistence(message)
-        })
+        })?;
+        // A successful apply may add validity changes at the same boundary.
+        self.view = checkpoint.view;
+        Ok(())
     }
 }
 
