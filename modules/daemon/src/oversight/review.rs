@@ -95,6 +95,22 @@ fn checkpoint(db: &Db, run: Uuid) -> DaemonResult<crate::execution::ExecutionChe
     }
     Ok(cp)
 }
+
+/// The effective root exists before any invocation. Historical graph images
+/// must not shadow a newly committed root version between node boundaries.
+fn blueprint_nodes(cp: &crate::execution::ExecutionCheckpoint) -> Vec<Value> {
+    let root = cp.view.root.as_ref();
+    root.into_iter()
+        .chain(cp.view.graphs.values().filter(|graph| root.is_none_or(|bp| bp.id != graph.id)))
+        .flat_map(|graph| graph.nodes.iter().map(move |node| json!({"scope":graph.id,"node":node})))
+        .take(200)
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "review_tests.rs"]
+mod tests;
+
 struct Session<'a> {
     db: &'a Db,
     review: &'a Review,
@@ -156,16 +172,8 @@ impl Session<'_> {
             }
             "ReadBlueprint" => {
                 args::<Empty>(&call.arguments)?;
-                let nodes: Vec<_> = cp
-                    .view
-                    .graphs
-                    .iter()
-                    .flat_map(|(scope, graph)| {
-                        graph.nodes.iter().map(move |node| json!({"scope":scope,"node":node}))
-                    })
-                    .take(200)
-                    .collect();
-                let value = json!({"version":cp.blueprint_version,"nodes":nodes,"in_flight":cp.in_flight,"executed":cp.executed});
+                let nodes = blueprint_nodes(&cp);
+                let value = json!({"version":cp.blueprint_version,"root_scope":cp.view.root.as_ref().map(|bp|bp.id),"nodes":nodes,"in_flight":cp.in_flight,"executed":cp.executed});
                 // Key-aware removal precedes regular-expression redaction.
                 let text =
                     self.anon.anonymize(&blackboard::safe_value(&value, 0).to_string()).await;
