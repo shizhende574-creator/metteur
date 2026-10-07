@@ -36,6 +36,7 @@ async function lookup(entry: string) {
     <p v-else-if="error" role="alert">{{ error }}</p><p v-else-if="!reports">Loading reviews…</p><p v-else-if="!reports.length">No supervisor reviews recorded.</p>
     <article v-for="report in reports" :key="report.review_id" class="review">
       <header><strong>{{ report.status.replaceAll('_', ' ') }}</strong><span v-if="report.status === 'completed' && report.verdict">{{ report.verdict.replaceAll('_', ' ') }}</span></header>
+      <p v-if="report.circuit_node">Circuit node: {{ report.circuit_node }}</p>
       <p v-if="report.model_verdict && report.verdict !== report.model_verdict">Model conclusion: {{ report.model_verdict }}</p>
       <p v-for="(disposition, i) in report.human_dispositions" :key="`d${i}`">Human disposition: {{ disposition.action.replaceAll('_', ' ') }}</p>
       <p>{{ report.summary }}</p><small>Triggers: {{ report.triggers.join(', ') }} · Model: {{ report.work.model || 'Unavailable' }}</small>

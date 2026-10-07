@@ -224,8 +224,22 @@ pub(crate) async fn approve(
         return Err(rejected("proposal makes no changes"));
     }
     for id in &affected {
-        let circuit_retry =
-            matches!(source, Source::Circuit { failing_node } if failing_node == *id);
+        let circuit_retry = match source {
+            Source::Supervisor {
+                review_id,
+            } => {
+                crate::oversight::scheduler::load(db(ctx)?, ctx.run_id)?.is_some_and(|s| {
+                    !s.closed
+                        && s.reviews.iter().any(|r| {
+                            r.review_id == review_id
+                                && r.circuit_node == Some(*id)
+                                && r.status == crate::oversight::scheduler::Status::Running
+                        })
+                }) && state.in_flight == Some(*id)
+                    && state.circuit_failures > 0
+            }
+            _ => false,
+        };
         if !circuit_retry && (state.executed.contains(id) || state.in_flight == Some(*id)) {
             return Err(rejected(
                 "proposal changes an active or completed node; structural edits and reruns require a separate workflow",
@@ -256,7 +270,7 @@ pub(crate) async fn approve(
             proposal.id,
             "blueprint_edits",
             serde_json::json!({
-                "request_type":"replan_proposal","tool":"ProposeBlueprintEdits","source":"supervisor","base":proposal.base,"state_digest":proposal.state_digest,"edits_digest":proposal.edits_digest,"affected_nodes":proposal.affected,"edits":edits,"summary":summary,
+                "request_type":"replan_proposal","tool":"ProposeBlueprintEdits","source":"supervisor","retry_node": crate::oversight::scheduler::load(db(ctx)?,ctx.run_id)?.and_then(|s|s.reviews.into_iter().find(|r|r.review_id==review_id)).and_then(|r|r.circuit_node),"base":proposal.base,"state_digest":proposal.state_digest,"edits_digest":proposal.edits_digest,"affected_nodes":proposal.affected,"edits":edits,"summary":summary,
                 "before":proposal.before.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>(),
                 "after":proposal.after.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>()
             }),
@@ -448,4 +462,13 @@ mod tests;
 
 pub(crate) fn has_pending(ctx: &ExecutionContext) -> bool {
     ctx.blueprint_apply.lock().pending.is_some()
+}
+
+pub(crate) fn pending_review(ctx: &ExecutionContext) -> Option<Uuid> {
+    match ctx.blueprint_apply.lock().pending.as_ref().map(|p| p.source) {
+        Some(Source::Supervisor {
+            review_id,
+        }) => Some(review_id),
+        _ => None,
+    }
 }

@@ -12,6 +12,7 @@
 //! - [`events`]: the event enum.
 
 mod checkpointing;
+mod circuit;
 mod edges;
 mod events;
 mod foreach;

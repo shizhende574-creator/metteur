@@ -52,6 +52,8 @@ pub struct Review {
     pub model_verdict: Option<String>,
     #[serde(default)]
     pub human_dispositions: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub circuit_node: Option<Uuid>,
     pub notes: Vec<String>,
     pub actual_action_refs: Vec<String>,
     #[serde(default)]
@@ -117,6 +119,7 @@ fn enqueue(
             verdict: None,
             model_verdict: None,
             human_dispositions: vec![],
+            circuit_node: None,
             notes: vec![],
             actual_action_refs: vec![],
             work: Work::default(),
@@ -214,6 +217,11 @@ pub(crate) fn checkpoint_locked(db: &Db, cp: &ExecutionCheckpoint) -> DaemonResu
             continue;
         }
         changed = true;
+        // A finished node fenced by the interpreter is a circuit boundary.
+        // Its dedicated trigger must win before a generic trigger can be claimed.
+        if cp.in_flight == Some(invocation.node_id) && cp.circuit_failures > 0 {
+            continue;
+        }
         let kind = cp
             .view
             .graphs
@@ -234,13 +242,13 @@ pub(crate) fn checkpoint_locked(db: &Db, cp: &ExecutionCheckpoint) -> DaemonResu
             enqueue(&mut s, cp.run_id, "validation_failed", [], false, now());
         }
     }
-    // Circuit ownership remains with the existing replan path until M4.
+    // Circuit triggers belong to the interpreter, which binds the failed node.
     if changed {
         save(db, cp.run_id, &s)?;
     }
     Ok(())
 }
-/// Explicit trusted triggers, including future checkpoint and circuit ownership.
+/// Explicit trusted triggers. Circuit repair additionally requires a bound node.
 pub fn trigger(db: &Db, run: Uuid, reason: &str, at: u64) -> DaemonResult<Uuid> {
     if !matches!(reason, "interval" | "checkpoint" | "circuit") {
         return Err(error("unknown oversight trigger"));
@@ -442,4 +450,24 @@ pub(crate) fn disposition(
         .ok_or_else(|| error("Review unavailable"))?;
     r.human_dispositions.push(serde_json::json!({"node_id":node,"at_ms":now(),"action":if continued {"continue_without_validation"} else {"retry_review"}}));
     save(db, run, &s)
+}
+
+/// Only the interpreter may bind a concrete failed node to a circuit review.
+pub(crate) fn circuit(db: &Db, run: Uuid, node: Uuid) -> DaemonResult<Uuid> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
+    let cp = crate::execution::DbCheckpointSink::load(db, run)?
+        .ok_or_else(|| error("Circuit checkpoint unavailable"))?;
+    if cp.in_flight != Some(node) || cp.circuit_failures == 0 {
+        return Err(error("Not a circuit boundary"));
+    }
+    let mut s = load(db, run)?.ok_or_else(|| error("Supervisor unavailable"))?;
+    if s.closed {
+        return Err(error("Supervisor closed"));
+    }
+    enqueue(&mut s, run, "circuit", [], true, now());
+    let r = s.reviews.iter_mut().find(|r| r.status == Status::Pending).expect("enqueued");
+    r.circuit_node = Some(node);
+    let id = r.review_id;
+    save(db, run, &s)?;
+    Ok(id)
 }

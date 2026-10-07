@@ -1,6 +1,11 @@
 /** Show the exact server-bound plan change on both approval surfaces. */
 export function blueprintApproval(payload: Record<string, unknown>) {
   const type = payload.request_type
+  if (type === 'circuit_tripped') return {
+    title: 'Circuit stopped for your decision',
+    detail: 'Allow once to retry the failed node without claiming validation. Deny once to stop this run.',
+    command: JSON.stringify({ nodeId: payload.node_id, failures: payload.failures, summary: payload.summary }, null, 2),
+  }
   if (type === 'oversight_gate') return {
     title: 'Review gate needs your decision',
     detail: 'Allow once to continue without changing the review conclusion. Deny once to retry the review. Stop cancels the run.',
@@ -22,7 +27,7 @@ export function blueprintApproval(payload: Record<string, unknown>) {
       file, baseVersion: base ?? null, source: payload.source,
       proposalId: payload.proposal_id, runId: payload.run_id, sourceRequestIds: payload.source_request_ids, originalRequests: payload.original_requests,
       before: payload.before, after: payload.after,
-      affectedNodes: payload.affected_nodes, changes: payload.edits ?? payload.blueprint,
+      affectedNodes: payload.affected_nodes, retryNode: payload.retry_node, changes: payload.edits ?? payload.blueprint,
     }, null, 2),
   }
 }

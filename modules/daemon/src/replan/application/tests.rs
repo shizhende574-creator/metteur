@@ -211,19 +211,23 @@ async fn file_storage_failure_blocks_without_publishing_a_new_graph() {
 }
 
 #[tokio::test]
-async fn circuit_mock_uses_the_same_pending_and_commit_protocol() {
+async fn supervisor_repair_uses_one_confirmation_and_the_same_commit_protocol() {
     let (mut ctx, sink, mut cp) = setup();
+    let review = supervisor(&mut ctx, "assisted");
     let broker = ctx.approvals.clone().unwrap();
-    let script = edits().to_string();
+    let script = edits();
     let (result, ()) = tokio::join!(
-        crate::replan::trip_and_replan_mock(&mut ctx, Uuid::nil(), 3, script),
-        async {
-            answer(broker.clone(), Decision::Allow).await;
-            answer(broker, Decision::Allow).await;
-        }
+        approve(
+            &mut ctx,
+            "Repair",
+            &script,
+            Source::Supervisor {
+                review_id: review
+            }
+        ),
+        answer(broker, Decision::Allow)
     );
     result.unwrap();
-    assert!(ctx.blueprint_apply.lock().pending.is_some());
     commit_boundary(&ctx, &mut cp, &sink).unwrap();
     ensure_resolved(db(&ctx).unwrap()).unwrap();
 }

@@ -167,17 +167,7 @@ impl Interpreter {
         if threshold == 0 || self.circuit_failures < threshold {
             return Ok(false);
         }
-        crate::replan::trip_and_replan(ctx, node_id, self.circuit_failures).await?;
-        self.circuit_failures = 0;
-        self.view.invalidate(
-            &[node_id],
-            &self.frame_trees,
-            crate::execution::blackboard::ChangeKind::CircuitBreak,
-        );
-        let sched = self.active_scheduler_mut();
-        sched.unmark_executed(node_id);
-        sched.dequeue_all(&[node_id]);
-        sched.enqueue(node_id);
+        self.supervised_circuit(node_id, ctx).await?;
         Ok(true)
     }
 }
