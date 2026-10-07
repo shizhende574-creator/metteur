@@ -429,12 +429,6 @@ defineExpose({
       </div>
     </div>
 
-    <!-- Full access keeps a standing notice: a mode that skips confirmations
-         must not become invisible once its menu closes. -->
-    <p v-if="permissionMode === 'full'" class="chat-composer-notice">
-      Full access — edits and commands run without asking; risky ones are reviewed by the model.
-    </p>
-
     <div v-if="menu" class="fixed inset-0 z-30" @mousedown="menu = null" />
   </div>
 </template>
