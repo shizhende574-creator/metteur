@@ -9,6 +9,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { usePanelStore } from '@/stores/panel'
 import { fileRoute } from '@/lib/file-token'
 import ExecutionGraph from '@/components/execution/ExecutionGraph.vue'
+import ExecutionUsage from '@/components/execution/ExecutionUsage.vue'
 import type { Invocation } from '@/core/execution-view'
 import { useSurfaceNavigation } from '@/lib/surface'
 import { useVersionStore } from '@/stores/version'
@@ -78,6 +79,7 @@ function openSource() { if (source.value) { tabs.openFile(source.value); void ro
         <template v-if="inspected"><p>{{ inspected.node_id }} · Attempt {{ inspected.attempt }} · {{ inspected.status }}{{ inspected.current === false ? ' · Previous attempt' : '' }}</p><p>Frame: {{ inspected.frame.join(' / ') || 'Root' }}</p><div class="io"><section><strong>Inputs</strong><pre>{{ JSON.stringify(inspected.inputs, null, 2) }}</pre></section><section><strong>Outputs</strong><pre>{{ JSON.stringify(inspected.outputs, null, 2) }}</pre></section></div><p v-for="(message, i) in inspected.messages" :key="i">{{ message }}</p></template><p v-else>Select a node to inspect its execution.</p>
       </div>
       <div v-else-if="tab === 'Execution log'" class="details"><p v-if="!snapshot?.view?.root">Persisted execution details are unavailable.</p><p v-for="record in snapshot?.view?.invocations" :key="record.sequence"><button @click="inspect(record)">#{{ record.sequence }} · {{ record.node_id }} · {{ record.status }} · attempt {{ record.attempt }}</button><span v-for="(message, i) in record.messages" :key="i"> · {{ message }}</span></p><p v-for="(event, i) in execution.events" :key="i">{{ event.kind }} · {{ event.message }}</p></div>
+      <ExecutionUsage v-else-if="tab === 'Usage'" :run-id="selected ? null : execution.runId" :connected="execution.connected && gateway.connected.value" />
       <div v-else class="details">{{ tab === 'Node details' ? 'Select a node to inspect its execution.' : `${tab} is not connected yet.` }}</div>
     </template>
   </ExecutionLayout>

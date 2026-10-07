@@ -332,6 +332,11 @@ message ModelUsage {
   // Prompt-cache breakdown of input_tokens (0 when the provider reports none).
   uint64 cached_input_tokens = 7;
   uint64 cache_write_input_tokens = 8;
+  // False for legacy, absent or partially reported counters.
+  bool tokens_complete = 9;
+  bool cache_complete = 10;
+  // Configured-price estimates only; false when any call is unpriced.
+  bool cost_complete = 11;
 }
 
 message UsageSummary {

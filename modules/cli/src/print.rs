@@ -253,37 +253,40 @@ pub fn usage(summary: &UsageSummary) -> String {
         return "(no usage recorded)".to_string();
     }
     let mut out = String::from(
-        "MODEL                            CALLS         INPUT        CACHED       OUTPUT    REASONING          COST\n",
+        "MODEL                            CALLS         INPUT        CACHED       OUTPUT    REASONING     EST. COST\n",
     );
     for model in &summary.models {
         // The hit rate is the signal users tune prompts for; show the share of
         // input served from cache next to the raw count.
-        let cached = if model.input_tokens > 0 {
+        let cached = if model.tokens_complete && model.cache_complete && model.input_tokens > 0 {
             format!(
                 "{} ({:.0}%)",
                 model.cached_input_tokens,
                 model.cached_input_tokens as f64 / model.input_tokens as f64 * 100.0
             )
         } else {
-            model.cached_input_tokens.to_string()
+            "Unavailable".to_string()
         };
+        let tokens = |value: u64| if model.tokens_complete { value.to_string() } else { "Unavailable".into() };
         out.push_str(&format!(
             "{:<32} {:>5} {:>13} {:>13} {:>13} {:>13}  {:>10}\n",
             model.model,
             model.calls,
-            model.input_tokens,
+            tokens(model.input_tokens),
             cached,
-            model.output_tokens,
-            model.reasoning_tokens,
-            micros(model.cost_micros)
+            tokens(model.output_tokens),
+            tokens(model.reasoning_tokens),
+            if model.cost_complete { micros(model.cost_micros) } else { "Unavailable".into() }
         ));
     }
-    out.push_str(&format!(
-        "total cost: {} micros {} ({})",
-        summary.total_cost_micros,
-        summary.currency,
-        micros(summary.total_cost_micros)
-    ));
+    if summary.models.iter().all(|m| m.cost_complete) {
+        out.push_str(&format!(
+            "estimated total cost: {} micros {} ({})",
+            summary.total_cost_micros, summary.currency, micros(summary.total_cost_micros)
+        ));
+    } else {
+        out.push_str("estimated total cost: Unavailable");
+    }
     out
 }
 
@@ -418,6 +421,9 @@ mod tests {
             total_cost_micros: 12_750_500,
             models: vec![
                 ModelUsage {
+                    tokens_complete: true,
+                    cache_complete: true,
+                    cost_complete: true,
                     model: "gpt-5".to_string(),
                     calls: 3,
                     input_tokens: 1_000,
@@ -427,6 +433,9 @@ mod tests {
                     ..Default::default()
                 },
                 ModelUsage {
+                    tokens_complete: true,
+                    cache_complete: true,
+                    cost_complete: true,
                     model: "claude-haiku".to_string(),
                     calls: 1,
                     input_tokens: 50,
@@ -448,6 +457,17 @@ mod tests {
         assert!(text.contains("2.750500"));
         assert!(text.contains("total cost: 12750500 micros USD (12.750500)"));
         assert!(text.contains("CALLS"));
+    }
+
+    #[test]
+    fn usage_missing_coverage_is_unavailable() {
+        let mut summary = fixture_summary();
+        summary.models[0].tokens_complete = false;
+        summary.models[0].cache_complete = false;
+        summary.models[0].cost_complete = false;
+        let text = usage(&summary);
+        assert!(text.contains("estimated total cost: Unavailable"));
+        assert!(!text.contains("10.000000"));
     }
 
     #[test]

@@ -830,6 +830,7 @@ async fn request_with_retry(
         tried.push(key);
     }
     loop {
+        ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": client.model()}));
         let mut emitted = false;
         let result = match delta.as_deref_mut() {
             Some(cb) => {
@@ -850,8 +851,12 @@ async fn request_with_retry(
             None => race_call(client.as_ref(), context, params, tools, &ctx.interrupts, None).await,
         };
         match result {
-            Ok(race) => return Ok(race),
+            Ok(race) => {
+                if matches!(race, LlmRace::Emergency(_)) { record_unavailable_usage(ctx, client.as_ref()); }
+                return Ok(race);
+            }
             Err(err) => {
+                record_unavailable_usage(ctx, client.as_ref());
                 if !crate::llm::RetryPolicy::retryable(&err) || emitted {
                     return Err(err);
                 }
@@ -1520,7 +1525,15 @@ fn arguments_to_values(args: &serde_json::Value) -> Vec<metteur_shared::Value> {
     }
 }
 
-/// Audits one completion's usage, extended with run id and computed cost.
+/// Retains an unmetered outcome so later successes cannot hide a coverage gap.
+fn record_unavailable_usage(ctx: &ExecutionContext, client: &dyn LlmClient) {
+    ctx.audit("llm.usage", serde_json::json!({
+        "run_id": ctx.run_id.to_string(), "provider": client.provider(), "model": client.model(),
+        "tokens_reported": false, "cache_read_reported": false,
+    }));
+}
+
+/// Audits one completion's usage, extended with run id and estimated cost.
 async fn record_usage(
     ctx: &ExecutionContext,
     client: &dyn LlmClient,
@@ -1529,6 +1542,8 @@ async fn record_usage(
 ) {
     let model = client.model().to_string();
     let mut detail = serde_json::json!({
+        "tokens_reported": usage.tokens_reported,
+        "cache_read_reported": usage.cache_read_reported,
         "provider": client.provider(),
         "model": model,
         "run_id": ctx.run_id.to_string(),
@@ -1760,10 +1775,11 @@ async fn summarize_and_compress(
     // A configured summarizer model keeps the expensive model out of routine
     // housekeeping; failing to build it falls back to the active client.
     let summarizer = summarizer_client(ctx, opts).await.unwrap_or_else(|| Arc::clone(client));
+    ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": summarizer.model()}));
     let response = summarizer
         .complete(&summarizer_context, params, &[])
         .await
-        .map_err(|e| DaemonError::Llm(e.to_string()))?;
+        .map_err(|e| { record_unavailable_usage(ctx, summarizer.as_ref()); DaemonError::Llm(e.to_string()) })?;
     record_usage(ctx, summarizer.as_ref(), &response.usage, billing).await;
     usage.add(&response.usage);
     if response.text.trim().is_empty() {

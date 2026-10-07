@@ -393,6 +393,9 @@ impl DaemonService {
                 .into_iter()
                 .map(|m| proto::ModelUsage {
                     model: m.model,
+                    tokens_complete: m.tokens_complete,
+                    cache_complete: m.cache_complete,
+                    cost_complete: m.cost_complete,
                     calls: m.calls,
                     input_tokens: m.input_tokens,
                     output_tokens: m.output_tokens,

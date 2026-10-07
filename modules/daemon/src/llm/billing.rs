@@ -20,6 +20,9 @@ pub struct Cost {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelUsageSummary {
     pub model: String,
+    pub tokens_complete: bool,
+    pub cache_complete: bool,
+    pub cost_complete: bool,
     pub calls: u64,
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -131,9 +134,10 @@ pub fn run_usage(
     let writer = crate::observability::audit::AuditWriter::new(db.clone());
     let mut by_model: HashMap<String, ModelUsageSummary> = HashMap::new();
     let mut total = 0u64;
+    let mut requested: HashMap<String, u64> = HashMap::new();
 
     for entry in writer.list()? {
-        if entry.operation != "llm.usage" {
+        if !matches!(entry.operation.as_str(), "llm.usage" | "llm.request") {
             continue;
         }
         if entry.detail.get("run_id").and_then(|v| v.as_str()) != Some(run_id) {
@@ -143,7 +147,10 @@ pub fn run_usage(
         let model =
             entry.detail.get("model").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
         let slot = by_model.entry(model.clone()).or_insert_with(|| ModelUsageSummary {
-            model,
+            model: model.clone(),
+            tokens_complete: true,
+            cache_complete: true,
+            cost_complete: true,
             calls: 0,
             input_tokens: 0,
             output_tokens: 0,
@@ -152,6 +159,19 @@ pub fn run_usage(
             cache_write_input_tokens: 0,
             cost_micros: 0,
         });
+        if entry.operation == "llm.request" {
+            *requested.entry(model).or_default() += 1;
+            continue;
+        }
+        let tokens_complete = entry.detail.get("tokens_reported").and_then(|v| v.as_bool()) == Some(true)
+            && ["input_tokens", "output_tokens"].iter().all(|key| entry.detail.get(*key).and_then(|v| v.as_u64()).is_some());
+        slot.tokens_complete &= tokens_complete;
+        slot.cache_complete &= tokens_complete
+            && entry.detail.get("cache_read_reported").and_then(|v| v.as_bool()) == Some(true)
+            && entry.detail.get("cached_input_tokens").and_then(|v| v.as_u64()).is_some()
+            && get("cached_input_tokens") <= get("input_tokens");
+        slot.cost_complete &= tokens_complete && entry.detail.get("cost_micros").and_then(|v| v.as_u64()).is_some()
+            && entry.detail.get("currency").and_then(|v| v.as_str()) == Some(if config.currency.is_empty() { "USD" } else { &config.currency });
         slot.calls += 1;
         slot.input_tokens += get("input_tokens");
         slot.output_tokens += get("output_tokens");
@@ -163,6 +183,11 @@ pub fn run_usage(
         total += cost_micros;
     }
 
+    for (model, count) in requested {
+        if let Some(slot) = by_model.get_mut(&model) && count > slot.calls {
+            slot.tokens_complete = false; slot.cache_complete = false; slot.cost_complete = false;
+        }
+    }
     let mut models: Vec<ModelUsageSummary> = by_model.into_values().collect();
     models.sort_by(|a, b| b.calls.cmp(&a.calls).then(a.model.cmp(&b.model)));
     Ok(UsageSummaryData {
@@ -321,4 +346,51 @@ mod tests {
         let resolved = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 12, 0)).unwrap();
         assert_eq!(resolved.input_per_mtok, 2.0);
     }
+    #[test]
+    fn run_usage_preserves_completeness_and_pending_requests() {
+        let dir = std::env::temp_dir().join(format!("metteur-usage-{}", uuid::Uuid::new_v4()));
+        let db = crate::storage::persistence::Db::open(&dir).unwrap();
+        let writer = crate::observability::audit::AuditWriter::new(db.clone());
+        let config = BillingConfig::default();
+        for (model, input, cached) in [("small", 100, 100), ("large", 900, 0)] {
+            writer.record("test", "llm.usage", serde_json::json!({
+                "run_id": "known", "model": model, "input_tokens": input, "output_tokens": 50,
+                "cached_input_tokens": cached, "cache_write_input_tokens": 30,
+                "tokens_reported": true, "cache_read_reported": true, "cost_micros": 1, "currency": "USD"
+            })).unwrap();
+        }
+        let known = run_usage(&db, &config, "known").unwrap();
+        assert_eq!(known.models.len(), 2);
+        assert!(known.models.iter().all(|m| m.tokens_complete && m.cache_complete && m.cost_complete));
+        let total = metteur_shared::Usage {
+            tokens_reported: true, cache_read_reported: true,
+            input_tokens: known.models.iter().map(|m| m.input_tokens).sum(),
+            cached_input_tokens: known.models.iter().map(|m| m.cached_input_tokens).sum(),
+            ..Default::default()
+        };
+        assert_eq!(total.cache_hit_rate(), Some(0.1));
+        assert_eq!(run_usage(&db, &config, "known").unwrap().total_cost_micros, 2);
+        assert!(run_usage(&db, &config, "other").unwrap().models.is_empty());
+        for (run, detail) in [
+            ("legacy", serde_json::json!({"input_tokens": 100, "cached_input_tokens": 0, "output_tokens": 3})),
+            ("failed", serde_json::json!({"tokens_reported": false})),
+            ("partial", serde_json::json!({"tokens_reported": true, "input_tokens": 100})),
+        ] {
+            let mut detail = detail; detail["run_id"] = run.into(); detail["model"] = "m".into();
+            writer.record("test", "llm.usage", detail).unwrap();
+            let result = run_usage(&db, &config, run).unwrap();
+            assert!(!result.models[0].tokens_complete);
+            assert!(!result.models[0].cache_complete);
+            assert!(!result.models[0].cost_complete);
+        }
+        writer.record("test", "llm.request", serde_json::json!({"run_id": "pending", "model": "m"})).unwrap();
+        let pending = run_usage(&db, &config, "pending").unwrap();
+        assert_eq!(pending.models[0].calls, 0);
+        assert!(!pending.models[0].cache_complete);
+        writer.record("test", "llm.usage", serde_json::json!({
+            "run_id": "known", "model": "small", "tokens_reported": false
+        })).unwrap();
+        assert!(run_usage(&db, &config, "known").unwrap().models.iter().any(|m| !m.cache_complete));
+    }
+
 }

@@ -353,7 +353,7 @@ export interface AddonInfo {
   fragmentCount: number
 }
 
-/** Aggregated token/cost usage for an execution scope. */
+/** Aggregated token/cost usage for an execution scope. Missing completeness fields are unknown. */
 export interface UsageSummary {
   currency: string
   totalCostMicros: number
@@ -366,6 +366,9 @@ export interface UsageSummary {
     costMicros: number
     /** Input tokens served from the provider's prompt cache. */
     cachedInputTokens: number
+    tokensComplete?: boolean
+    cacheComplete?: boolean
+    costComplete?: boolean
     /** Input tokens written into the provider's prompt cache. */
     cacheWriteInputTokens: number
   }>

@@ -1247,6 +1247,9 @@ export class GrpcGateway implements DaemonGateway {
           reasoningTokens: Number(m.reasoningTokens),
           costMicros: Number(m.costMicros),
           cachedInputTokens: Number(m.cachedInputTokens),
+          tokensComplete: m.tokensComplete,
+          cacheComplete: m.cacheComplete,
+          costComplete: m.costComplete,
           cacheWriteInputTokens: Number(m.cacheWriteInputTokens),
         })),
       })
