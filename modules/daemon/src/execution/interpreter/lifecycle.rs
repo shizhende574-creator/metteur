@@ -106,6 +106,9 @@ impl Interpreter {
                 "checkpoint belongs to a different blueprint".to_string(),
             ));
         }
+        if let Some(db) = &self.workspace_db {
+            crate::oversight::recovery::ensure_resumable(db, resume.run_id)?;
+        }
         if let Some(node_id) = resume.in_flight {
             return Err(DaemonError::Persistence(format!(
                 "run {} has an uncommitted outcome for node {node_id}; manual recovery required, automatic replay refused",

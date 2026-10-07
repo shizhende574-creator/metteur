@@ -397,3 +397,100 @@ pub(crate) fn authorize_application(ctx: &ExecutionContext, id: Uuid) -> DaemonR
     }
     Ok(())
 }
+
+pub(crate) fn reconcile_applied(
+    db: &Db,
+    run: Uuid,
+    id: Uuid,
+    refs: Vec<String>,
+) -> DaemonResult<()> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
+    let mut s = scheduler::load(db, run)?.ok_or_else(|| error("Applied review missing"))?;
+    let mut q = requests::load(db, run)?;
+    let r = s
+        .reviews
+        .iter_mut()
+        .find(|r| r.proposals.iter().any(|p| p.proposal_id == id))
+        .ok_or_else(|| error("Applied proposal missing"))?;
+    let p = r.proposals.iter_mut().find(|p| p.proposal_id == id).expect("selected proposal");
+    if p.run_id != run || p.kind != "blueprint_edits" {
+        return Err(error("Applied proposal identity mismatch"));
+    }
+    if p.state == State::Applied && refs.iter().all(|reference| p.result_refs.contains(reference)) {
+        return Ok(());
+    }
+    p.state = State::Applied;
+    p.result_refs = refs.clone();
+    p.reason =
+        "Recovered a committed Version Flow and checkpoint acknowledgement; no action was replayed"
+            .into();
+    for reference in &refs {
+        if !r.actual_action_refs.contains(reference) {
+            r.actual_action_refs.push(reference.clone());
+        }
+    }
+    if r.status == Status::Completed {
+        r.verdict = Some("action_taken".into());
+    }
+    for source in &p.source_request_ids {
+        let request = q
+            .requests
+            .iter_mut()
+            .find(|request| request.request_id == *source)
+            .ok_or_else(|| error("Applied request lineage missing"))?;
+        let proposal = request
+            .proposals
+            .iter_mut()
+            .find(|proposal| proposal.proposal_id == id)
+            .ok_or_else(|| error("Applied request proposal missing"))?;
+        proposal.state = State::Applied;
+        proposal.result_refs = refs.clone();
+        if request.proposals.iter().all(|p| p.state == State::Applied) {
+            request.state = State::Applied;
+        }
+        for reference in &refs {
+            if !request.result_refs.contains(reference) {
+                request.result_refs.push(reference.clone());
+            }
+        }
+        request.revision += 1;
+    }
+    save(db, run, &s, &q)
+}
+
+pub(crate) fn reconcile_unfinished(db: &Db, run: Uuid, id: Uuid, reason: &str) -> DaemonResult<()> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
+    let mut s =
+        scheduler::load(db, run)?.ok_or_else(|| error("Review unavailable for recovery"))?;
+    let mut q = requests::load(db, run)?;
+    let p = s
+        .reviews
+        .iter_mut()
+        .flat_map(|r| &mut r.proposals)
+        .find(|p| p.proposal_id == id && p.run_id == run)
+        .ok_or_else(|| error("Proposal unavailable for recovery"))?;
+    if p.state == State::Applied {
+        return Err(error("Applied proposal contradicts recovery evidence"));
+    }
+    if p.state == State::ClosedUnhandled && p.reason == reason {
+        return Ok(());
+    }
+    p.state = State::ClosedUnhandled;
+    p.reason = reason.into();
+    for source in &p.source_request_ids {
+        let request = q
+            .requests
+            .iter_mut()
+            .find(|r| r.request_id == *source)
+            .ok_or_else(|| error("Recovery request lineage missing"))?;
+        let proposal = request
+            .proposals
+            .iter_mut()
+            .find(|p| p.proposal_id == id)
+            .ok_or_else(|| error("Recovery proposal lineage missing"))?;
+        proposal.state = State::ClosedUnhandled;
+        request.state = State::ClosedUnhandled;
+        request.revision += 1;
+    }
+    save(db, run, &s, &q)
+}

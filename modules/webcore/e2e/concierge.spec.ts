@@ -215,3 +215,17 @@ test('delegated decisions are shown separately from human confirmation', async (
   await expect(panel.getByText('Decision: existing user delegation', { exact: false })).toBeVisible()
   await expect(panel.getByText('human confirmation', { exact: false })).toHaveCount(0)
 })
+
+test('interrupted cancellation exposes the recorded checkpoint without claiming completion', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [], closing: { source: 'user_direct', checkpoint_status: 'Running', recovery_required: true } } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Supervisor reviews' })
+  await expect(panel.getByText('Cancellation requested', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Recorded checkpoint: Running')).toBeVisible()
+  await expect(panel.getByText('Final cancellation outcome is unavailable; this run cannot resume.')).toBeVisible()
+  await expect(panel.getByText('Recorded file rollback completed')).toHaveCount(0)
+})

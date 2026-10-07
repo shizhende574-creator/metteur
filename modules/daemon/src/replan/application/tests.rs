@@ -923,3 +923,269 @@ async fn circuit_reruns_never_inherit_automatic_parameter_delegation() {
     assert!(result.is_err());
     assert!(ctx.blueprint_apply.lock().pending.is_none());
 }
+
+async fn staged_oversight(ctx: &mut ExecutionContext) -> Uuid {
+    let review = supervisor(ctx, "assisted");
+    let broker = ctx.approvals.clone().unwrap();
+    let script = edits();
+    let (result, ()) = tokio::join!(
+        approve(
+            ctx,
+            "Recoverable edit",
+            &script,
+            Source::Supervisor {
+                review_id: review
+            }
+        ),
+        answer(broker, Decision::Allow)
+    );
+    result.unwrap();
+    ctx.blueprint_apply.lock().pending.as_ref().unwrap().id
+}
+fn pending_intent(ctx: &ExecutionContext, cp: &ExecutionCheckpoint) -> ApplyIntent {
+    ApplyIntent {
+        proposal: ctx.blueprint_apply.lock().pending.take().unwrap(),
+        checkpoint: cp.clone(),
+        after_version: None,
+        committed: false,
+        abandoned: false,
+        recovery_note: String::new(),
+    }
+}
+fn save_intent(ctx: &ExecutionContext, intent: &ApplyIntent) {
+    db(ctx)
+        .unwrap()
+        .put_durable(
+            cf::EXECUTION_STATE,
+            format!("blueprint-apply:{}", intent.proposal.id).as_bytes(),
+            &encode(intent).unwrap(),
+        )
+        .unwrap();
+}
+#[tokio::test]
+async fn recovery_after_confirmation_closes_old_authority_without_resetting_budget() {
+    let (mut ctx, _, cp) = setup();
+    let id = staged_oversight(&mut ctx).await;
+    let before = std::fs::read(ctx.workspace_root.join("plan.blueprint")).unwrap();
+    let settings = metteur_shared::config::oversight::OversightConfig::default();
+    crate::oversight::budget::reserve(
+        db(&ctx).unwrap(),
+        ctx.run_id,
+        crate::oversight::budget::Caller::Supervisor,
+        "test",
+        19,
+        &settings,
+    )
+    .unwrap();
+    let budget = serde_json::to_value(
+        crate::oversight::budget::load(db(&ctx).unwrap(), ctx.run_id).unwrap(),
+    )
+    .unwrap();
+    ctx.approvals.as_ref().unwrap().close();
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    let schedule =
+        crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap();
+    assert!(schedule.closed);
+    assert_eq!(schedule.reviews[0].proposals[0].proposal_id, id);
+    assert_eq!(
+        schedule.reviews[0].proposals[0].state,
+        crate::oversight::requests::State::ClosedUnhandled
+    );
+    let queue = crate::oversight::requests::load(db(&ctx).unwrap(), ctx.run_id).unwrap();
+    assert_eq!(queue.requests[0].state, crate::oversight::requests::State::ClosedUnhandled);
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(queue).unwrap(),
+        serde_json::to_value(
+            crate::oversight::requests::load(db(&ctx).unwrap(), ctx.run_id).unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        budget,
+        serde_json::to_value(
+            crate::oversight::budget::load(db(&ctx).unwrap(), ctx.run_id).unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(before, std::fs::read(ctx.workspace_root.join("plan.blueprint")).unwrap());
+    assert_eq!(
+        encode(&cp).unwrap(),
+        encode(&DbCheckpointSink::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap()).unwrap()
+    );
+}
+#[tokio::test]
+async fn recovery_before_version_write_abandons_only_a_proven_unchanged_intent() {
+    let (mut ctx, _, cp) = setup();
+    staged_oversight(&mut ctx).await;
+    let intent = pending_intent(&ctx, &cp);
+    save_intent(&ctx, &intent);
+    let count = ctx.version_manager.as_ref().unwrap().list_snapshots().unwrap().len();
+    assert!(
+        reconcile(db(&ctx).unwrap(), ctx.version_manager.as_ref().unwrap()).unwrap().is_empty()
+    );
+    ensure_resolved(db(&ctx).unwrap()).unwrap();
+    assert_eq!(count, ctx.version_manager.as_ref().unwrap().list_snapshots().unwrap().len());
+    let bytes = db(&ctx)
+        .unwrap()
+        .get(cf::EXECUTION_STATE, format!("blueprint-apply:{}", intent.proposal.id).as_bytes())
+        .unwrap()
+        .unwrap();
+    let restored: ApplyIntent = serde_json::from_slice(&bytes).unwrap();
+    assert!(restored.abandoned);
+    assert!(!restored.committed);
+}
+#[tokio::test]
+async fn recovery_during_version_write_preserves_conflict_and_never_mixes_checkpoint() {
+    let (mut ctx, _, cp) = setup();
+    staged_oversight(&mut ctx).await;
+    let intent = pending_intent(&ctx, &cp);
+    save_intent(&ctx, &intent);
+    let p = &intent.proposal;
+    blueprint_files::save_with_origin(
+        db(&ctx).unwrap(),
+        ctx.version_manager.as_ref().unwrap(),
+        &p.after,
+        &p.base.blueprint_uri,
+        &p.file,
+        Some(&p.base).into(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        reconcile(db(&ctx).unwrap(), ctx.version_manager.as_ref().unwrap()).unwrap().len(),
+        1
+    );
+    assert!(ensure_resolved(db(&ctx).unwrap()).is_err());
+    assert_eq!(
+        encode(&cp).unwrap(),
+        encode(&DbCheckpointSink::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap()).unwrap()
+    );
+    let s = crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap();
+    assert!(s.reviews[0].proposals[0].reason.contains("Manual recovery"));
+    assert!(s.reviews[0].actual_action_refs.is_empty());
+}
+#[tokio::test]
+async fn recovery_after_checkpoint_before_acknowledgement_records_once_without_reapplying() {
+    let (mut ctx, sink, mut cp) = setup();
+    let id = staged_oversight(&mut ctx).await;
+    let old_checkpoint = cp.clone();
+    let schedule_key = format!("oversight:schedule:{}", ctx.run_id);
+    let queue_key = format!("oversight:requests:{}", ctx.run_id);
+    let old_schedule =
+        db(&ctx).unwrap().get(cf::EXECUTION_STATE, schedule_key.as_bytes()).unwrap().unwrap();
+    let old_queue =
+        db(&ctx).unwrap().get(cf::EXECUTION_STATE, queue_key.as_bytes()).unwrap().unwrap();
+    commit_boundary(&ctx, &mut cp, &sink).unwrap();
+    let count = ctx.version_manager.as_ref().unwrap().list_snapshots().unwrap().len();
+    let key = format!("blueprint-apply:{id}");
+    let mut intent: ApplyIntent = serde_json::from_slice(
+        &db(&ctx).unwrap().get(cf::EXECUTION_STATE, key.as_bytes()).unwrap().unwrap(),
+    )
+    .unwrap();
+    intent.committed = false;
+    save_intent(&ctx, &intent);
+    db(&ctx)
+        .unwrap()
+        .put_pair_durable(
+            cf::EXECUTION_STATE,
+            schedule_key.as_bytes(),
+            &old_schedule,
+            queue_key.as_bytes(),
+            &old_queue,
+        )
+        .unwrap();
+    assert!(
+        reconcile(db(&ctx).unwrap(), ctx.version_manager.as_ref().unwrap()).unwrap().is_empty()
+    );
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    let first =
+        db(&ctx).unwrap().get(cf::EXECUTION_STATE, schedule_key.as_bytes()).unwrap().unwrap();
+    reconcile(db(&ctx).unwrap(), ctx.version_manager.as_ref().unwrap()).unwrap();
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    assert_eq!(
+        first,
+        db(&ctx).unwrap().get(cf::EXECUTION_STATE, schedule_key.as_bytes()).unwrap().unwrap()
+    );
+    let s = crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap();
+    assert_eq!(s.reviews[0].proposals[0].state, crate::oversight::requests::State::Applied);
+    assert_eq!(s.reviews[0].actual_action_refs.len(), 2);
+    assert_eq!(
+        crate::oversight::requests::load(db(&ctx).unwrap(), ctx.run_id).unwrap().requests[0].state,
+        crate::oversight::requests::State::Applied
+    );
+    assert_eq!(count, ctx.version_manager.as_ref().unwrap().list_snapshots().unwrap().len());
+    assert_eq!(
+        encode(&cp).unwrap(),
+        encode(&DbCheckpointSink::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap()).unwrap()
+    );
+    ensure_resolved(db(&ctx).unwrap()).unwrap();
+    sink.write(&old_checkpoint).unwrap();
+    assert_eq!(
+        crate::oversight::requests::load(db(&ctx).unwrap(), ctx.run_id).unwrap().requests[0].state,
+        crate::oversight::requests::State::Applied
+    );
+    assert!(
+        attach(&ctx, Some(&old_checkpoint)).is_err(),
+        "an old checkpoint cannot be mixed with the newly committed file"
+    );
+}
+
+#[tokio::test]
+async fn recovery_while_awaiting_confirmation_cannot_reopen_or_replay_the_proposal() {
+    let (mut ctx, _, _) = setup();
+    let review = supervisor(&mut ctx, "assisted");
+    let id = Uuid::new_v4();
+    let mut guard = crate::oversight::actions::register(
+        &ctx,
+        review,
+        id,
+        "blueprint_edits",
+        serde_json::json!({"summary":"Unconfirmed"}),
+    )
+    .unwrap();
+    guard.staged(); // Simulate a process loss, with no Drop transition or user decision.
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    crate::oversight::scheduler::initialize(db(&ctx).unwrap(), ctx.run_id, Default::default())
+        .unwrap();
+    let schedule =
+        crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap();
+    assert!(crate::oversight::scheduler::due_at(&schedule).is_none());
+    assert_eq!(
+        schedule.reviews[0].proposals[0].state,
+        crate::oversight::requests::State::ClosedUnhandled
+    );
+    assert!(crate::oversight::actions::authorize_application(&ctx, id).is_err());
+    assert!(schedule.reviews[0].actual_action_refs.is_empty());
+}
+
+#[tokio::test]
+async fn acknowledged_cancellation_blocks_resume_even_before_the_terminal_checkpoint() {
+    let (mut ctx, _, _) = setup();
+    let review = supervisor(&mut ctx, "assisted");
+    let broker = ctx.approvals.clone().unwrap();
+    let (result, ()) = tokio::join!(
+        crate::oversight::control::propose(&mut ctx, review, "CancelRun", "Stop"),
+        answer(broker, Decision::Allow)
+    );
+    result.unwrap();
+    crate::oversight::recovery::recover(db(&ctx).unwrap()).unwrap();
+    assert!(crate::oversight::recovery::ensure_resumable(db(&ctx).unwrap(), ctx.run_id).is_err());
+    let schedule =
+        crate::oversight::scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap();
+    assert!(schedule.cancel_result.is_none());
+    assert!(
+        schedule.reviews[0].proposals[0].reason.contains("final rollback outcome is unavailable")
+    );
+    assert_eq!(
+        DbCheckpointSink::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap().status,
+        RunStatus::Running
+    );
+    assert!(crate::oversight::requests::load(db(&ctx).unwrap(), ctx.run_id).unwrap().closed);
+    let (ctx, _, _) = setup();
+    crate::oversight::recovery::mark_direct_cancel(db(&ctx).unwrap(), ctx.run_id).unwrap();
+    let first = crate::oversight::recovery::closing(db(&ctx).unwrap(), ctx.run_id).unwrap();
+    crate::oversight::recovery::mark_direct_cancel(db(&ctx).unwrap(), ctx.run_id).unwrap();
+    assert_eq!(first, crate::oversight::recovery::closing(db(&ctx).unwrap(), ctx.run_id).unwrap());
+    assert!(crate::oversight::recovery::ensure_resumable(db(&ctx).unwrap(), ctx.run_id).is_err());
+}

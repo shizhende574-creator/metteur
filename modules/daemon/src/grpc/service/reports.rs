@@ -20,9 +20,23 @@ impl DaemonService {
             .get(&std::path::PathBuf::from(req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace not open"))?;
-        DbCheckpointSink::load(&ws.db, run)
+        let checkpoint = DbCheckpointSink::load(&ws.db, run)
             .map_err(to_status)?
             .ok_or_else(|| Status::not_found("Blueprint run not found"))?;
+        let mut closing = crate::oversight::recovery::closing(&ws.db, run).map_err(to_status)?;
+        if let Some(receipt) = &mut closing {
+            let active = self
+                .state
+                .running
+                .read()
+                .await
+                .get(&ws.root)
+                .is_some_and(|entry| entry.run_id == run);
+            receipt["checkpoint_status"] = serde_json::json!(checkpoint.status);
+            receipt["checkpoint_error"] = serde_json::json!(checkpoint.error);
+            receipt["recovery_required"] =
+                serde_json::json!(checkpoint.status.resumable() && !active);
+        }
         let schedule = scheduler::load(&ws.db, run).map_err(to_status)?;
         let calls = budget::load(&ws.db, run).map_err(to_status)?.calls;
         let cancel_result = schedule.as_ref().and_then(|s| s.cancel_result.clone());
@@ -41,7 +55,8 @@ impl DaemonService {
             })
             .collect();
         Ok(Response::new(OversightReports {
-            reports_json: serde_json::json!({"run_id":run,"reports":reports}).to_string(),
+            reports_json: serde_json::json!({"run_id":run,"reports":reports,"closing":closing})
+                .to_string(),
         }))
     }
 }

@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { gateway } from '@/core'
-import type { OversightReview } from '@/core/oversight'
+import type { OversightReview, OversightReports } from '@/core/oversight'
 import type { BoardEntry } from '@/core/blackboard'
 import { useWorkspaceStore } from '@/stores/workspace'
+const closing = ref<OversightReports['closing']>(null)
 const props = defineProps<{ runId: string | null; connected: boolean }>()
 const emit = defineEmits<{ inspect: [nodeId: string, scope: string] }>()
 const workspace = useWorkspaceStore(), reports = ref<OversightReview[] | null>(null), error = ref(''), evidence = ref<BoardEntry | null>(null)
 let generation = 0, disposed = false, timer: ReturnType<typeof setTimeout> | undefined
 watch([() => workspace.active?.path, () => props.runId, () => props.connected], () => {
   const ticket = ++generation, ws = workspace.active?.path, run = props.runId
-  clearTimeout(timer); reports.value = null; error.value = ''; evidence.value = null
+  clearTimeout(timer); closing.value = null; reports.value = null; error.value = ''; evidence.value = null
   if (!ws || !run || !props.connected) return
   async function refresh() {
     const result = await gateway.listOversightReports(ws!, run!)
     if (disposed || ticket !== generation) return
-    if (result.ok) { reports.value = result.data.reports; error.value = '' } else { reports.value = null; error.value = result.error }
+    if (result.ok) { closing.value = result.data.closing ?? null; reports.value = result.data.reports; error.value = '' } else { closing.value = null; reports.value = null; error.value = result.error }
     timer = setTimeout(refresh, 1500)
   }
   void refresh()
@@ -34,6 +35,7 @@ async function lookup(entry: string) {
   <section class="reviews" aria-label="Supervisor reviews">
     <p v-if="!runId">Select a recorded run.</p><p v-else-if="!connected">Reviews unavailable while disconnected.</p>
     <p v-else-if="error" role="alert">{{ error }}</p><p v-else-if="!reports">Loading reviews…</p><p v-else-if="!reports.length">No supervisor reviews recorded.</p>
+    <aside v-if="closing" class="review"><strong>Cancellation requested</strong><p>Recorded checkpoint: {{ closing.checkpoint_status }}</p><p v-if="closing.recovery_required">Final cancellation outcome is unavailable; this run cannot resume.</p><p v-if="closing.checkpoint_error">{{ closing.checkpoint_error }}</p></aside>
     <article v-for="report in reports" :key="report.review_id" class="review">
       <header><strong>{{ report.status.replaceAll('_', ' ') }}</strong><span v-if="report.status === 'completed' && report.verdict">{{ report.verdict.replaceAll('_', ' ') }}</span></header>
       <p v-if="report.circuit_node">Circuit node: {{ report.circuit_node }}</p>

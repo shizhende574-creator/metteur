@@ -16,4 +16,4 @@ export interface OversightReview {
   work: { model: string; answers: string[]; notes: string[]; evidence: Array<{ entry_id: string; node_id: string | null; scope: string | null }> }
   usage?: Array<{ id: string; model: string; charged: number; state: string; cost_micros: number | null; currency: string }>
 }
-export interface OversightReports { run_id: string; reports: OversightReview[] }
+export interface OversightReports { run_id: string; reports: OversightReview[]; closing?: { source: string; checkpoint_status: string; checkpoint_error?: string | null; recovery_required: boolean } | null }

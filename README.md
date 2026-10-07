@@ -53,3 +53,19 @@ for the real report and any approved application. Failures and unhandled concern
 wait for a human disposition. An explicitly connected Switch can route `Verdict`.
 Async gates return `pending` and a stable `ReviewId`; later reports never rewrite
 past downstream outputs. An applied action is separate from a validation pass.
+
+After an interruption, workspace recovery closes unfinished reviews and old
+confirmations. Requests and token reservations are independent of execution
+checkpoints and are never reset by restoring an older checkpoint. Recovery can
+complete an acknowledgement only when the recorded Version Flow snapshot and
+committed checkpoint prove the application; it never repeats the edit. A proven
+unchanged intent is retired and needs a new proposal and decision. Inconsistent
+file, version or scheduling evidence blocks execution and requires manual recovery.
+The workspace remains open for inspection, with unresolved outcomes visible in
+Requests and Reviews.
+
+A recorded stop prevents resuming the same run even if the final cancellation
+checkpoint was interrupted. Reviews distinguishes the stop receipt, recorded
+checkpoint and actual rollback outcome; an unavailable outcome is not a successful
+rollback. Existing file recovery only covers recorded file changes, not arbitrary
+commands or network effects, and does not promise exactly-once external execution.

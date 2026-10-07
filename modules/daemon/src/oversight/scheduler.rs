@@ -137,6 +137,17 @@ pub fn initialize(db: &Db, run: Uuid, settings: OversightConfig) -> DaemonResult
     let _gate = db.oversight_gate.lock().map_err(|_| error("oversight lock poisoned"))?;
     let mut s = load(db, run)?.unwrap_or_default();
     for r in &mut s.reviews {
+        for proposal in &mut r.proposals {
+            if matches!(
+                proposal.state,
+                requests::State::AwaitingConfirmation | requests::State::ApprovedPendingApply
+            ) {
+                proposal.state = requests::State::ClosedUnhandled;
+                proposal.reason =
+                    "Previous execution was interrupted; old confirmation cannot be replayed"
+                        .into();
+            }
+        }
         if matches!(r.status, Status::Running | Status::Pending) {
             r.status = Status::Cancelled;
             r.finished_at = Some(now());
@@ -153,6 +164,21 @@ pub fn initialize(db: &Db, run: Uuid, settings: OversightConfig) -> DaemonResult
         return Err(error("run is not active"));
     }
     for request in &mut queue.requests {
+        if matches!(
+            request.state,
+            requests::State::AwaitingConfirmation | requests::State::ApprovedPendingApply
+        ) {
+            request.state = requests::State::ClosedUnhandled;
+            request.revision += 1;
+            for proposal in &mut request.proposals {
+                if matches!(
+                    proposal.state,
+                    requests::State::AwaitingConfirmation | requests::State::ApprovedPendingApply
+                ) {
+                    proposal.state = requests::State::ClosedUnhandled;
+                }
+            }
+        }
         if request.state == requests::State::Reviewing
             && s.reviews
                 .iter()

@@ -202,7 +202,9 @@ impl DbCheckpointSink {
     pub fn list(db: &Db) -> DaemonResult<Vec<ExecutionCheckpoint>> {
         let mut out = Vec::new();
         for (key, value) in db.scan(cf::EXECUTION_STATE)? {
-            if key.starts_with(crate::replan::application::INTENT_PREFIX) || key.starts_with(b"oversight:") {
+            if key.starts_with(crate::replan::application::INTENT_PREFIX)
+                || key.starts_with(b"oversight:")
+            {
                 continue;
             }
             let checkpoint: ExecutionCheckpoint = serde_json::from_slice(&value)
@@ -220,13 +222,17 @@ impl CheckpointSink for DbCheckpointSink {
     }
 
     fn write(&self, checkpoint: &ExecutionCheckpoint) -> DaemonResult<()> {
-        let _guard = self.db.oversight_gate.lock().map_err(|_| DaemonError::Persistence("oversight lock poisoned".into()))?;
+        let _guard = self
+            .db
+            .oversight_gate
+            .lock()
+            .map_err(|_| DaemonError::Persistence("oversight lock poisoned".into()))?;
         if !checkpoint.status.resumable() {
             crate::oversight::requests::close_locked(&self.db, self.run_id)?;
         }
         let data = serde_json::to_vec(checkpoint)
             .map_err(|e| DaemonError::Serialization(e.to_string()))?;
-        self.db.put(cf::EXECUTION_STATE, self.run_id.as_bytes(), &data)?;
+        self.db.put_durable(cf::EXECUTION_STATE, self.run_id.as_bytes(), &data)?;
         if let Err(error) = crate::oversight::scheduler::checkpoint_locked(&self.db, checkpoint) {
             tracing::warn!(%error, "review trigger could not be recorded");
         }

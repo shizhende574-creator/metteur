@@ -220,10 +220,13 @@ impl DaemonService {
                 "execution changed; refresh before controlling it",
             ));
         }
+        let recorded = crate::oversight::recovery::mark_direct_cancel(&ws.db, entry.run_id);
+        // Stop remains effective even if persisting its recovery receipt fails.
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(broker) = &entry.approvals {
             broker.close();
         }
+        recorded.map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -298,7 +301,9 @@ impl DaemonService {
         let running = self.state.running.read().await;
         if let Some(entry) = running.get(&ws_key) {
             if priority == InterruptPriority::Normal {
-                return Err(Status::failed_precondition("Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model"));
+                return Err(Status::failed_precondition(
+                    "Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model",
+                ));
             }
             if let Some(bus) = &entry.interrupt_bus {
                 bus.send(Interrupt {
