@@ -215,6 +215,11 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
+        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+            return Err(Status::failed_precondition(
+                "execution changed; refresh before controlling it",
+            ));
+        }
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(broker) = &entry.approvals {
             broker.close();
@@ -238,6 +243,11 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
+        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+            return Err(Status::failed_precondition(
+                "execution changed; refresh before controlling it",
+            ));
+        }
         entry.pause_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(Response::new(Empty {}))
     }
@@ -258,6 +268,11 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
+        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+            return Err(Status::failed_precondition(
+                "execution changed; refresh before controlling it",
+            ));
+        }
         entry.pause_requested.store(false, std::sync::atomic::Ordering::SeqCst);
         Ok(Response::new(Empty {}))
     }

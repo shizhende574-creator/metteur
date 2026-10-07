@@ -28,6 +28,7 @@ use super::super::proto::{AddonInfo, ExecutionEvent};
 #[derive(Clone)]
 pub(crate) struct RunningExecution {
     pub(crate) blueprint_id: Uuid,
+    pub(crate) run_id: Uuid,
     /// Bus for injecting interrupts into the execution.
     pub(crate) interrupt_bus: Option<InterruptBus>,
     /// Set when a pause has been requested (shared with the execution).
@@ -370,6 +371,7 @@ pub(crate) async fn spawn_execution(
             ws_key.clone(),
             RunningExecution {
                 blueprint_id: blueprint.id,
+                run_id: sink.run_id(),
                 interrupt_bus: Some(interrupt_bus.clone()),
                 pause_requested: pause_flag.clone(),
                 cancel_requested: cancel_flag.clone(),
@@ -453,6 +455,8 @@ pub(crate) async fn spawn_execution(
     let (out_tx, out_rx) = tokio::sync::mpsc::channel(64);
     let state = state.clone();
     tokio::spawn(async move {
+        let stream_id = uuid::Uuid::new_v4().to_string();
+        let mut sequence = 0_u64;
         loop {
             let event = tokio::select! {
                 biased;
@@ -466,7 +470,18 @@ pub(crate) async fn spawn_execution(
                     None => break,
                 },
             };
-            if out_tx.send(Ok(proto_event(event))).await.is_err() {
+            let mut event = proto_event(event);
+            sequence += 1;
+            let mut detail: serde_json::Value =
+                serde_json::from_str(&event.detail_json).unwrap_or_else(|_| serde_json::json!({}));
+            if !detail.is_object() {
+                detail = serde_json::json!({ "payload": detail });
+            }
+            detail["run_id"] = serde_json::json!(run_id);
+            detail["stream_id"] = serde_json::json!(stream_id);
+            detail["sequence"] = serde_json::json!(sequence);
+            event.detail_json = detail.to_string();
+            if out_tx.send(Ok(event)).await.is_err() {
                 stream_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                 stream_broker.close();
                 break;

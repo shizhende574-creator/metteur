@@ -61,7 +61,9 @@ impl Interpreter {
         status: RunStatus,
         error: Option<String>,
     ) -> DaemonResult<()> {
+        self.view.root = self.shared_blueprint.as_ref().map(|bp| bp.read().clone());
         let mut checkpoint = ExecutionCheckpoint {
+            view: self.view.clone(),
             transition_version: CHECKPOINT_TRANSITION_VERSION,
             in_flight: self.in_flight,
             run_id: sink.run_id(),

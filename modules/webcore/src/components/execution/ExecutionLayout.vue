@@ -5,6 +5,7 @@ const showDetails = ref(true), showSupervisor = ref(true)
 const width = ref(420), height = ref(200)
 const body = ref<HTMLElement>(), column = ref<HTMLElement>()
 const bottom = ref('Node details'), right = ref('Chat')
+defineExpose({ inspect: () => { bottom.value = 'Node details'; showDetails.value = true } })
 let observer: ResizeObserver | undefined
 let drag: { axis: 'width' | 'height'; start: number; value: number } | null = null
 function clamp() {

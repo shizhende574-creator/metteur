@@ -151,14 +151,20 @@ message ExecutionEvent {
 
 message CancelRequest {
   string workspace_path = 1;
+  // Optional expected run identity; stale controls must not affect a replacement run.
+  string run_id = 2;
 }
 
 message PauseRequest {
   string workspace_path = 1;
+  // Optional expected run identity; stale controls must not affect a replacement run.
+  string run_id = 2;
 }
 
 message ResumeRequest {
   string workspace_path = 1;
+  // Optional expected run identity; stale controls must not affect a replacement run.
+  string run_id = 2;
 }
 
 message InterruptRequest {

@@ -132,6 +132,7 @@ impl Interpreter {
             resume.executed_order,
         );
         self.events.clear();
+        self.view = Default::default();
         self.blueprint_id = resume.blueprint_id;
         self.started_at = resume.started_at;
         // The task list lives on the execution context (not the scheduler
@@ -140,6 +141,7 @@ impl Interpreter {
         // Carried over so a resumed run cannot reset the breaker counter and
         // slip past a replan threshold it had already reached.
         self.circuit_failures = resume.circuit_failures;
+        self.view = resume.view.clone();
         self.tree = resume.exec_tree.clone();
         self.tree_root = resume.exec_tree.roots.first().cloned();
         self.frame_trees = resume.frame_trees.clone();
@@ -173,6 +175,7 @@ impl Interpreter {
             function: None,
         });
         self.events.clear();
+        self.view = Default::default();
         self.scheduler = Scheduler::default();
         self.scheduler.seed(bp.entry_node_id);
         self.blueprint_id = bp.id;

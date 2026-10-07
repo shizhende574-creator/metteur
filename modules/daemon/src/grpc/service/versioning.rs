@@ -118,10 +118,19 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let checkpoints = DbCheckpointSink::list(&ws.db).map_err(to_status)?;
         let running = self.state.running.read().await;
-        let active = running.contains_key(&ws.root);
+        let live = running.get(&ws.root);
         let executions = checkpoints
             .into_iter()
             .map(|cp| {
+                let current = live.filter(|r| r.run_id == cp.run_id);
+                let active = current.is_some();
+                let mut data = serde_json::to_value(&cp).unwrap_or_default();
+                data["runtime"] = serde_json::json!({
+                    "active": active,
+                    "pause_requested": current.is_some_and(|r| r.pause_requested.load(std::sync::atomic::Ordering::SeqCst)),
+                    "cancel_requested": current.is_some_and(|r| r.cancel_requested.load(std::sync::atomic::Ordering::SeqCst)),
+                    "pending_approval_ids": current.and_then(|r| r.approvals.as_ref()).map(|b| b.pending_ids()).unwrap_or_default(),
+                });
                 let status = if cp.in_flight.is_some() && !active && cp.status.resumable() {
                     "RecoveryRequired".to_string()
                 } else if cp.status == RunStatus::Running && !active {
@@ -136,7 +145,7 @@ impl DaemonService {
                     started_at: cp.started_at as i64,
                     updated_at: cp.updated_at as i64,
                     executed_nodes: cp.executed.len() as i32,
-                    data_json: serde_json::to_string(&cp).unwrap_or_default(),
+                    data_json: data.to_string(),
                 }
             })
             .collect();

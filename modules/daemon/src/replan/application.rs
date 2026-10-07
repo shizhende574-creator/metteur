@@ -345,6 +345,7 @@ fn commit(
     }
     checkpoint.transaction_log = ctx.transaction_log.entries();
     checkpoint.blueprint_version = Some(after.clone());
+    checkpoint.view.root = Some(p.after.clone());
     intent.after_version = Some(after.clone());
     intent.checkpoint = checkpoint.clone();
     db.put(cf::EXECUTION_STATE, key.as_bytes(), &encode(&intent)?)?;

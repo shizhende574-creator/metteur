@@ -12,6 +12,7 @@ pub mod nodes;
 pub mod react;
 pub mod transaction;
 pub mod tree;
+pub mod view;
 
 pub use checkpoint::{CheckpointSink, DbCheckpointSink, ExecutionCheckpoint, RunStatus};
 pub use context::{ExecutionContext, ExecutionState, Frame, FunctionBody, Scheduler};

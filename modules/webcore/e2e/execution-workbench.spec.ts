@@ -72,7 +72,7 @@ test('two launch entry points converge and an existing daemon run wins without r
     const second = execution.run(graph.id, graph, 'chosen.blueprint')
     await new Promise(resolve => setTimeout(resolve, 0))
     release(); await Promise.all([first, second])
-    gateway.listExecutions = async () => ({ ok: true, data: [{ runId: 'external', blueprintId: 'other', status: 'Running' }] })
+    gateway.listExecutions = async () => ({ ok: true, data: [{ runId: 'external', blueprintId: 'other', status: 'Running', snapshot: { executed: [], pending: [], runtime: { active: true, pause_requested: false, cancel_requested: false, pending_approval_ids: [] }, view: { root: { ...graph, id: 'other' }, graphs: {}, invocations: [], edges: [], sequence: 0 } } }] })
     gateway.loadBlueprint = async () => ({ ok: true, data: { ...graph, id: 'other' } })
     await execution.run(graph.id, graph)
     return { launches, id: execution.runId, blueprint: execution.blueprint.id, error: execution.error }

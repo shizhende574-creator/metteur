@@ -286,7 +286,7 @@ export interface Blueprint {
 }
 
 /** Execution lifecycle observed by the UI. */
-export type ExecStatus = 'idle' | 'running' | 'paused' | 'finished' | 'cancelled' | 'failed'
+export type ExecStatus = 'idle' | 'running' | 'paused' | 'finished' | 'cancelled' | 'failed' | 'unknown' | 'suspended'
 
 /** A region of the live LLM context, reported by a CallLLM node. */
 export interface ContextRegion {
@@ -373,6 +373,7 @@ export interface UsageSummary {
 
 /** An execution run recorded by the daemon. */
 export interface ExecutionInfo {
+  snapshot?: import('./execution-view').ExecutionSnapshot
   runId: string
   blueprintId: string
   /** Running | Suspended | RecoveryRequired | Completed | Cancelled | Failed */

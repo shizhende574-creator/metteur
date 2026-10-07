@@ -61,38 +61,8 @@ const PALETTE_COLLAPSED = ['Events', 'Module', 'Actions', 'Flow', 'Functions']
 /** Whether the docked audit drawer is open. */
 const auditOpen = ref(false)
 
-/** Whether the given node has started executing (drives the trail). */
-function nodeStarted(nodeId: string): boolean {
-  const a = execution.nodeAudits.get(nodeId)
-  return !!a?.startedAt
-}
-
-/** Mirror the live execution trail onto the canvas: node status classes plus
- *  pulse animation on the exec edges already crossed (Unreal debug mode). The
- *  drawn trail state never feeds `graphKey`, so it cannot dirty a clean file. */
-watch(
-  [execution.runningNodeId, execution.status, execution.nodeAudits],
-  () => {
-    for (const node of flowNodes.value) {
-      const data = node.data
-      if (!data) continue
-      const audit = execution.nodeAudits.get(node.id)
-      data.status = audit?.startedAt
-        ? audit.finishedAt || node.id !== execution.runningNodeId
-          ? 'done'
-          : 'running'
-        : undefined
-    }
-    const live = execution.status === 'running' || execution.status === 'paused'
-    for (const edge of flowEdges.value) {
-      if (edge.class !== 'metteur-edge--exec' || !edge.target) continue
-      const traversed = nodeStarted(edge.target)
-      edge.animated = live && traversed
-      edge.class = traversed ? 'metteur-edge--exec is-traversed' : 'metteur-edge--exec'
-    }
-  },
-  { deep: true },
-)
+// Execution facts are rendered on the immutable runtime graph in Execution.
+// This canvas remains the editable draft, including while another version runs.
 
 const statusChip = computed(() => {
   switch (execution.status) {

@@ -175,9 +175,9 @@ export interface DaemonGateway {
   ): Promise<Result<void>>
   listExecutions(workspacePath: string): Promise<Result<ExecutionInfo[]>>
   getExecutionTree(workspacePath: string, runId: string): Promise<Result<ExecTreeData>>
-  cancel(workspacePath: string): Promise<Result<void>>
-  pause(workspacePath: string): Promise<Result<void>>
-  resume(workspacePath: string): Promise<Result<void>>
+  cancel(workspacePath: string, runId?: string): Promise<Result<void>>
+  pause(workspacePath: string, runId?: string): Promise<Result<void>>
+  resume(workspacePath: string, runId?: string): Promise<Result<void>>
 
   // Approvals ------------------------------------------------------------------
   respondApproval(workspacePath: string, requestId: string, allow: boolean): Promise<Result<void>>

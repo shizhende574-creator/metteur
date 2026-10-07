@@ -109,6 +109,7 @@ impl Interpreter {
         // Re-queue the executed segment (completion order) plus this
         // validator so the whole attempt re-runs on the restored files.
         let segment = self.active_scheduler().order_from(mark.order_mark);
+        self.view.invalidate(&segment, &self.frame_trees);
         // A validator that passed inside the rolled-back segment loses that
         // pass; clamp its mark to this segment so a later failure of it
         // re-runs the full (superset) segment instead of a stale suffix.
@@ -160,6 +161,7 @@ impl Interpreter {
         }
         crate::replan::trip_and_replan(ctx, node_id, self.circuit_failures).await?;
         self.circuit_failures = 0;
+        self.view.invalidate(&[node_id], &self.frame_trees);
         let sched = self.active_scheduler_mut();
         sched.unmark_executed(node_id);
         sched.dequeue_all(&[node_id]);

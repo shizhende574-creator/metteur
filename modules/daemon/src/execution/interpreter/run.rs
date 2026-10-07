@@ -125,6 +125,15 @@ impl Interpreter {
                 RunStatus::Failed
             }
         };
+        self.view.end(
+            match status {
+                RunStatus::Completed => "Completed",
+                RunStatus::Cancelled => "Stopped",
+                _ => "Failed",
+            },
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            now_millis(),
+        );
         if let Err(err) = self.write_terminal_checkpoint(
             ctx,
             status,
@@ -233,6 +242,19 @@ impl Interpreter {
                 (node, inputs)
             };
 
+            self.view.begin(
+                &active_bp,
+                node_id,
+                self.frame_trees.clone(),
+                ctx.blueprint_apply.lock().version.clone(),
+                &inputs,
+                now_millis(),
+            );
+            for edge in active_bp.incoming_edges(node_id) {
+                if inputs.contains_key(&edge.target_pin) {
+                    self.view.traverse(&active_bp, edge.id, self.frame_trees.clone());
+                }
+            }
             self.emit(ExecutionEvent::NodeStarted {
                 node_id,
             });

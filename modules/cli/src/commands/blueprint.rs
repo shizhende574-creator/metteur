@@ -163,6 +163,7 @@ pub(crate) async fn handle_cancel(
     let ws = require_ws(state)?;
     client
         .cancel_execution(CancelRequest {
+            run_id: String::new(),
             workspace_path: ws,
         })
         .await
@@ -178,6 +179,7 @@ pub(crate) async fn handle_pause(
     let ws = require_ws(state)?;
     client
         .pause_execution(PauseRequest {
+            run_id: String::new(),
             workspace_path: ws,
         })
         .await
@@ -193,6 +195,7 @@ pub(crate) async fn handle_resume(
     let ws = require_ws(state)?;
     client
         .resume_execution(ResumeRequest {
+            run_id: String::new(),
             workspace_path: ws,
         })
         .await

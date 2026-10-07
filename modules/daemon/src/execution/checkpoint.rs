@@ -57,6 +57,8 @@ pub struct ExecutionCheckpoint {
     /// safely be resumed automatically.
     #[serde(default)]
     pub transition_version: u32,
+    #[serde(default)]
+    pub view: super::view::ExecutionView,
     /// An executor may have started, but its outcome is not committed. Never
     /// replay it automatically: external effects may already have happened.
     #[serde(default)]
@@ -131,6 +133,7 @@ impl ExecutionCheckpoint {
     pub fn running(run_id: uuid::Uuid, blueprint_id: uuid::Uuid, started_at: u64) -> Self {
         Self {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
+            view: Default::default(),
             in_flight: None,
             run_id,
             blueprint_id,
@@ -199,7 +202,9 @@ impl DbCheckpointSink {
     pub fn list(db: &Db) -> DaemonResult<Vec<ExecutionCheckpoint>> {
         let mut out = Vec::new();
         for (key, value) in db.scan(cf::EXECUTION_STATE)? {
-            if key.starts_with(crate::replan::application::INTENT_PREFIX) { continue; }
+            if key.starts_with(crate::replan::application::INTENT_PREFIX) {
+                continue;
+            }
             let checkpoint: ExecutionCheckpoint = serde_json::from_slice(&value)
                 .map_err(|e| DaemonError::Serialization(e.to_string()))?;
             out.push(checkpoint);

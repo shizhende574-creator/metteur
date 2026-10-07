@@ -11,6 +11,7 @@ import type {
   ExecTreeData,
   ExecutionEvent,
   NodeAudit,
+  ExecutionInfo,
 } from '@/core'
 import { useWorkspaceStore } from './workspace'
 
@@ -36,10 +37,21 @@ export const useExecutionStore = defineStore('execution', () => {
   const sourcePath = ref('')
   const error = ref('')
   const launching = ref(false)
+  const current = ref<ExecutionInfo | null>(null)
+  const controlBusy = ref(false)
+  const connected = ref(false)
+  let epoch = 0, query = 0
+  const seen = new Map<string, number>()
+  const streamActive = ref(false)
+  let priorRuns = new Set<string>()
+  const active = computed(() => !!current.value?.snapshot?.runtime?.active || streamActive.value && running.value)
   watch(() => workspace.active?.path, () => {
+    epoch++; query++; seen.clear(); streamActive.value = false; priorRuns = new Set()
     blueprint.value = null; sourcePath.value = ''; error.value = ''; status.value = 'idle'
     events.value = []; nodeAudits.value = new Map(); approval.value = null; runId.value = null
-  })
+    current.value = null; connected.value = false; launching.value = false; controlBusy.value = false
+    contextUsage.value = null; contextByNode.value = new Map(); tree.value = null; todos.value = []
+  }, { flush: 'sync' })
   const status = ref<ExecStatus>('idle')
   const events = ref<EventLine[]>([])
   const approval = ref<ApprovalRequest | null>(null)
@@ -120,36 +132,53 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   async function reconcile() {
-    const ws = workspace.active?.path
+    const ws = workspace.active?.path, generation = epoch, ticket = ++query
     if (!ws || launching.value) return
-    const result = await gateway.listExecutions(ws)
-    if (workspace.active?.path !== ws) return
-    if (!result.ok) { error.value = result.error; return }
-    const current = result.data.find(r => r.status === 'Running') ?? result.data.find(r => r.runId === runId.value) ?? result.data.at(-1)
-    if (!current) return
-    runId.value = current.runId
-    if (!running.value) status.value = ({ Running: 'running', Suspended: 'paused', Completed: 'finished', Cancelled: 'cancelled', Failed: 'failed' } as Record<string, ExecStatus>)[current.status] ?? 'failed'
-    if (!blueprint.value || blueprint.value.id !== current.blueprintId) {
-      const loaded = await gateway.loadBlueprint(ws, current.blueprintId)
-      if (workspace.active?.path === ws && loaded.ok) blueprint.value = loaded.data
+    try {
+      const result = await gateway.listExecutions(ws)
+      if (generation !== epoch || ticket !== query) return
+      if (!result.ok) throw new Error(result.error)
+      connected.value = true
+      const candidates = result.data.filter(r => !streamActive.value || runId.value || !priorRuns.has(r.runId))
+      const item = candidates.find(r => r.snapshot?.runtime?.active) ?? candidates.find(r => r.runId === runId.value) ?? candidates.at(-1)
+      if (!item) return
+      if (current.value?.runId === item.runId && current.value.updatedAt > item.updatedAt) return
+      current.value = item; runId.value = item.runId
+      const runtime = item.snapshot?.runtime
+      status.value = runtime?.active ? runtime.pause_requested ? 'paused' : 'running'
+        : ({ Running: 'running', Suspended: 'suspended', RecoveryRequired: 'suspended', Completed: 'finished', Cancelled: 'cancelled', Failed: 'failed' } as Record<string, ExecStatus>)[item.status] ?? 'unknown'
+      if (item.snapshot?.view?.root) blueprint.value = item.snapshot.view.root
+      else if (!streamActive.value) blueprint.value = null
+      sourcePath.value = item.snapshot?.blueprint_version?.blueprint_uri ?? sourcePath.value
+      if (item.snapshot?.error) error.value = item.snapshot.error
+      if (!runtime?.active) approval.value = null
+    } catch (e) {
+      if (generation !== epoch || ticket !== query) return
+      connected.value = false; error.value = String(e)
     }
   }
 
   async function run(blueprintId: string, graph?: Blueprint, filePath = '') {
     const ws = workspace.active
     if (!ws || running.value || launching.value) return
+    const generation = ++epoch
     launching.value = true
     error.value = ''
-    const runsBefore = await gateway.listExecutions(ws.path)
-    if (workspace.active?.path !== ws.path) { launching.value = false; return }
-    if (!runsBefore.ok) { error.value = runsBefore.error; launching.value = false; return }
-    if (runsBefore.data.some(r => r.status === 'Running')) {
-      error.value = 'A run is already active in this workspace.'; launching.value = false; await reconcile(); return
-    }
+    try {
+      const runsBefore = await gateway.listExecutions(ws.path)
+      if (generation !== epoch) return
+      if (!runsBefore.ok) throw new Error(runsBefore.error)
+      if (runsBefore.data.some(r => r.snapshot?.runtime?.active || r.status === 'Running')) {
+        error.value = 'A run is already active in this workspace.'; launching.value = false; await reconcile(); return
+      }
+      priorRuns = new Set(runsBefore.data.map(r => r.runId))
+    } catch (e) { if (generation === epoch) error.value = String(e); return }
+    finally { if (generation === epoch) launching.value = false }
     blueprint.value = graph ? JSON.parse(JSON.stringify(graph)) : null
     sourcePath.value = filePath
-    launching.value = false
+    current.value = null; connected.value = true; streamActive.value = true
     events.value = []
+    seen.clear()
     contextUsage.value = null
     contextNode.value = null
     contextByNode.value = new Map()
@@ -159,11 +188,23 @@ export const useExecutionStore = defineStore('execution', () => {
     status.value = 'running'
     runId.value = null
     // Assert the canvas matches the authoritative file saved before Run.
-    const result = await gateway.executeBlueprint(
+    let result
+    try { result = await gateway.executeBlueprint(
       ws.path,
       blueprintId,
       (ev) => {
-      if (workspace.active?.path !== ws.path) return
+      if (generation !== epoch) return
+      const incomingRun = ev.detail?.run_id
+      if (typeof incomingRun === 'string') {
+        if (runId.value && runId.value !== incomingRun) return
+        runId.value = incomingRun
+        const key = `${incomingRun}:${ev.detail?.stream_id}`
+        const sequence = Number(ev.detail?.sequence)
+        if (Number.isFinite(sequence)) {
+          if (sequence <= (seen.get(key) ?? -1)) return
+          seen.set(key, sequence)
+        }
+      }
       push(ev)
       if (ev.kind === 'approval_request') {
         const detail = (ev.detail ?? {}) as Record<string, unknown>
@@ -186,68 +227,61 @@ export const useExecutionStore = defineStore('execution', () => {
       }
       },
       graph,
-    )
-    if (workspace.active?.path !== ws.path) return
+    ) } catch (e) { result = { ok: false as const, error: String(e) } }
+    if (generation !== epoch) return
     approval.value = null
     if (!result.ok && !['cancelled'].includes(status.value)) {
       status.value = 'failed'
+      error.value = result.error
       push({ nodeId: '', kind: 'message', message: result.error })
     }
-    // Capture the run id of the stream just finished for a later resume, and
-    // load the execution tree of the finished run.
-    const runs = await gateway.listExecutions(ws.path)
-    if (runs.ok && runs.data.length > 0) {
-      // ListExecutions returns oldest first; prefer the newest run.
-      const active = runs.data.find((r) => r.status === 'Running') ?? runs.data[runs.data.length - 1]
-      if (active) {
-        runId.value = active.runId
-        const treeRes = await gateway.getExecutionTree(ws.path, active.runId)
-        if (treeRes.ok) tree.value = treeRes.data
-      }
-    }
-    if (!['paused', 'cancelled', 'failed'].includes(status.value)) status.value = 'finished'
+    await reconcile()
+    streamActive.value = false
+    if (!current.value && result.ok && status.value === 'running') status.value = 'unknown'
   }
 
   async function respond(allow: boolean) {
-    const ws = workspace.active
-    if (!approval.value) return
-    if (!ws) return
-    await gateway.respondApproval(ws.path, approval.value.id, allow)
-    push({ nodeId: 'approval', kind: 'message', message: allow ? 'approved' : 'denied' })
-    approval.value = null
+    const ws = workspace.active?.path, request = approval.value, generation = epoch
+    if (!ws || !request || controlBusy.value) return
+    controlBusy.value = true
+    try {
+      const result = await gateway.respondApproval(ws, request.id, allow)
+      if (generation !== epoch) return
+      if (!result.ok) throw new Error(result.error)
+      approval.value = null
+    } catch (e) { if (generation === epoch) error.value = String(e) }
+    finally { if (generation === epoch) controlBusy.value = false }
   }
-
-  async function pause() {
-    const ws = workspace.active
-    if (!ws) return
-    await gateway.pause(ws.path)
-    status.value = 'paused'
+  async function control(action: 'pause' | 'resume' | 'cancel') {
+    const ws = workspace.active?.path, generation = epoch
+    if (!ws || !runId.value || controlBusy.value) return
+    controlBusy.value = true; error.value = ''
+    try {
+      const result = await gateway[action](ws, runId.value ?? undefined)
+      if (generation !== epoch) return
+      if (!result.ok) throw new Error(result.error)
+      await reconcile()
+    } catch (e) { if (generation === epoch) error.value = String(e) }
+    finally { if (generation === epoch) controlBusy.value = false }
   }
-
-  async function resume() {
-    const ws = workspace.active
-    if (!ws || !runId.value) return
-    status.value = 'running'
-    const result = await gateway.continueExecution(ws.path, runId.value, (ev) => push(ev))
-    approval.value = null
-    if (!result.ok && !['cancelled'].includes(status.value)) {
-      status.value = 'failed'
-      push({ nodeId: '', kind: 'message', message: result.error })
-    } else if (status.value === 'running') {
-      status.value = 'finished'
-    }
-  }
-
-  async function cancel() {
-    const ws = workspace.active
-    if (!ws) return
-    await gateway.cancel(ws.path)
-    status.value = 'cancelled'
-    approval.value = null
+  // Live Continue only releases the pause flag. Checkpoint recovery is explicit.
+  const pause = () => control('pause')
+  const resume = () => control('resume')
+  const cancel = () => control('cancel')
+  async function recover() {
+    const ws = workspace.active?.path, id = runId.value, generation = epoch
+    if (!ws || !id || active.value || controlBusy.value) return
+    controlBusy.value = true
+    try {
+      const result = await gateway.continueExecution(ws, id, ev => { if (generation === epoch) push(ev) })
+      if (generation !== epoch) return
+      if (!result.ok) { status.value = 'failed'; push({ nodeId: '', kind: 'message', message: result.error }); error.value = result.error }
+      await reconcile()
+    } finally { if (generation === epoch) controlBusy.value = false }
   }
 
   return {
-    blueprint, sourcePath, error, launching, reconcile,
+    blueprint, sourcePath, error, launching, reconcile, current, connected, active, controlBusy, recover,
     status,
     events,
     approval,

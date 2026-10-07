@@ -1,3 +1,4 @@
+import { executionSnapshot } from './execution-view'
 import { createClient, type Client } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
 import { ref, type Ref } from 'vue'
@@ -1062,6 +1063,7 @@ export class GrpcGateway implements DaemonGateway {
           startedAt: Number(x.startedAt),
           updatedAt: Number(x.updatedAt),
           executedNodes: x.executedNodes,
+          snapshot: executionSnapshot(x.dataJson),
         })),
       )
     } catch (e) {
@@ -1091,27 +1093,27 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async cancel(workspacePath: string): Promise<Result<void>> {
+  async cancel(workspacePath: string, runId = ''): Promise<Result<void>> {
     try {
-      await this.client.cancelExecution({ workspacePath })
+      await this.client.cancelExecution({ workspacePath, runId })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
     }
   }
 
-  async pause(workspacePath: string): Promise<Result<void>> {
+  async pause(workspacePath: string, runId = ''): Promise<Result<void>> {
     try {
-      await this.client.pauseExecution({ workspacePath })
+      await this.client.pauseExecution({ workspacePath, runId })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
     }
   }
 
-  async resume(workspacePath: string): Promise<Result<void>> {
+  async resume(workspacePath: string, runId = ''): Promise<Result<void>> {
     try {
-      await this.client.resumeExecution({ workspacePath })
+      await this.client.resumeExecution({ workspacePath, runId })
       return ok(undefined)
     } catch (e) {
       return toErr(e)

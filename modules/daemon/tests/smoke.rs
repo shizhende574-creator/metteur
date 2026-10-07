@@ -650,7 +650,9 @@ async fn smoke_completed_run_cannot_continue() {
         .unwrap();
     let blueprint = build_blueprint();
     client
-        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
+        .save_blueprint(SaveBlueprintRequest {
+            file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()),
+            file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -680,6 +682,17 @@ async fn smoke_completed_run_cannot_continue() {
         .into_inner();
     assert_eq!(list.executions.len(), 1);
     assert_eq!(list.executions[0].status, "Completed");
+    let facts: serde_json::Value = serde_json::from_str(&list.executions[0].data_json).unwrap();
+    assert_eq!(facts["view"]["root"]["id"], blueprint.id);
+    assert_eq!(facts["runtime"]["active"], false);
+    let invocations = facts["view"]["invocations"].as_array().unwrap();
+    assert!(!invocations.is_empty());
+    assert!(invocations.iter().all(|i| i["status"] == "Completed"));
+    assert!(invocations.iter().all(|i| i["version"] == facts["blueprint_version"]));
+    let again = client.list_executions(ListExecutionsRequest { workspace_path: ws_path.clone() })
+        .await.unwrap().into_inner();
+    assert_eq!(again.executions.len(), 1);
+    assert_eq!(again.executions[0].data_json, list.executions[0].data_json);
 
     // Continuing a completed run is rejected.
     let err = client
@@ -703,9 +716,11 @@ async fn smoke_cancel_marks_run_cancelled() {
         })
         .await
         .unwrap();
-    let blueprint = build_cancel_blueprint(300);
+    let blueprint = build_cancel_blueprint(3000);
     client
-        .save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
+        .save_blueprint(SaveBlueprintRequest {
+            file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()),
+            file_json: String::new(),
             workspace_path: ws_path.clone(),
             blueprint: Some(blueprint.clone()),
         })
@@ -722,10 +737,29 @@ async fn smoke_cancel_marks_run_cancelled() {
         .unwrap()
         .into_inner();
 
-    // Let the run start, then cancel it while the mock LLM call is pending.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // The stream identifies its run before controls can target it.
+    let first = stream.message().await.unwrap().unwrap();
+    let envelope: serde_json::Value = serde_json::from_str(&first.detail_json).unwrap();
+    let run_id = envelope["run_id"].as_str().unwrap().to_string();
+    assert_eq!(envelope["sequence"], 1);
+    assert!(envelope["stream_id"].as_str().is_some());
+    let stale = uuid::Uuid::new_v4().to_string();
+    assert_eq!(client.pause_execution(proto::PauseRequest { workspace_path: ws_path.clone(), run_id: stale.clone() })
+        .await.unwrap_err().code(), tonic::Code::FailedPrecondition);
+    assert_eq!(client.resume_execution(proto::ResumeRequest { workspace_path: ws_path.clone(), run_id: stale.clone() })
+        .await.unwrap_err().code(), tonic::Code::FailedPrecondition);
+    assert_eq!(client.cancel_execution(CancelRequest { workspace_path: ws_path.clone(), run_id: stale })
+        .await.unwrap_err().code(), tonic::Code::FailedPrecondition);
+    client.pause_execution(proto::PauseRequest { workspace_path: ws_path.clone(), run_id: run_id.clone() }).await.unwrap();
+    let listed = client.list_executions(ListExecutionsRequest { workspace_path: ws_path.clone() }).await.unwrap().into_inner();
+    let facts: serde_json::Value = serde_json::from_str(&listed.executions[0].data_json).unwrap();
+    assert_eq!(facts["runtime"]["active"], true);
+    assert_eq!(facts["runtime"]["pause_requested"], true);
+    assert_eq!(facts["runtime"]["cancel_requested"], false);
+    client.resume_execution(proto::ResumeRequest { workspace_path: ws_path.clone(), run_id: run_id.clone() }).await.unwrap();
     client
         .cancel_execution(CancelRequest {
+            run_id,
             workspace_path: ws_path.clone(),
         })
         .await
