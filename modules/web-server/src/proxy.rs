@@ -60,6 +60,13 @@ fn pump_stream<T: Send + 'static>(
 
 #[tonic::async_trait]
 impl Daemon for ForwardService {
+    type SendConciergeMessageStream = ReceiverStream<Result<metteur_proto::proto::ConciergeEvent, Status>>;
+    async fn get_concierge_state(&self, request: Request<metteur_proto::proto::ConciergeStateRequest>) -> Result<Response<metteur_proto::proto::ConciergeState>, Status> {
+        self.client.clone().get_concierge_state(request).await
+    }
+    async fn send_concierge_message(&self, request: Request<metteur_proto::proto::SendConciergeMessageRequest>) -> Result<Response<Self::SendConciergeMessageStream>, Status> {
+        Ok(Response::new(pump_stream(self.client.clone().send_concierge_message(request).await?)))
+    }
     async fn rewind_chat(
         &self,
         request: Request<metteur_proto::proto::RewindChatRequest>,
@@ -489,6 +496,19 @@ mod tests {
 
     #[tonic::async_trait]
     impl Daemon for TestBackend {
+        type SendConciergeMessageStream = ReceiverStream<Result<metteur_proto::proto::ConciergeEvent, Status>>;
+        async fn get_concierge_state(&self, request: Request<metteur_proto::proto::ConciergeStateRequest>) -> Result<Response<metteur_proto::proto::ConciergeState>, Status> {
+            let r=request.into_inner();
+            if r.workspace_path=="denied" {return Err(Status::permission_denied("denied"));}
+            Ok(Response::new(metteur_proto::proto::ConciergeState{state_json:r.run_id}))
+        }
+        async fn send_concierge_message(&self, request: Request<metteur_proto::proto::SendConciergeMessageRequest>) -> Result<Response<Self::SendConciergeMessageStream>, Status> {
+            let r=request.into_inner();
+            if r.workspace_path=="denied" {return Err(Status::permission_denied("denied"));}
+            let (tx,rx)=tokio::sync::mpsc::channel(2);
+            tx.send(Ok(metteur_proto::proto::ConciergeEvent{run_id:r.run_id,message_id:r.message_id,kind:"received".into(),detail_json:r.message})).await.unwrap();
+            Ok(Response::new(ReceiverStream::new(rx)))
+        }
         async fn rewind_chat(
             &self,
             request: Request<metteur_proto::proto::RewindChatRequest>,
@@ -923,6 +943,21 @@ mod tests {
             kinds.push(event.kind);
         }
         assert_eq!(kinds, vec!["started".to_string(), "finished".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn proxy_forwards_concierge_state_stream_and_denials() {
+        let backend=serve_client(DaemonServer::new(TestBackend)).await;
+        let mut proxy=serve_client(DaemonServer::new(ForwardService::new(backend))).await;
+        let state=proxy.get_concierge_state(metteur_proto::proto::ConciergeStateRequest{workspace_path:"allowed".into(),run_id:"run".into(),conversation_id:"conversation".into()}).await.unwrap().into_inner();
+        assert_eq!(state.state_json,"run");
+        let mut stream=proxy.send_concierge_message(metteur_proto::proto::SendConciergeMessageRequest{workspace_path:"allowed".into(),run_id:"run".into(),message_id:"message".into(),message:"request".into(),..Default::default()}).await.unwrap().into_inner();
+        let event=stream.message().await.unwrap().unwrap();assert_eq!(event.message_id,"message");assert_eq!(event.detail_json,"request");
+        assert!(stream.message().await.unwrap().is_none());
+        let denied=proxy.send_concierge_message(metteur_proto::proto::SendConciergeMessageRequest{workspace_path:"denied".into(),..Default::default()}).await.err().unwrap();
+        assert_eq!(denied.code(),tonic::Code::PermissionDenied);
+        let denied=proxy.get_concierge_state(metteur_proto::proto::ConciergeStateRequest{workspace_path:"denied".into(),..Default::default()}).await.err().unwrap();
+        assert_eq!(denied.code(),tonic::Code::PermissionDenied);
     }
 
     #[tokio::test]

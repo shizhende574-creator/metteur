@@ -1,3 +1,4 @@
+import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
 import { createClient, type Client } from '@connectrpc/connect'
@@ -1243,6 +1244,25 @@ export class GrpcGateway implements DaemonGateway {
     } catch (e) { return toErr(e) }
   }
 
+  async getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>> {
+    try {
+      const response = await this.client.getConciergeState({ workspacePath, runId, conversationId })
+      const value = JSON.parse(response.stateJson) as ConciergeState
+      if (value.run_id !== runId || value.conversation_id !== conversationId || !Array.isArray(value.messages) || !Array.isArray(value.requests)) throw new Error('Invalid concierge state')
+      return ok(value)
+    } catch (e) { return toErr(e) }
+  }
+  async sendConciergeMessage(workspacePath: string, runId: string, conversationId: string, messageId: string, message: string, onEvent: (event: ConciergeEvent) => void, signal?: AbortSignal): Promise<Result<void>> {
+    try {
+      for await (const event of this.client.sendConciergeMessage({ workspacePath, runId, conversationId, messageId, message }, { signal })) {
+        if (event.runId !== runId || event.messageId !== messageId) throw new Error('Mismatched concierge event')
+        const turn = event.kind === 'processing' ? undefined : JSON.parse(event.detailJson)
+        if (turn && (turn.id !== messageId || turn.conversation_id !== conversationId)) throw new Error('Mismatched concierge turn')
+        onEvent({ runId, messageId, kind: event.kind, turn })
+      }
+      return ok(undefined)
+    } catch (e) { return toErr(e) }
+  }
   async getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>> {
     try {
       const u = await this.client.getExecutionUsage({ workspacePath, runId })

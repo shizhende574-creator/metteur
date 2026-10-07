@@ -1,3 +1,4 @@
+import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { ref } from 'vue'
 import type { DaemonGateway } from './gateway'
@@ -1165,6 +1166,12 @@ export class MockGateway implements DaemonGateway {
     return { ok: false, error: 'Blackboard requires a recorded daemon run.' }
   }
 
+  async getConciergeState(_ws: string, _run: string, _conversation: string): Promise<Result<ConciergeState>> {
+    return err('Concierge requires a live daemon and a recorded blueprint run')
+  }
+  async sendConciergeMessage(_ws: string, _run: string, _conversation: string, _id: string, _message: string, _onEvent: (event: ConciergeEvent) => void, _signal?: AbortSignal): Promise<Result<void>> {
+    return err('Concierge requires a live daemon; no request was accepted')
+  }
   async getExecutionUsage(_ws: string, _runId: string): Promise<Result<UsageSummary>> {
     await delay(150)
     return ok(DEMO_USAGE)

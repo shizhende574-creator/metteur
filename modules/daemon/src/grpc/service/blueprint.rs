@@ -297,6 +297,9 @@ impl DaemonService {
         };
         let running = self.state.running.read().await;
         if let Some(entry) = running.get(&ws_key) {
+            if priority == InterruptPriority::Normal {
+                return Err(Status::failed_precondition("Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model"));
+            }
             if let Some(bus) = &entry.interrupt_bus {
                 bus.send(Interrupt {
                     priority,

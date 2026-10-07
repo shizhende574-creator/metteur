@@ -190,12 +190,11 @@ mod tests {
             async { Ok::<_, Infallible>(http::Response::new(Body::empty())) }
         });
         let mut svc = layer.layer(inner);
-        let req = http::Request::builder()
-            .uri("/metteur.Daemon/GetBlackboard")
-            .body(Body::empty())
-            .unwrap();
-        let response = svc.ready().await.unwrap().call(req).await.unwrap();
-        assert_eq!(response.headers().get("grpc-status").unwrap(), "7");
+        for method in ["GetBlackboard", "GetConciergeState", "SendConciergeMessage"] {
+            let req = http::Request::builder().uri(format!("/metteur.Daemon/{method}")).body(Body::empty()).unwrap();
+            let response = svc.ready().await.unwrap().call(req).await.unwrap();
+            assert_eq!(response.headers().get("grpc-status").unwrap(), "7");
+        }
         assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
     }
 

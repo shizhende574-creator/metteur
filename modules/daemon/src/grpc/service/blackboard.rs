@@ -22,7 +22,7 @@ impl DaemonService {
         if req.query_json.len() > 16_384 {
             return Err(Status::invalid_argument("query too large"));
         }
-        let query: Query = if req.query_json.trim().is_empty() {
+        let mut query: Query = if req.query_json.trim().is_empty() {
             Query::default()
         } else {
             serde_json::from_str(&req.query_json)
@@ -39,8 +39,12 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("blueprint run not found in this workspace"))?;
         // Always apply built-ins at this boundary, plus configured patterns.
         // No deanonymization map or full context is exposed to the caller.
-        let patterns = ws.config.read().await.anonymize.extra_patterns.clone();
-        let projection = blackboard::project(
+        let config = ws.config.read().await;
+        let settings = metteur_shared::config::oversight::OversightConfig::from_config(&config).map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let patterns = config.anonymize.extra_patterns.clone();
+        drop(config);
+        query.last_n = query.last_n.min(settings.blackboard.max_entries);
+        let mut projection = blackboard::project(
             &run.to_string(),
             &checkpoint.view,
             &checkpoint.exec_tree,
@@ -48,6 +52,9 @@ impl DaemonService {
             &Anonymizer::new(&patterns),
         )
         .await;
+        for entry in &mut projection.entries {
+            if let Some(digest) = &mut entry.digest { *digest = digest.chars().take(settings.blackboard.digest_chars).collect(); }
+        }
         if query.entry_id.is_some() && projection.entries.is_empty() {
             return Err(Status::not_found("blackboard entry not found"));
         }

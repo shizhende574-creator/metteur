@@ -10,6 +10,7 @@ mod blackboard;
 mod blueprint;
 mod chat;
 mod config;
+mod concierge;
 mod files;
 mod jobs;
 mod registry;
@@ -77,6 +78,13 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    type SendConciergeMessageStream = tokio_stream::wrappers::ReceiverStream<Result<super::proto::ConciergeEvent, Status>>;
+    async fn get_concierge_state(&self, request: Request<super::proto::ConciergeStateRequest>) -> Result<Response<super::proto::ConciergeState>, Status> {
+        self.get_concierge_state(request).await
+    }
+    async fn send_concierge_message(&self, request: Request<super::proto::SendConciergeMessageRequest>) -> Result<Response<Self::SendConciergeMessageStream>, Status> {
+        self.send_concierge_message(request).await
+    }
     async fn rewind_chat(
         &self,
         request: Request<super::proto::RewindChatRequest>,

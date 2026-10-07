@@ -151,6 +151,7 @@ impl WorkspaceManager {
         let metadata_dir = root.join(METADATA_DIR);
         let lock = SessionLock::acquire(&metadata_dir)?;
         let db = Db::open(&metadata_dir.join("db"))?;
+        crate::oversight::conversation::recover(&db)?;
         crate::execution::file_journal::FileJournal::new(
             root.clone(),
             Arc::new(crate::execution::file_journal::DbFileJournal(db.clone())),

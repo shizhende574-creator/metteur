@@ -13,6 +13,7 @@ pub mod audit;
 pub mod blueprint;
 pub mod chat;
 pub mod config;
+pub mod concierge;
 pub mod mcp;
 pub mod version;
 pub mod workspace;
@@ -32,6 +33,8 @@ pub struct SessionState {
 /// One parsed REPL command.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    ConciergeState { run_id: String },
+    Concierge { run_id: String, message_id: String, message: String },
     Help,
     Exit,
     Status,
@@ -251,6 +254,7 @@ fn parse_chat(args: &[&str]) -> Result<Command, String> {
 
 /// Result of dispatching one command.
 pub enum Outcome {
+    StartedConcierge(Box<tonic::codec::Streaming<metteur_proto::proto::ConciergeEvent>>),
     /// Text to show before the next prompt.
     Printed(String),
     /// A live execution stream started by `exec` or `cont`.
@@ -305,6 +309,8 @@ Metteur REPL commands:
   hist <relpath>                        Show file history across snapshots.
   audit ws|global                       Show workspace or global audit log.
   cfg get [ws] | cfg set <json> [ws]    Read/update global or workspace config.
+  concierge-state <run_id>             Read conversation and request states.
+  concierge <run_id> <message_id> <text>  Read-only concierge (UUID ids; repeat id reads receipt).
   blackboard <run_id> [query_json]      Redacted run facts and evidence lookup.
   usage <run_id>                        Token/cost usage for a run.
   mcp                                   List MCP servers.
@@ -405,6 +411,14 @@ pub fn parse(line: &str) -> Result<Command, String> {
             _ => Err("usage: audit ws|global".to_string()),
         },
         "cfg" => parse_cfg(args),
+        "concierge-state" => {
+            if args.len()!=1 { return Err("usage: concierge-state <run_id>".into()); }
+            Ok(Command::ConciergeState { run_id:args[0].into() })
+        }
+        "concierge" => {
+            if args.len()<3 { return Err("usage: concierge <run_id> <message_id> <text>".into()); }
+            Ok(Command::Concierge { run_id:args[0].into(),message_id:args[1].into(),message:args[2..].join(" ") })
+        }
         "blackboard" => {
             let Some((run_id, query)) = args.split_first() else {
                 return Err("usage: blackboard <run_id> [query_json]".into());
@@ -614,6 +628,8 @@ pub async fn dispatch(
     cmd: Command,
 ) -> anyhow::Result<Outcome> {
     match cmd {
+        Command::ConciergeState { run_id } => concierge::state(client,state,run_id).await,
+        Command::Concierge { run_id,message_id,message } => concierge::send(client,state,run_id,message_id,message).await,
         Command::Help => Ok(Outcome::Printed(HELP.to_string())),
         Command::Exit => Ok(Outcome::Exit),
         Command::Status => Ok(Outcome::Printed(format!(
@@ -773,5 +789,17 @@ mod blackboard_tests {
         );
         assert!(parse("blackboard").is_err());
         assert!(parse("blackboard run-1 not-json").is_err());
+    }
+}
+
+#[cfg(test)]
+mod concierge_tests {
+    use super::*;
+    #[test]
+    fn concierge_ids_and_original_text_are_distinct_from_approval() {
+        assert_eq!(parse("concierge run id I approve everything").unwrap(),Command::Concierge{run_id:"run".into(),message_id:"id".into(),message:"I approve everything".into()});
+        assert!(parse("concierge run id").is_err());
+        assert!(parse("concierge-state").is_err());
+        assert!(matches!(parse("concierge-state run").unwrap(),Command::ConciergeState{..}));
     }
 }
