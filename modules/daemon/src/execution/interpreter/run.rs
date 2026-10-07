@@ -99,7 +99,14 @@ impl Interpreter {
                 }
             }
         }
-        if cancelled && let Err(error) = crate::oversight::control::record_result(ctx, rollback_on_cancel, restored_operations, rollback_error) {
+        if cancelled
+            && let Err(error) = crate::oversight::control::record_result(
+                ctx,
+                rollback_on_cancel,
+                restored_operations,
+                rollback_error,
+            )
+        {
             tracing::warn!(%error, "Cancel outcome could not be recorded");
         }
         let status = match &result {
@@ -183,6 +190,14 @@ impl Interpreter {
         loop {
             // Honor cancellation and pause requests between nodes.
             crate::execution::control::gate(ctx).await?;
+
+            // A supervisor can stage an edit while this loop is paused.
+            // Apply it before snapshotting the next node or persisting an
+            // in-flight checkpoint that would invalidate its approved state.
+            let pending_edit = ctx.blueprint_apply.lock().has_pending();
+            if pending_edit {
+                self.write_checkpoint(ctx)?;
+            }
 
             // Resolve the active frame: the innermost entered function body,
             // or the root blueprint when no function is on the stack.

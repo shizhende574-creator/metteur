@@ -26,6 +26,12 @@ pub(crate) struct ApplyState {
     blocked: bool,
 }
 
+impl ApplyState {
+    pub(crate) fn has_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+}
+
 /// Chosen by the server entry point, never deserialized from model arguments.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum Source {

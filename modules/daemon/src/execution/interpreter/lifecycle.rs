@@ -14,6 +14,10 @@ use super::checkpointing::now_millis;
 use super::edges::has_exec_cycle;
 use super::{Interpreter, SharedBlueprint};
 
+#[cfg(test)]
+#[path = "paused_apply_tests.rs"]
+mod paused_apply_tests;
+
 impl Interpreter {
     /// Executes the blueprint from its entry node.
     ///
