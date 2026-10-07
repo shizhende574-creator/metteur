@@ -83,6 +83,9 @@ pub fn reserve(
         .oversight_gate
         .lock()
         .map_err(|_| DaemonError::Persistence("oversight lock poisoned".into()))?;
+    if super::requests::load(db, run)?.closed {
+        return Err(DaemonError::Execution("run is no longer accepting oversight calls".into()));
+    }
     let mut ledger = load(db, run)?;
     let used = ledger.calls.iter().fold(0u64, |sum, c| sum.saturating_add(c.charged));
     if amount == 0

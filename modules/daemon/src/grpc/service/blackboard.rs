@@ -55,8 +55,19 @@ impl DaemonService {
         AuditWriter::new(ws.db.clone()).record(&subject, "blackboard.query", serde_json::json!({
             "run_id": run, "returned_entries": projection.entries.len(), "evidence_lookup": query.entry_id.is_some()
         })).map_err(to_status)?;
-        let projection_json = serde_json::to_string(&projection)
+        let mut value = serde_json::to_value(&projection)
             .map_err(|_| Status::internal("cannot serialize blackboard"))?;
+        let queue = crate::oversight::requests::load(&ws.db, run).map_err(to_status)?;
+        // The board exposes immutable status/evidence, not a queue mutation API.
+        let requests: Vec<_> = queue.requests.iter().rev().take(1000).map(|r| serde_json::json!({
+            "request_id": r.request_id, "source": r.source, "state": r.state,
+            "revision": r.revision, "review_id": r.review_id, "proposals": r.proposals,
+            "result_refs": r.result_refs,
+        })).collect();
+        value["requests"] = serde_json::json!(requests);
+        value["requests_closed"] = serde_json::json!(queue.closed);
+        value["requests_total"] = serde_json::json!(queue.requests.len());
+        let projection_json = value.to_string();
         Ok(Response::new(BlackboardProjection {
             projection_json,
         }))
