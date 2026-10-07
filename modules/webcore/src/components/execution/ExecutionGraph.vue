@@ -5,6 +5,7 @@ import { Background } from '@vue-flow/background'
 import { Crosshair, Maximize2 } from '@lucide/vue'
 import type { Blueprint } from '@/core'
 import type { ExecutionSnapshot, Invocation } from '@/core/execution-view'
+import { blueprintEdgeVisual } from '@/lib/blueprint-edges'
 import BlueprintNode from '@/components/BlueprintNode.vue'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -43,7 +44,10 @@ const edges = computed<Edge[]>(() => graph.value.edges.map(e => {
   const source = latest.value.get(e.source)
   const recorded = source?.current !== false && source?.sequence === candidate?.sequence ? candidate : undefined
   const live = props.live && !!recorded && latest.value.get(e.target)?.current !== false && latest.value.get(e.target)?.status === 'Running' && recorded.sequence <= latest.value.get(e.target)!.sequence
-  return { ...e, type: 'smoothstep', animated: live, class: recorded ? 'is-traversed' : '', style: { stroke: recorded ? 'var(--primary)' : 'var(--subtle)', opacity: recorded ? 1 : .4, strokeWidth: live ? 3 : 1.5 } }
+  const node = graph.value.nodes.find(n => n.id === e.source)
+  const exec = node?.outputs.find(p => p.id === e.sourceHandle)?.kind === 'exec-out'
+  const visual = blueprintEdgeVisual(exec, node?.category)
+  return { ...e, ...visual, animated: live, class: `${visual.class} ${recorded ? 'is-traversed' : ''}`, style: { ...visual.style, opacity: recorded ? 1 : .35 } }
 }))
 async function fit() { await nextTick(); await fitView({ padding: .22 }) }
 watch(() => props.snapshot?.view?.sequence, () => {
@@ -60,7 +64,7 @@ watch(context, () => { selected.value = ''; void fit() })
 </script>
 <template>
   <div class="graph-tools"><button aria-label="Follow execution" :aria-pressed="follow" @click="follow = !follow"><Crosshair :size="15" /></button><button aria-label="Fit graph" @click="fit"><Maximize2 :size="15" /></button><select v-if="contexts.size > 1" v-model="context" aria-label="Execution frame"><option v-for="([key, value]) in contexts" :key="key" :value="key">{{ value.label }}</option></select></div>
-  <VueFlow id="execution" :nodes="nodes" :edges="edges" :nodes-draggable="false" :nodes-connectable="false" :edges-updatable="false" :delete-key-code="null" :zoom-on-double-click="false" :fit-view-on-init="true" @nodes-initialized="fit" @node-click="({ node }) => { selected = node.id; emit('inspect', latest.get(node.id) ?? null) }">
+  <VueFlow id="execution" class="blueprint-flow execution-flow" :nodes="nodes" :edges="edges" :nodes-draggable="false" :nodes-connectable="false" :edges-updatable="false" :delete-key-code="null" :zoom-on-double-click="false" :fit-view-on-init="true" @nodes-initialized="fit" @node-click="({ node }) => { selected = node.id; emit('inspect', latest.get(node.id) ?? null) }">
     <Background :gap="20" :size="1" pattern-color="var(--grid-dot)" />
     <template #node-runtime="{ id, data }"><div class="runtime-node"><BlueprintNode readonly :id="id" :data="data" :selected="selected === id" /><div class="node-caption">{{ data.runtimeState }}</div></div></template>
   </VueFlow>

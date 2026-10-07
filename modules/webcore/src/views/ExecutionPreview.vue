@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
-import { VueFlow, BaseEdge, useVueFlow, type Node, type Edge } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Node, type Edge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { Activity, ArrowUp, Check, Plus, ChevronRight, Clock3, Crosshair, Maximize2, PanelBottom, PanelRight, FileCode2, GitBranch, MessageSquare, Pause, Play, RotateCcw, ShieldCheck, Square, Workflow, X } from '@lucide/vue'
@@ -136,15 +136,11 @@ const edges = computed<Edge[]>(() => stages.slice(0, -1).flatMap((n, i) => {
   const passed = scene.value !== 'ready' && (i < step.value || scene.value === 'finished')
   const active = i === step.value - 1 && scene.value === 'running'
   return [{ id: `exec-${i}`, source: n.id, target: next.id, sourceHandle: `${n.id}-out`, targetHandle: `${next.id}-in`,
-    type: i === 2 ? 'row-return' : 'smoothstep', animated: active, class: `metteur-edge--exec ${passed ? 'is-traversed' : ''}`,
+    type: 'default', animated: active, class: `metteur-edge--exec ${passed ? 'is-traversed' : ''}`,
     style: { stroke: active ? 'var(--primary)' : passed ? '#2fbf8f' : 'var(--subtle)', strokeWidth: active ? 3 : 1.5, opacity: passed ? 1 : 0.38 } },
   { id: `data-${i}`, source: n.id, target: next.id, sourceHandle: `${n.id}-data-out`, targetHandle: `${next.id}-data-in`,
-    type: i === 2 ? 'row-return' : 'smoothstep', class: 'metteur-edge--data', style: { stroke: '#ec6b7e', strokeWidth: 1, opacity: 0.23 } }]
+    type: 'default', class: 'metteur-edge--data', style: { stroke: '#ec6b7e', strokeWidth: 1, opacity: 0.23 } }]
 }))
-function returnPath(sx: number, sy: number, tx: number, ty: number) {
-  const mid = (sy + ty) / 2, right = sx + 27, left = tx - 27, r = 9
-  return `M ${sx} ${sy} H ${right-r} Q ${right} ${sy} ${right} ${sy+r} V ${mid-r} Q ${right} ${mid} ${right-r} ${mid} H ${left+r} Q ${left} ${mid} ${left} ${mid+r} V ${ty-r} Q ${left} ${ty} ${left+r} ${ty} H ${tx}`
-}
 const { fitView } = useVueFlow('execution-preview')
 async function fit() { await nextTick(); await fitView({ padding: 0.22, duration: 250 }) }
 watch([showDetails, showSupervisor], () => { void fit() })
@@ -272,10 +268,9 @@ onBeforeUnmount(() => { clearInterval(timer); graphObserver?.disconnect(); colum
             <button :class="{ active: showSupervisor }" :aria-pressed="showSupervisor" aria-label="Supervision panel" title="Supervision panel" @click="showSupervisor = !showSupervisor"><PanelRight :size="15" /></button>
             <button aria-label="Open blueprint source" title="Open blueprint source" @click="editorPreview = true"><FileCode2 :size="15" /></button>
           </div>
-          <VueFlow id="execution-preview" class="blueprint-flow" :nodes="nodes" :edges="edges" :nodes-draggable="false" :nodes-connectable="false" :zoom-on-double-click="false" :min-zoom="0.35" :max-zoom="1.5" :fit-view-on-init="true" @nodes-initialized="fit" @node-click="({ node }) => { selected = node.id; showDetails = true }">
+          <VueFlow id="execution-preview" class="blueprint-flow execution-flow" :nodes="nodes" :edges="edges" :nodes-draggable="false" :nodes-connectable="false" :zoom-on-double-click="false" :min-zoom="0.35" :max-zoom="1.5" :fit-view-on-init="true" @nodes-initialized="fit" @node-click="({ node }) => { selected = node.id; showDetails = true }">
             <Background :gap="20" :size="1" pattern-color="var(--grid-dot)" />
             <Controls position="bottom-left" :show-interactive="false" />
-            <template #edge-row-return="{ id, sourceX, sourceY, targetX, targetY, style }"><BaseEdge :id="id" :path="returnPath(sourceX, sourceY, targetX, targetY)" :style="style" /></template>
             <template #node-preview="{ id, data }"><div class="runtime-node" :class="[{ inspected: selected === id }, data.state === 'Failed' ? 'node-failed' : '', data.state === 'Awaiting confirmation' ? 'node-waiting' : '']">
               <BlueprintNode :id="id" :data="data" :selected="selected === id" />
               <div class="node-caption"><span>{{ data.kind }}</span><span :class="{ success: data.state === 'Completed', accent: data.state === 'Running', danger: data.state === 'Failed' }"><Check v-if="data.state === 'Completed'" :size="10" /><span v-if="data.state === 'Running'" class="live-dot" />{{ data.state }}</span></div>

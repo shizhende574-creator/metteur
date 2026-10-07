@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { blueprintEdgeVisual, CATEGORY_ACCENT as ACCENT } from '@/lib/blueprint-edges'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useVueFlow, VueFlow, ConnectionMode } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -295,12 +296,7 @@ const isExecHandle = (h?: string): boolean => {
 }
 
 /** Category tint, aligned with the palette swatches in the context menu. */
-const ACCENT: Record<NodeCategory, string> = {
-  event: '#3f8cff',
-  module: '#8b5cf6',
-  action: '#f2994a',
-  flow: '#2fbf8f',
-}
+
 
 /** The live registry controls available kinds, including extensions without visual presets. */
 const kindList = computed(() => store.signatures.map((s) => s.kind))
@@ -414,14 +410,8 @@ function edgeVisual(
   sourceHandle: string | undefined,
   sourceNodeId?: string,
 ): { class: string; animated: boolean; style?: Record<string, string> } {
-  if (isExecHandle(sourceHandle)) {
-    // Control flow: heavy, solid exec wire (colour comes from --exec-wire).
-    return { class: 'metteur-edge--exec', animated: false }
-  }
-  // Data flow: normal-thickness coloured wire tinted by the source category.
   const node = flowNodes.value.find((n) => n.id === sourceNodeId)
-  const category = (node?.data?.category as NodeCategory) ?? 'module'
-  return { class: 'metteur-edge--data', animated: false, style: { stroke: ACCENT[category] } }
+  return blueprintEdgeVisual(isExecHandle(sourceHandle), (node?.data?.category as NodeCategory) ?? 'module')
 }
 
 function toFlowNode(n: BlueprintNode): FlowNode {
