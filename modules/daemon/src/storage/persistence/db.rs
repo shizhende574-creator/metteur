@@ -37,6 +37,8 @@ pub mod cf {
 #[derive(Clone)]
 pub struct Db {
     inner: Arc<DB>,
+    /// Serializes independent oversight records across all clones of this database.
+    pub(crate) oversight_gate: Arc<std::sync::Mutex<()>>,
 }
 
 impl Db {
@@ -102,6 +104,7 @@ impl Db {
             .map_err(|e| DaemonError::Internal(format!("failed to open db: {e}")))?;
         Ok(Self {
             inner: Arc::new(db),
+            oversight_gate: Arc::new(std::sync::Mutex::new(())),
         })
     }
 
@@ -115,6 +118,14 @@ impl Db {
             .put_cf(handle, key, value)
             .map_err(|e| DaemonError::Internal(format!("db put failed: {e}")))?;
         Ok(())
+    }
+
+    /// Acknowledged side-channel state must survive a process or machine crash.
+    pub fn put_durable(&self, family: &str, key: &[u8], value: &[u8]) -> DaemonResult<()> {
+        let handle = self.inner.cf_handle(family).ok_or_else(|| DaemonError::Persistence("missing column family".into()))?;
+        let mut options = rocksdb::WriteOptions::default();
+        options.set_sync(true);
+        self.inner.put_cf_opt(handle, key, value, &options).map_err(|e| DaemonError::Persistence(e.to_string()))
     }
 
     /// Gets a value from a column family.

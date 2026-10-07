@@ -249,6 +249,11 @@ pub fn audit(list: &AuditLogList) -> String {
 
 /// Renders a usage summary: a per-model table plus total cost.
 pub fn usage(summary: &UsageSummary) -> String {
+    if !summary.oversight_json.is_empty() {
+        let mut execution = summary.clone();
+        execution.oversight_json.clear();
+        return format!("{}\noversight: {}", usage(&execution), compact_json(&summary.oversight_json));
+    }
     if summary.models.is_empty() {
         return "(no usage recorded)".to_string();
     }
@@ -417,6 +422,7 @@ mod tests {
 
     fn fixture_summary() -> UsageSummary {
         UsageSummary {
+            oversight_json: String::new(),
             currency: "USD".to_string(),
             total_cost_micros: 12_750_500,
             models: vec![
@@ -473,6 +479,7 @@ mod tests {
     #[test]
     fn usage_without_models_is_reported() {
         let summary = UsageSummary {
+            oversight_json: String::new(),
             currency: "USD".to_string(),
             total_cost_micros: 0,
             models: vec![],

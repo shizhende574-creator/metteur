@@ -354,7 +354,16 @@ export interface AddonInfo {
 }
 
 /** Aggregated token/cost usage for an execution scope. Missing completeness fields are unknown. */
+export interface OversightUsage {
+  limit: number
+  charged: number
+  warning: boolean
+  exhausted: boolean
+  concierge_available: boolean
+  calls: Array<{ caller: 'supervisor' | 'concierge'; charged: number; state: string; cost_micros: number | null; currency: string }>
+}
 export interface UsageSummary {
+  oversight?: OversightUsage
   currency: string
   totalCostMicros: number
   models: Array<{

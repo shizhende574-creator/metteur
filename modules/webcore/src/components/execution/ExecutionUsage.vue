@@ -32,6 +32,21 @@ const metrics = computed(() => executionUsage(summary.value))
 const rate = computed(() => metrics.value.cacheHitRate === null ? null : metrics.value.cacheHitRate * 100)
 const number = (value: number | null) => value === null ? 'Unavailable' : value.toLocaleString()
 const cost = computed(() => metrics.value.estimatedCost === null ? 'Unavailable' : `${summary.value?.currency} ${metrics.value.estimatedCost.toFixed(6)}`)
+const oversight = computed(() => summary.value?.oversight)
+function callerUsage(caller: 'supervisor' | 'concierge') {
+  const value = oversight.value
+  if (!value) return 'Unavailable'
+  const calls = value.calls.filter(c => c.caller === caller)
+  if (!calls.length) return caller === 'concierge' && !value.concierge_available ? 'Not configured' : 'No calls'
+  const tokens = calls.reduce((sum, c) => sum + c.charged, 0)
+  return `${tokens.toLocaleString()} tokens${calls.some(c => c.state !== 'reported') ? ' (estimated / reserved)' : ''}`
+}
+function callerCost(caller: 'supervisor' | 'concierge') {
+  const calls = oversight.value?.calls.filter(c => c.caller === caller)
+  if (!calls?.length) return ''
+  if (calls.some(c => c.cost_micros === null || c.currency !== summary.value?.currency)) return 'Estimated cost unavailable'
+  return `${summary.value?.currency} ${(calls.reduce((sum, c) => sum + (c.cost_micros ?? 0), 0) / 1e6).toFixed(6)}`
+}
 </script>
 <template>
   <div class="usage-panel">
@@ -42,8 +57,8 @@ const cost = computed(() => metrics.value.estimatedCost === null ? 'Unavailable'
       <section><span>Output tokens</span><strong>{{ number(metrics.output) }}</strong></section>
       <section><span>Estimated cost</span><strong>{{ cost }}</strong></section>
       <section class="cache-card"><span>Cache hit rate</span><strong>{{ rate === null ? 'Unavailable' : `${Number(rate.toFixed(1))}%` }}</strong><div class="meter" role="progressbar" aria-label="Cache hit rate" :aria-valuenow="rate ?? undefined" :aria-valuetext="rate === null ? 'Unavailable' : undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${rate ?? 0}%` }" /></div></section>
-      <section><span>Budget</span><strong>Unavailable</strong></section>
-      <section><span>Supervision usage</span><strong>Unavailable</strong></section>
+      <section><span>Oversight token budget</span><strong>{{ oversight ? `${oversight.charged.toLocaleString()} / ${oversight.limit.toLocaleString()}` : 'Unavailable' }}</strong><span v-if="oversight?.exhausted">Exhausted</span><span v-else-if="oversight?.warning">Budget warning</span></section>
+      <section v-for="caller in (['supervisor', 'concierge'] as const)" :key="caller"><span>{{ caller === 'supervisor' ? 'Supervisor' : 'Concierge' }}</span><strong>{{ callerUsage(caller) }}</strong><span>{{ callerCost(caller) }}</span></section>
     </div>
   </div>
 </template>

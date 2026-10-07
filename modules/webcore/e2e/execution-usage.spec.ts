@@ -10,7 +10,7 @@ test('usage is token-weighted and unknown, zero, failed and late snapshots remai
     const { gateway } = await import(c)
     gateway.connected.value = true
     const model = (name: string, inputTokens: number, cachedInputTokens: number) => ({ model: name, calls: 1, inputTokens, cachedInputTokens, outputTokens: 500, reasoningTokens: 30, cacheWriteInputTokens: 20, costMicros: 100, tokensComplete: true, cacheComplete: true, costComplete: true })
-    gateway.usageTest = { id: 'first', error: false, delayed: false, release: null, data: { currency: 'USD', totalCostMicros: 200, models: [model('small', 100, 100), model('large', 900, 0)] } }
+    gateway.usageTest = { id: 'first', error: false, delayed: false, release: null, data: { currency: 'USD', totalCostMicros: 200, oversight: { limit: 5000, charged: 4500, warning: true, exhausted: false, concierge_available: true, calls: [{ caller: 'concierge', charged: 4500, state: 'usage_unknown', cost_micros: null, currency: '' }] }, models: [model('small', 100, 100), model('large', 900, 0)] } }
     gateway.listExecutions = async () => ({ ok: true, data: [{ runId: gateway.usageTest.id, blueprintId: 'g', status: 'Completed', startedAt: 1, updatedAt: 2 }] })
     gateway.getExecutionUsage = async (_ws: string, id: string) => {
       if (id === 'second') return { ok: true, data: { currency: 'USD', totalCostMicros: 0, models: [] } }
@@ -25,6 +25,9 @@ test('usage is token-weighted and unknown, zero, failed and late snapshots remai
   await expect(page.getByRole('progressbar', { name: 'Cache hit rate' })).toHaveAttribute('aria-valuenow', '10')
   await expect(page.locator('.usage-grid').getByText('1,000', { exact: true })).toHaveCount(2)
   await expect(page.getByText('USD 0.000200', { exact: true })).toBeVisible()
+  await expect(page.getByText('4,500 / 5,000', { exact: true })).toBeVisible()
+  await expect(page.getByText('Budget warning', { exact: true })).toBeVisible()
+  await expect(page.getByText('4,500 tokens (estimated / reserved)', { exact: true })).toBeVisible()
   for (let i = 0; i < 5; i++) await page.getByRole('separator', { name: 'Resize details', exact: true }).press('ArrowUp')
   await page.screenshot({ path: '../../.tmp/u03-usage.png' })
   // Successive snapshots replace totals; they never add a second copy.

@@ -188,6 +188,28 @@ pub fn run_usage(
             slot.tokens_complete = false; slot.cache_complete = false; slot.cost_complete = false;
         }
     }
+    // Independent reservations remain authoritative after a caller crash.
+    if let Ok(run) = uuid::Uuid::parse_str(run_id) {
+        for call in crate::oversight::budget::load(db, run)?.calls {
+            let slot = by_model.entry(call.model.clone()).or_insert_with(|| ModelUsageSummary {
+                model: call.model.clone(), tokens_complete: true, cache_complete: true,
+                cost_complete: true, calls: 0, input_tokens: 0, output_tokens: 0,
+                reasoning_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0, cost_micros: 0,
+            });
+            let usage = call.usage.unwrap_or_default();
+            slot.calls += 1;
+            slot.tokens_complete &= usage.tokens_reported;
+            slot.cache_complete &= usage.tokens_reported && usage.cache_read_reported && usage.cached_input_tokens <= usage.input_tokens;
+            slot.cost_complete &= call.cost_micros.is_some() && call.currency == if config.currency.is_empty() { "USD" } else { &config.currency };
+            slot.input_tokens += usage.input_tokens;
+            slot.output_tokens += usage.output_tokens;
+            slot.reasoning_tokens += usage.reasoning_tokens;
+            slot.cached_input_tokens += usage.cached_input_tokens;
+            slot.cache_write_input_tokens += usage.cache_write_input_tokens;
+            slot.cost_micros += call.cost_micros.unwrap_or(0);
+            total += call.cost_micros.unwrap_or(0);
+        }
+    }
     let mut models: Vec<ModelUsageSummary> = by_model.into_values().collect();
     models.sort_by(|a, b| b.calls.cmp(&a.calls).then(a.model.cmp(&b.model)));
     Ok(UsageSummaryData {

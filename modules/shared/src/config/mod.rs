@@ -1,6 +1,7 @@
 //! Configuration types shared between the daemon and clients.
 
 pub mod acl;
+pub mod oversight;
 mod layer;
 pub use layer::ConfigLayer;
 

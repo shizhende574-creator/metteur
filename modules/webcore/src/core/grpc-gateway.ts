@@ -1247,6 +1247,7 @@ export class GrpcGateway implements DaemonGateway {
     try {
       const u = await this.client.getExecutionUsage({ workspacePath, runId })
       return ok({
+        oversight: u.oversightJson ? JSON.parse(u.oversightJson) : undefined,
         currency: u.currency,
         totalCostMicros: Number(u.totalCostMicros),
         models: u.models.map((m) => ({

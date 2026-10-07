@@ -342,6 +342,7 @@ message ModelUsage {
 }
 
 message UsageSummary {
+  string oversight_json = 4;
   string currency = 1;
   uint64 total_cost_micros = 2;
   repeated ModelUsage models = 3;

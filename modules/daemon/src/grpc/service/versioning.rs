@@ -384,8 +384,18 @@ impl DaemonService {
         let config = ws.config.read().await;
         let summary = crate::llm::billing::run_usage(&ws.db, &config.billing, &req.run_id)
             .map_err(to_status)?;
+        let oversight_json = match uuid::Uuid::parse_str(&req.run_id) {
+            Ok(run) if crate::execution::DbCheckpointSink::load(&ws.db, run).map_err(to_status)?.is_some() => {
+                let settings = metteur_shared::config::oversight::OversightConfig::from_config(&config)
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
+                serde_json::to_string(&crate::oversight::budget::summary(&ws.db, run, &settings).map_err(to_status)?)
+                    .map_err(|e| Status::internal(e.to_string()))?
+            }
+            _ => String::new(),
+        };
         drop(config);
         Ok(Response::new(UsageSummary {
+            oversight_json,
             currency: summary.currency,
             total_cost_micros: summary.total_cost_micros as u64,
             models: summary
