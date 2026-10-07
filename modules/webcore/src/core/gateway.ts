@@ -1,3 +1,4 @@
+import type { OversightReports } from './oversight'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import type { Ref } from 'vue'
@@ -201,6 +202,7 @@ export interface DaemonGateway {
   setAddonEnabled(id: string, enabled: boolean, workspacePath?: string): Promise<Result<void>>
   listMcpServers(): Promise<Result<McpServerInfo[]>>
   getBlackboard(workspacePath: string, runId: string, query?: BoardQuery): Promise<Result<Blackboard>>
+  listOversightReports(workspacePath: string, runId: string): Promise<Result<OversightReports>>
   getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>>
   sendConciergeMessage(workspacePath: string, runId: string, conversationId: string, messageId: string, message: string, onEvent: (event: ConciergeEvent) => void, signal?: AbortSignal): Promise<Result<void>>
   getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>>

@@ -234,6 +234,7 @@ fn spawn_config_reloader(
 fn proto_event(event: crate::execution::ExecutionEvent) -> ExecutionEvent {
     use crate::execution::ExecutionEvent as E;
     match event {
+        E::Oversight {review_id,detail} => ExecutionEvent {node_id:String::new(),kind:"oversight_review".into(),message:review_id,detail_json:detail},
         E::NodeStarted {
             node_id,
         } => ExecutionEvent {

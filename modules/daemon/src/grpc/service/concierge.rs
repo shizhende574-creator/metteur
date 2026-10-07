@@ -58,7 +58,10 @@ impl DaemonService {
             .into_iter()
             .filter(|t| t.conversation_id == conversation_id)
             .collect();
-        Ok(Response::new(ConciergeState{state_json:serde_json::json!({"run_id":run,"conversation_id":conversation_id,"read_only":!active||queue.closed,"available":reason.is_empty(),"reason":reason,"consumer_enabled":false,"messages":messages,"requests":queue.requests,"budget":usage}).to_string()}))
+        let schedule=crate::oversight::scheduler::load(&ws.db,run).map_err(to_status)?;
+        let consumer_enabled=active && schedule.as_ref().is_some_and(|s|!s.closed);
+        let reports:Vec<_>=schedule.into_iter().flat_map(|s|s.reviews).filter(|r|r.source_request_ids.iter().any(|id|messages.iter().any(|m|m.request_id==Some(*id)))).collect();
+        Ok(Response::new(ConciergeState{state_json:serde_json::json!({"run_id":run,"conversation_id":conversation_id,"read_only":!active||queue.closed,"available":reason.is_empty(),"reason":reason,"consumer_enabled":consumer_enabled,"reports":reports,"messages":messages,"requests":queue.requests,"budget":usage}).to_string()}))
     }
     pub(crate) async fn send_concierge_message(
         &self,

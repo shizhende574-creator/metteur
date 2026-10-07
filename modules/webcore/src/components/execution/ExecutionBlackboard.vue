@@ -48,6 +48,7 @@ function version(id: string) { versions.select(id); openSurface('version') }
       <p v-if="loading" role="status">Loading blackboard…</p>
       <p v-if="error" role="status">Blackboard unavailable. {{ error }}</p>
       <template v-if="board">
+        <article v-for="review in board.reviews" :key="review.review_id" class="board-entry"><header><strong>Supervisor review · {{ review.status }}</strong><span>Supervisor · Model opinion</span></header><p>{{ review.summary }}</p><p v-for="(note, i) in review.notes" :key="i">{{ note }}</p><code>review:{{ review.review_id }}</code><p v-for="reference in review.actual_action_refs" :key="reference">{{ reference }}</p></article>
         <p v-if="!board.available">Projection unavailable for this legacy record.</p>
         <template v-else>
           <table class="board-totals"><caption>Run {{ board.run_id }}</caption><thead><tr><th>Scope</th><th>Completed</th><th>Failed</th><th>Checks passed</th><th>Checks failed</th><th>Node time</th><th>Reported tokens</th></tr></thead><tbody><tr v-for="scope in (['current', 'historical'] as const)" :key="scope"><th>{{ scope === 'current' ? 'Current valid' : 'Historical' }}</th><td>{{ board[scope].completed }}</td><td>{{ board[scope].failed }}</td><td>{{ board[scope].passed_checks }}</td><td>{{ board[scope].failed_checks }}</td><td>{{ (board[scope].duration_ms / 1000).toFixed(1) }}s</td><td>{{ board[scope].reported_tokens.toLocaleString() }}{{ board[scope].tokens_complete ? '' : ' · partial' }}</td></tr></tbody></table>

@@ -6,6 +6,7 @@
 //! methods win Rust's method resolution over the trait ones, so the delegates
 //! always reach the real handler (never recurse).
 
+mod reports;
 mod blackboard;
 mod blueprint;
 mod chat;
@@ -78,6 +79,8 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn list_oversight_reports(&self, request: Request<super::proto::OversightReportsRequest>) -> Result<Response<super::proto::OversightReports>, Status> { self.list_oversight_reports(request).await }
+
     type SendConciergeMessageStream = tokio_stream::wrappers::ReceiverStream<Result<super::proto::ConciergeEvent, Status>>;
     async fn get_concierge_state(&self, request: Request<super::proto::ConciergeStateRequest>) -> Result<Response<super::proto::ConciergeState>, Status> {
         self.get_concierge_state(request).await

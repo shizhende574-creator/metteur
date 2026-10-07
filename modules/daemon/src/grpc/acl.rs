@@ -190,7 +190,7 @@ mod tests {
             async { Ok::<_, Infallible>(http::Response::new(Body::empty())) }
         });
         let mut svc = layer.layer(inner);
-        for method in ["GetBlackboard", "GetConciergeState", "SendConciergeMessage"] {
+        for method in ["GetBlackboard", "GetConciergeState", "SendConciergeMessage", "ListOversightReports"] {
             let req = http::Request::builder().uri(format!("/metteur.Daemon/{method}")).body(Body::empty()).unwrap();
             let response = svc.ready().await.unwrap().call(req).await.unwrap();
             assert_eq!(response.headers().get("grpc-status").unwrap(), "7");

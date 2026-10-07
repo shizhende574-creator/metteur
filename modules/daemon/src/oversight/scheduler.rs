@@ -21,6 +21,20 @@ pub enum Status {
     BudgetExhausted,
     Cancelled,
 }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Work {
+    pub model: String,
+    pub call_ids: Vec<Uuid>,
+    pub notes: Vec<String>,
+    pub answers: Vec<String>,
+    pub evidence: Vec<Evidence>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Evidence {
+    pub entry_id: String,
+    pub node_id: Option<String>,
+    pub scope: Option<String>,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Review {
     pub review_id: Uuid,
@@ -36,6 +50,8 @@ pub struct Review {
     pub verdict: Option<String>,
     pub notes: Vec<String>,
     pub actual_action_refs: Vec<String>,
+    #[serde(default)]
+    pub work: Work,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Schedule {
@@ -93,6 +109,7 @@ fn enqueue(
             verdict: None,
             notes: vec![],
             actual_action_refs: vec![],
+            work: Work::default(),
         });
         s.reviews.len() - 1
     });
@@ -318,8 +335,41 @@ pub fn finish(db: &Db, run: Uuid, id: Uuid, outcome: Outcome) -> DaemonResult<Re
     r.notes = notes;
     r.finished_at = Some(now());
     let result = r.clone();
-    save(db, run, &s)?;
+    let mut queue = requests::load(db, run)?;
+    for request in &mut queue.requests {
+        if request.review_id == Some(id) && request.state == requests::State::Reviewing {
+            request.state = if result.status == Status::Completed {
+                requests::State::Answered
+            } else {
+                requests::State::Failed
+            };
+            request.revision += 1;
+            request.result_refs = vec![format!("review:{id}")];
+        }
+    }
+    db.put_pair_durable(
+        cf::EXECUTION_STATE,
+        key(run).as_bytes(),
+        &encode(&s)?,
+        format!("oversight:requests:{run}").as_bytes(),
+        &encode(&queue)?,
+    )?;
+    db.oversight_notify.notify_one();
     Ok(result)
+}
+pub fn record_work(db: &Db, run: Uuid, id: Uuid, work: &Work) -> DaemonResult<()> {
+    let _gate = db.oversight_gate.lock().map_err(|_| error("oversight lock poisoned"))?;
+    let mut s = load(db, run)?.ok_or_else(|| error("Review unavailable"))?;
+    if s.closed {
+        return Err(error("Review closed"));
+    }
+    let r = s
+        .reviews
+        .iter_mut()
+        .find(|r| r.review_id == id && r.status == Status::Running)
+        .ok_or_else(|| error("Review is not running"))?;
+    r.work = work.clone();
+    save(db, run, &s)
 }
 pub(crate) fn close_locked(db: &Db, run: Uuid) -> DaemonResult<()> {
     let Some(mut s) = load(db, run)? else {

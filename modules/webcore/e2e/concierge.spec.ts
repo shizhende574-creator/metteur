@@ -113,3 +113,28 @@ test('a slow history read cannot erase a newer streamed receipt', async ({ page 
   await expect(panel.getByText('Keep this recorded request', { exact: true })).toBeVisible()
   await expect(panel.getByText('Received; not processed. This request grants no permission.')).toBeVisible()
 })
+
+test('reviews show truthful failures, escaped opinions and persisted evidence', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [
+      { review_id: 'failed-review', status: 'timed_out', verdict: null, summary: 'Remote usage may continue.', triggers: ['request'], source_request_ids: ['request-1'], actual_action_refs: [], work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, usage: [{ id: 'call', model: 'supervisor', charged: 2048, state: 'in_flight_unknown', cost_micros: null }] },
+      { review_id: 'completed-review', status: 'completed', verdict: 'concern', summary: '<img src=x onerror=alert(1)>', triggers: ['validation_failed'], source_request_ids: [], actual_action_refs: [], work: { model: 'supervisor', notes: ['A model opinion'], answers: [], evidence: [{ entry_id: 'fact-1', node_id: 'node-1', scope: 'root' }] }, usage: [] },
+    ] } })
+    g.getBlackboard = async (_ws, run, query) => ({ ok: true, data: { run_id: run, entries: query.entry_id === 'fact-1' ? [{ id: 'fact-1', event: 'Validation', validity: 'Current', note: 'Check returned false', digest: 'Deterministic evidence' }] : [] } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const reviews = page.getByRole('region', { name: 'Supervisor reviews' })
+  await expect(reviews.getByText('timed out', { exact: true })).toBeVisible()
+  await expect(reviews.getByText('reserved tokens · usage unknown', { exact: false })).toBeVisible()
+  await expect(reviews.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible()
+  await expect(reviews.locator('img')).toHaveCount(0)
+  await reviews.getByText('Evidence and request lineage').last().click()
+  await reviews.getByRole('button', { name: 'Read evidence · fact-1' }).click()
+  await expect(reviews.getByText('Check returned false')).toBeVisible()
+  await reviews.getByRole('button', { name: 'Inspect node' }).click()
+  await page.evaluate(async () => { const c = '/src/core/index.ts'; (await import(c)).gateway.connected.value = false })
+  await expect(reviews.getByText('Reviews unavailable while disconnected.')).toBeVisible()
+  await expect(reviews.getByText('Remote usage may continue.')).toHaveCount(0)
+})

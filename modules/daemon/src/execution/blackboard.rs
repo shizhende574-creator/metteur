@@ -98,7 +98,7 @@ pub struct Projection {
 
 /// Credentials in structured objects require key-aware removal before regex
 /// anonymization; serializing JSON first would hide quoted assignment keys.
-fn safe_value(value: &serde_json::Value, depth: usize) -> serde_json::Value {
+pub(crate) fn safe_value(value: &serde_json::Value, depth: usize) -> serde_json::Value {
     use serde_json::Value;
     if depth > 16 {
         return Value::String("[nested value omitted]".into());

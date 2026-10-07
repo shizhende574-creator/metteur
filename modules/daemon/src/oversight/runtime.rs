@@ -8,9 +8,11 @@ pub struct Runtime {
     db: Db,
     run: Uuid,
     timer: Option<tokio::task::JoinHandle<()>>,
+    worker: tokio::task::JoinHandle<()>,
 }
 impl Drop for Runtime {
     fn drop(&mut self) {
+        self.worker.abort();
         if let Some(timer) = self.timer.take() {
             timer.abort();
         }
@@ -54,9 +56,61 @@ pub async fn start(ctx: &ExecutionContext) -> Option<Runtime> {
     } else {
         None
     };
+    let worker = {
+        let db = db.clone();
+        let run = ctx.run_id;
+        let factory = ctx.llm_factory.clone();
+        let events = ctx.events.clone();
+        tokio::spawn(async move {
+            loop {
+                let notified = db.oversight_notify.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                let Ok(Some(state)) = scheduler::load(&db, run) else {
+                    break;
+                };
+                if state.closed {
+                    break;
+                }
+                let due = scheduler::due_at(&state);
+                if due.is_some_and(|at| at <= scheduler::now()) {
+                    let Ok(Some(review)) = scheduler::claim(&db, run, scheduler::now()) else {
+                        break;
+                    };
+                    emit(&events, &review);
+                    let result=match super::review::client(&config,&factory) {
+                        Ok((key,client))=>super::review::evaluate(&db,&review,&config,&key,client.as_ref()).await,
+                        Err(_)=>scheduler::finish(&db,run,review.review_id,scheduler::Outcome{status:scheduler::Status::Failed,summary:"Supervisor model is unavailable; configure oversight.model or the workspace default model.".into(),verdict:None,notes:vec![]}),
+                    };
+                    match result {
+                        Ok(review) => emit(&events, &review),
+                        Err(error) => {
+                            tracing::warn!(%error,"Review completion unavailable");
+                        }
+                    }
+                    continue;
+                }
+                if let Some(at) = due {
+                    tokio::select! { _=&mut notified=>{}, _=tokio::time::sleep(std::time::Duration::from_millis(at.saturating_sub(scheduler::now())))=>{} }
+                } else {
+                    notified.await;
+                }
+            }
+        })
+    };
     Some(Runtime {
         db: db.clone(),
         run: ctx.run_id,
         timer,
+        worker,
     })
+}
+
+fn emit(
+    events: &Option<tokio::sync::mpsc::UnboundedSender<crate::execution::ExecutionEvent>>,
+    review: &scheduler::Review,
+) {
+    if let Some(events) = events {
+        let _=events.send(crate::execution::ExecutionEvent::Oversight{review_id:review.review_id.to_string(),detail:serde_json::json!({"review_id":review.review_id,"status":review.status,"verdict":review.verdict}).to_string()});
+    }
 }

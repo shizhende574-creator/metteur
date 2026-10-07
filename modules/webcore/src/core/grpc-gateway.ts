@@ -1,3 +1,4 @@
+import type { OversightReports } from './oversight'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
@@ -1244,6 +1245,14 @@ export class GrpcGateway implements DaemonGateway {
     } catch (e) { return toErr(e) }
   }
 
+  async listOversightReports(workspacePath: string, runId: string): Promise<Result<OversightReports>> {
+    try {
+      const response = await this.client.listOversightReports({ workspacePath, runId })
+      const data = JSON.parse(response.reportsJson) as OversightReports
+      if (data.run_id !== runId || !Array.isArray(data.reports)) throw new Error('Invalid oversight reports')
+      return ok(data)
+    } catch (e) { return toErr(e) }
+  }
   async getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>> {
     try {
       const response = await this.client.getConciergeState({ workspacePath, runId, conversationId })

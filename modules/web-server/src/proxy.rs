@@ -61,6 +61,7 @@ fn pump_stream<T: Send + 'static>(
 #[tonic::async_trait]
 impl Daemon for ForwardService {
     type SendConciergeMessageStream = ReceiverStream<Result<metteur_proto::proto::ConciergeEvent, Status>>;
+    async fn list_oversight_reports(&self, request: Request<metteur_proto::proto::OversightReportsRequest>) -> Result<Response<metteur_proto::proto::OversightReports>, Status> { self.client.clone().list_oversight_reports(request).await }
     async fn get_concierge_state(&self, request: Request<metteur_proto::proto::ConciergeStateRequest>) -> Result<Response<metteur_proto::proto::ConciergeState>, Status> {
         self.client.clone().get_concierge_state(request).await
     }
@@ -496,6 +497,8 @@ mod tests {
 
     #[tonic::async_trait]
     impl Daemon for TestBackend {
+        async fn list_oversight_reports(&self, request: Request<metteur_proto::proto::OversightReportsRequest>) -> Result<Response<metteur_proto::proto::OversightReports>, Status> { let r=request.into_inner(); if r.workspace_path=="denied" {return Err(Status::permission_denied("denied"));} Ok(Response::new(metteur_proto::proto::OversightReports{reports_json:r.run_id})) }
+
         type SendConciergeMessageStream = ReceiverStream<Result<metteur_proto::proto::ConciergeEvent, Status>>;
         async fn get_concierge_state(&self, request: Request<metteur_proto::proto::ConciergeStateRequest>) -> Result<Response<metteur_proto::proto::ConciergeState>, Status> {
             let r=request.into_inner();

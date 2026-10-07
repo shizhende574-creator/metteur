@@ -77,7 +77,7 @@ fn concurrent_claims_and_trigger_storm_keep_one_review_and_one_followup() {
     finish(&db, run, first.review_id);
     let second = scheduler::claim(&db, run, 2).unwrap().unwrap();
     assert_eq!(second.source_request_ids.into_iter().collect::<Vec<_>>(), vec![second_request]);
-    assert_eq!(requests::load(&db, run).unwrap().requests[0].state, State::Reviewing);
+    assert_eq!(requests::load(&db, run).unwrap().requests[0].state, State::Answered);
 }
 #[test]
 fn user_requests_bypass_cooldown_and_waiting_confirmation_does_not_retrigger() {

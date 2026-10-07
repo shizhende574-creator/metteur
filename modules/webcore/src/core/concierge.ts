@@ -27,6 +27,7 @@ export interface ConciergeState {
   read_only: boolean
   reason: string
   consumer_enabled: boolean
+  reports?: import('./oversight').OversightReview[]
   messages: ConciergeTurn[]
   requests: ConciergeRequest[]
 }

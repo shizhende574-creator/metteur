@@ -33,6 +33,7 @@ pub struct SessionState {
 /// One parsed REPL command.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    Reviews { run_id: String },
     ConciergeState { run_id: String },
     Concierge { run_id: String, message_id: String, message: String },
     Help,
@@ -309,6 +310,7 @@ Metteur REPL commands:
   hist <relpath>                        Show file history across snapshots.
   audit ws|global                       Show workspace or global audit log.
   cfg get [ws] | cfg set <json> [ws]    Read/update global or workspace config.
+  reviews <run_id>                     Read supervisor reports and usage.
   concierge-state <run_id>             Read conversation and request states.
   concierge <run_id> <message_id> <text>  Read-only concierge (UUID ids; repeat id reads receipt).
   blackboard <run_id> [query_json]      Redacted run facts and evidence lookup.
@@ -411,6 +413,10 @@ pub fn parse(line: &str) -> Result<Command, String> {
             _ => Err("usage: audit ws|global".to_string()),
         },
         "cfg" => parse_cfg(args),
+        "reviews" => {
+            if args.len()!=1 { return Err("usage: reviews <run-id>".into()); }
+            Ok(Command::Reviews {run_id:args[0].into()})
+        }
         "concierge-state" => {
             if args.len()!=1 { return Err("usage: concierge-state <run_id>".into()); }
             Ok(Command::ConciergeState { run_id:args[0].into() })
@@ -628,6 +634,10 @@ pub async fn dispatch(
     cmd: Command,
 ) -> anyhow::Result<Outcome> {
     match cmd {
+        Command::Reviews {run_id} => {
+            let result=client.list_oversight_reports(metteur_proto::proto::OversightReportsRequest{workspace_path:require_ws(state)?,run_id}).await?.into_inner();
+            Ok(Outcome::Printed(crate::print::pretty_json(&result.reports_json)))
+        }
         Command::ConciergeState { run_id } => concierge::state(client,state,run_id).await,
         Command::Concierge { run_id,message_id,message } => concierge::send(client,state,run_id,message_id,message).await,
         Command::Help => Ok(Outcome::Printed(HELP.to_string())),

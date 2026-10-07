@@ -4,6 +4,7 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  rpc ListOversightReports(OversightReportsRequest) returns (OversightReports);
   rpc GetConciergeState(ConciergeStateRequest) returns (ConciergeState);
   rpc SendConciergeMessage(SendConciergeMessageRequest) returns (stream ConciergeEvent);
   // Workspace management.
@@ -779,3 +780,6 @@ message ConciergeEvent {
   string kind = 3;
   string detail_json = 4;
 }
+
+message OversightReportsRequest { string workspace_path = 1; string run_id = 2; }
+message OversightReports { string reports_json = 1; }

@@ -194,6 +194,26 @@ async fn concierge_receipt_arrives_during_a_real_long_node_without_restarting_it
     assert_eq!(checkpoint.view.invocations.iter().filter(|i| i.node_id == delay).count(), 1);
     assert_eq!(
         requests::load(&ws.db, run).unwrap().requests[0].state,
-        requests::State::ClosedUnhandled
+        requests::State::Failed
     );
+}
+
+#[tokio::test]
+async fn reports_are_scoped_read_only_and_preserve_failed_status() {
+    let (service, _, ws, run) = setup().await;
+    crate::oversight::scheduler::initialize(&ws.db, run, Default::default()).unwrap();
+    crate::oversight::scheduler::trigger(&ws.db, run, "checkpoint", 1).unwrap();
+    let review = crate::oversight::scheduler::claim(&ws.db, run, 1).unwrap().unwrap();
+    crate::oversight::scheduler::finish(&ws.db, run, review.review_id, crate::oversight::scheduler::Outcome {
+        status: crate::oversight::scheduler::Status::Failed, summary: "Unavailable".into(), verdict: None, notes: vec![],
+    }).unwrap();
+    let request = super::super::super::proto::OversightReportsRequest { workspace_path: ws.root.to_string_lossy().into(), run_id: run.to_string() };
+    let reports = service.list_oversight_reports(Request::new(request.clone())).await.unwrap().into_inner();
+    let value: serde_json::Value = serde_json::from_str(&reports.reports_json).unwrap();
+    assert_eq!(value["reports"][0]["status"], "failed");
+    assert!(value["reports"][0]["verdict"].is_null());
+    assert_eq!(value["reports"][0]["usage"], serde_json::json!([]));
+    let mut other = request; other.run_id = Uuid::new_v4().to_string();
+    assert_eq!(service.list_oversight_reports(Request::new(other)).await.unwrap_err().code(), tonic::Code::NotFound);
+    assert!(ws.db.scan(crate::storage::persistence::cf::GRANTS).unwrap().is_empty());
 }

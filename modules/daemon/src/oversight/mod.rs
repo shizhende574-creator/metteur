@@ -4,4 +4,5 @@ pub mod conversation;
 pub mod requests;
 
 pub mod scheduler;
+pub mod review;
 pub(crate) mod runtime;

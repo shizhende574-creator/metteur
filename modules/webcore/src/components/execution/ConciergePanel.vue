@@ -35,10 +35,10 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer); cont
 const active = computed(() => props.connected && execution.active && execution.runId === props.runId && !state.value?.read_only)
 const available = computed(() => active.value && state.value?.available === true)
 const reason = computed(() => !props.runId ? 'Select a recorded run.' : !props.connected ? 'Disconnected. Receipt and execution state are unknown.' : state.value?.reason || (!state.value ? error.value ? 'Concierge state is unavailable.' : 'Loading concierge state…' : ''))
-const messages = computed<ChatMessage[]>(() => (state.value?.messages ?? []).flatMap(turn => [
+const messages = computed<ChatMessage[]>(() => [...(state.value?.messages ?? []).flatMap(turn => [
   { id: `${turn.id}:user`, role: 'user', content: turn.original_text, createdAt: turn.at_ms },
   { id: turn.id, role: turn.state === 'failed' ? 'error' : turn.state === 'answered' ? 'assistant' : 'notice', content: turn.answer || turn.error || 'Processing — no request has been confirmed.', createdAt: turn.at_ms },
-]))
+]), ...(state.value?.reports ?? []).filter(r => r.status === 'completed').map(r => ({ id: `review:${r.review_id}`, role: 'assistant' as const, content: `Supervisor review · ${r.verdict}\n${r.work.answers.join('\n') || r.summary}`, createdAt: r.finished_at ?? 0 }))])
 async function send(text: string) {
   const ws = workspace.active?.path, run = props.runId, ticket = generation
   if (!ws || !run || !available.value || busy.value || state.value?.messages.some(t => t.state === 'processing')) { composer.value?.setDraft(text); return }

@@ -1,3 +1,4 @@
+import type { OversightReports } from './oversight'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { ref } from 'vue'
@@ -1166,6 +1167,7 @@ export class MockGateway implements DaemonGateway {
     return { ok: false, error: 'Blackboard requires a recorded daemon run.' }
   }
 
+  async listOversightReports(_ws: string, _run: string): Promise<Result<OversightReports>> { return err('Supervisor reports require a daemon connection.') }
   async getConciergeState(_ws: string, _run: string, _conversation: string): Promise<Result<ConciergeState>> {
     return err('Concierge requires a live daemon and a recorded blueprint run')
   }
