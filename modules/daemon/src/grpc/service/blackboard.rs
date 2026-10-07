@@ -74,6 +74,9 @@ impl DaemonService {
         value["requests"] = serde_json::json!(requests);
         value["requests_closed"] = serde_json::json!(queue.closed);
         value["requests_total"] = serde_json::json!(queue.requests.len());
+        if let Some(schedule) = crate::oversight::scheduler::load(&ws.db, run).map_err(to_status)? {
+            value["reviews"] = serde_json::json!(schedule.reviews.iter().map(|r| serde_json::json!({"review_id":r.review_id,"status":r.status,"source_request_ids":r.source_request_ids})).collect::<Vec<_>>());
+        }
         let projection_json = value.to_string();
         Ok(Response::new(BlackboardProjection {
             projection_json,

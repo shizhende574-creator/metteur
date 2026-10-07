@@ -226,6 +226,10 @@ impl CheckpointSink for DbCheckpointSink {
         }
         let data = serde_json::to_vec(checkpoint)
             .map_err(|e| DaemonError::Serialization(e.to_string()))?;
-        self.db.put(cf::EXECUTION_STATE, self.run_id.as_bytes(), &data)
+        self.db.put(cf::EXECUTION_STATE, self.run_id.as_bytes(), &data)?;
+        if let Err(error) = crate::oversight::scheduler::checkpoint_locked(&self.db, checkpoint) {
+            tracing::warn!(%error, "review trigger could not be recorded");
+        }
+        Ok(())
     }
 }

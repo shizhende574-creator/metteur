@@ -63,6 +63,7 @@ impl Interpreter {
         let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
         crate::replan::application::attach(&ctx, None)?;
         self.write_checkpoint(&ctx)?;
+        let _oversight = crate::oversight::runtime::start(&ctx).await;
         self.execute(blueprint, &mut ctx).await
     }
 
@@ -160,6 +161,7 @@ impl Interpreter {
             resume.variables
         };
         self.write_checkpoint(&ctx)?;
+        let _oversight = crate::oversight::runtime::start(&ctx).await;
         self.execute(blueprint, &mut ctx).await
     }
 

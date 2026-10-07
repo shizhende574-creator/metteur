@@ -145,6 +145,7 @@ pub fn receive(
     db.put_durable(cf::EXECUTION_STATE, identity_key.as_bytes(), &identity)?;
     queue.requests.push(record.clone());
     save(db, run, &queue)?;
+    super::scheduler::queue_locked(db, run, &queue)?;
     Ok(record)
 }
 /// Called while the same database gate excludes intake. A terminal marker is
