@@ -483,6 +483,26 @@ fn edge_value(edge: &Edge) -> Value {
     })
 }
 
+/// Reads only the daemon's redacted projection, with no implicit file lookup.
+pub(crate) async fn handle_blackboard(
+    client: &mut DaemonClient<Channel>,
+    state: &SessionState,
+    run_id: String,
+    query_json: String,
+) -> anyhow::Result<Outcome> {
+    let result = client
+        .get_blackboard(metteur_proto::proto::GetBlackboardRequest {
+            workspace_path: require_ws(state)?,
+            run_id,
+            query_json,
+        })
+        .await
+        .map_err(status)?
+        .into_inner();
+    let value: serde_json::Value = serde_json::from_str(&result.projection_json)?;
+    Ok(Outcome::Printed(serde_json::to_string_pretty(&value)?))
+}
+
 #[cfg(test)]
 mod file_tests {
     use super::*;

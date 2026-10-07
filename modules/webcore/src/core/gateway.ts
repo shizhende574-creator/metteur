@@ -1,3 +1,4 @@
+import type { Blackboard, BoardQuery } from './blackboard'
 import type { Ref } from 'vue'
 import type {
   AddonInfo,
@@ -198,5 +199,6 @@ export interface DaemonGateway {
    *  the global scope. */
   setAddonEnabled(id: string, enabled: boolean, workspacePath?: string): Promise<Result<void>>
   listMcpServers(): Promise<Result<McpServerInfo[]>>
+  getBlackboard(workspacePath: string, runId: string, query?: BoardQuery): Promise<Result<Blackboard>>
   getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>>
 }

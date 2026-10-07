@@ -46,6 +46,8 @@ service Daemon {
 
   // Usage and cost.
   rpc GetExecutionUsage(GetExecutionUsageRequest) returns (UsageSummary);
+  // Redacted, bounded run facts; does not grant file or context access.
+  rpc GetBlackboard(GetBlackboardRequest) returns (BlackboardProjection);
 
   // Registry.
   rpc ListNodeKinds(Empty) returns (NodeKindList);
@@ -742,4 +744,15 @@ message Edge {
   string source_pin = 3;
   string target_node = 4;
   string target_pin = 5;
+}
+
+message GetBlackboardRequest {
+  string workspace_path = 1;
+  string run_id = 2;
+  // {last_n, origins, status, keyword, entry_id}; limits are server enforced.
+  string query_json = 3;
+}
+message BlackboardProjection {
+  // JSON projection, containing only redacted summaries and opaque refs.
+  string projection_json = 1;
 }

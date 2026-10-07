@@ -1,3 +1,4 @@
+import type { Blackboard, BoardQuery } from './blackboard'
 import { ref } from 'vue'
 import type { DaemonGateway } from './gateway'
 import type {
@@ -1158,6 +1159,10 @@ export class MockGateway implements DaemonGateway {
   async listMcpServers(): Promise<Result<McpServerInfo[]>> {
     await delay(80)
     return ok(DEMO_MCP)
+  }
+
+  async getBlackboard(_ws: string, _runId: string, _query?: BoardQuery): Promise<Result<Blackboard>> {
+    return { ok: false, error: 'Blackboard requires a recorded daemon run.' }
   }
 
   async getExecutionUsage(_ws: string, _runId: string): Promise<Result<UsageSummary>> {

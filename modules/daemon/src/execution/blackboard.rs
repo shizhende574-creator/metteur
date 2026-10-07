@@ -135,6 +135,12 @@ fn safe_value(value: &serde_json::Value, depth: usize) -> serde_json::Value {
         Value::Array(values) => {
             Value::Array(values.iter().map(|v| safe_value(v, depth + 1)).collect())
         }
+        Value::String(text) if text.trim_start().starts_with(['{', '[']) => {
+            match serde_json::from_str::<Value>(text) {
+                Ok(parsed @ (Value::Object(_) | Value::Array(_))) => safe_value(&parsed, depth + 1),
+                _ => value.clone(),
+            }
+        }
         _ => value.clone(),
     }
 }
@@ -287,7 +293,7 @@ pub async fn project(
     result.total_entries = entries.len();
     let keyword = query.keyword.to_lowercase();
     entries.retain(|e| {
-        query.entry_id.as_ref().is_none_or(|id| id == &e.id)
+        query.entry_id.as_ref().is_none_or(|id| id == &e.id || e.evidence_refs.contains(id))
             && (query.origins.is_empty() || query.origins.contains(&e.origin))
             && query.status.is_none_or(|status| status == e.validity)
             && (keyword.is_empty()

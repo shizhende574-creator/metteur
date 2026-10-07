@@ -6,6 +6,7 @@
 //! methods win Rust's method resolution over the trait ones, so the delegates
 //! always reach the real handler (never recurse).
 
+mod blackboard;
 mod blueprint;
 mod chat;
 mod config;
@@ -286,6 +287,13 @@ impl Daemon for DaemonService {
         request: Request<DecompileBlueprintRequest>,
     ) -> Result<Response<DecompileDslResponse>, Status> {
         self.decompile_blueprint(request).await
+    }
+
+    async fn get_blackboard(
+        &self,
+        request: Request<super::proto::GetBlackboardRequest>,
+    ) -> Result<Response<super::proto::BlackboardProjection>, Status> {
+        self.get_blackboard(request).await
     }
 
     async fn get_execution_usage(

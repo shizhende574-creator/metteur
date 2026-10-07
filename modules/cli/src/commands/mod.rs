@@ -95,6 +95,10 @@ pub enum Command {
         json: String,
         workspace: bool,
     },
+    Blackboard {
+        run_id: String,
+        query_json: String,
+    },
     Usage {
         run_id: String,
     },
@@ -301,6 +305,7 @@ Metteur REPL commands:
   hist <relpath>                        Show file history across snapshots.
   audit ws|global                       Show workspace or global audit log.
   cfg get [ws] | cfg set <json> [ws]    Read/update global or workspace config.
+  blackboard <run_id> [query_json]      Redacted run facts and evidence lookup.
   usage <run_id>                        Token/cost usage for a run.
   mcp                                   List MCP servers.
   addons                                List installed addons.
@@ -400,6 +405,22 @@ pub fn parse(line: &str) -> Result<Command, String> {
             _ => Err("usage: audit ws|global".to_string()),
         },
         "cfg" => parse_cfg(args),
+        "blackboard" => {
+            let Some((run_id, query)) = args.split_first() else {
+                return Err("usage: blackboard <run_id> [query_json]".into());
+            };
+            let query_json = if query.is_empty() {
+                "{}".into()
+            } else {
+                query.join(" ")
+            };
+            serde_json::from_str::<serde_json::Value>(&query_json)
+                .map_err(|_| "invalid query JSON".to_string())?;
+            Ok(Command::Blackboard {
+                run_id: (*run_id).into(),
+                query_json,
+            })
+        }
         "usage" => one(args, "usage <run_id>").map(|p| Command::Usage {
             run_id: p[0].clone(),
         }),
@@ -663,6 +684,10 @@ pub async fn dispatch(
             json,
             workspace,
         } => config::handle_cfg_set(client, state, json, workspace).await,
+        Command::Blackboard {
+            run_id,
+            query_json,
+        } => blueprint::handle_blackboard(client, state, run_id, query_json).await,
         Command::Usage {
             run_id,
         } => blueprint::handle_usage(client, state, run_id).await,
@@ -727,4 +752,26 @@ pub(crate) fn require_ws(state: &SessionState) -> anyhow::Result<String> {
 /// Converts a tonic status into an anyhow error.
 pub(crate) fn status(st: tonic::Status) -> anyhow::Error {
     anyhow::anyhow!("daemon error: {st}")
+}
+
+#[cfg(test)]
+mod blackboard_tests {
+    use super::*;
+    #[test]
+    fn blackboard_query_parses_json_and_rejects_missing_run() {
+        let Command::Blackboard {
+            run_id,
+            query_json,
+        } = parse("blackboard run-1 {\"last_n\": 10, \"keyword\": \"old check\"}").unwrap()
+        else {
+            panic!("wrong command")
+        };
+        assert_eq!(run_id, "run-1");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&query_json).unwrap()["keyword"],
+            "old check"
+        );
+        assert!(parse("blackboard").is_err());
+        assert!(parse("blackboard run-1 not-json").is_err());
+    }
 }

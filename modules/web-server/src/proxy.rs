@@ -230,6 +230,13 @@ impl Daemon for ForwardService {
     }
 
     // Usage.
+    async fn get_blackboard(
+        &self,
+        request: Request<metteur_proto::proto::GetBlackboardRequest>,
+    ) -> Result<Response<metteur_proto::proto::BlackboardProjection>, Status> {
+        self.client.clone().get_blackboard(request).await
+    }
+
     async fn get_execution_usage(
         &self,
         request: Request<GetExecutionUsageRequest>,
@@ -657,6 +664,19 @@ mod tests {
         ) -> Result<Response<Empty>, Status> {
             Err(Status::unimplemented("respond_approval"))
         }
+        async fn get_blackboard(
+            &self,
+            request: Request<metteur_proto::proto::GetBlackboardRequest>,
+        ) -> Result<Response<metteur_proto::proto::BlackboardProjection>, Status> {
+            let req = request.into_inner();
+            if req.workspace_path != "allowed" {
+                return Err(Status::permission_denied("query denied"));
+            }
+            Ok(Response::new(metteur_proto::proto::BlackboardProjection {
+                projection_json: req.query_json,
+            }))
+        }
+
         async fn get_execution_usage(
             &self,
             _: Request<GetExecutionUsageRequest>,
@@ -903,6 +923,27 @@ mod tests {
             kinds.push(event.kind);
         }
         assert_eq!(kinds, vec!["started".to_string(), "finished".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn proxy_forwards_blackboard_query_and_denial() {
+        let backend = serve_client(DaemonServer::new(TestBackend)).await;
+        let mut proxy = serve_client(DaemonServer::new(ForwardService::new(backend))).await;
+        let request = metteur_proto::proto::GetBlackboardRequest {
+            workspace_path: "allowed".into(),
+            run_id: "run".into(),
+            query_json: "{\"entry_id\":\"attempt:1:check\"}".into(),
+        };
+        let result = proxy.get_blackboard(request.clone()).await.unwrap().into_inner();
+        assert_eq!(result.projection_json, request.query_json);
+        let denied = proxy
+            .get_blackboard(metteur_proto::proto::GetBlackboardRequest {
+                workspace_path: "denied".into(),
+                ..request
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(denied.code(), tonic::Code::PermissionDenied);
     }
 
     #[tokio::test]

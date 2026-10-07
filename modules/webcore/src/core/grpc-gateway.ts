@@ -1,3 +1,4 @@
+import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
 import { createClient, type Client } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
@@ -1231,6 +1232,15 @@ export class GrpcGateway implements DaemonGateway {
     } catch (e) {
       return toErr(e)
     }
+  }
+
+  async getBlackboard(workspacePath: string, runId: string, query: BoardQuery = {}): Promise<Result<Blackboard>> {
+    try {
+      const response = await this.client.getBlackboard({ workspacePath, runId, queryJson: JSON.stringify(query) })
+      const value = JSON.parse(response.projectionJson) as Blackboard
+      if (value.run_id !== runId || !Array.isArray(value.entries)) throw new Error('Invalid blackboard response')
+      return ok(value)
+    } catch (e) { return toErr(e) }
   }
 
   async getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>> {
