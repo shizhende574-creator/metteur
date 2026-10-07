@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test('Execution is a workspace tab with reusable bounded panels and no supervision actions', async ({ page }) => {
+test('Execution is a workspace tab with reusable bounded panels and a disabled concierge before a run', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Workspace path').fill('D:/metteur-demo/workbench')
   await page.getByRole('button', { name: 'Open', exact: true }).click()
@@ -8,7 +8,7 @@ test('Execution is a workspace tab with reusable bounded panels and no supervisi
   await page.getByRole('button', { name: 'Execution', exact: true }).click()
   await expect(page).toHaveURL(/\/work\/[^/]+\/execution$/)
   await expect(page.getByRole('button', { name: 'Select blueprint', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Supervision message')).toBeDisabled()
+  await expect(page.getByRole('region', { name: 'Run concierge' }).getByRole('textbox', { name: 'Message', exact: true })).toBeDisabled()
   const divider = page.getByRole('separator', { name: 'Resize supervision' })
   const start = Number(await divider.getAttribute('aria-valuenow'))
   await divider.focus(); await page.keyboard.press('ArrowLeft')

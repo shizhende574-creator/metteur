@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useTabsStore } from '@/stores/tabs'
 import { usePanelStore } from '@/stores/panel'
 import { fileRoute } from '@/lib/file-token'
+import ConciergePanel from '@/components/execution/ConciergePanel.vue'
 import ExecutionGraph from '@/components/execution/ExecutionGraph.vue'
 import ExecutionBlackboard from '@/components/execution/ExecutionBlackboard.vue'
 import ExecutionUsage from '@/components/execution/ExecutionUsage.vue'
@@ -73,6 +74,7 @@ function openSource() { if (source.value) { tabs.openFile(source.value); void ro
     </template>
     <template #tools><button aria-label="Open blueprint source" :disabled="!source" @click="openSource"><FileCode2 :size="15" /></button></template>
     <template #graph><ExecutionGraph v-if="graph" :key="execution.runId ?? graph.id" :blueprint="graph" :snapshot="snapshot" :live="live" @inspect="inspect" /><div v-else class="empty">{{ execution.runId ? 'Execution graph unavailable for this record.' : 'Select a saved blueprint to run.' }}</div></template>
+    <template #supervision="{ tab }"><ConciergePanel :run-id="selected ? null : execution.runId" :connected="execution.connected && gateway.connected.value" :tab="tab" /></template>
     <template #details="{ tab }">
       <div v-if="tab === 'Node details'" class="details node-details">
         <p v-if="execution.runId">Run: {{ execution.runId }}</p>

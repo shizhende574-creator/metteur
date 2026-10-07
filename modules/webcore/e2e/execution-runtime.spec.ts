@@ -28,7 +28,7 @@ test('runtime graph follows recorded paths, stops motion offline, and uses live 
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(page.locator('.vue-flow__edge.animated')).toHaveCount(1)
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Control rejected')
+  await expect(page.locator('.run-header').getByRole('alert')).toContainText('Control rejected')
   await page.locator('.vue-flow__node').filter({ hasText: 'taken' }).filter({ hasNotText: 'untaken' }).click()
   await expect(page.getByText('Attempt 1', { exact: false })).toBeVisible()
   await page.screenshot({ path: '../../.tmp/u02-runtime.png' })

@@ -38,7 +38,7 @@ test('usage is token-weighted and unknown, zero, failed and late snapshots remai
   await expect(card).toHaveText('Cache hit rateUnavailable')
   await expect(page.getByRole('progressbar', { name: 'Cache hit rate' })).not.toHaveAttribute('aria-valuenow')
   await page.evaluate(async () => { const c = '/src/core/index.ts'; (await import(c)).gateway.usageTest.error = true })
-  await expect(page.getByRole('status')).toContainText('Usage query failed')
+  await expect(page.locator('.details-content').getByRole('status')).toContainText('Usage query failed')
   await expect(card).toHaveText('Cache hit rateUnavailable')
   await page.evaluate(async () => { const c = '/src/core/index.ts'; const t = (await import(c)).gateway.usageTest; t.error = false; t.delayed = true })
   await expect.poll(() => page.evaluate(async () => { const c = '/src/core/index.ts'; return !!(await import(c)).gateway.usageTest.release })).toBe(true)
