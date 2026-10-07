@@ -7,5 +7,5 @@ export const CATEGORY_ACCENT: Record<NodeCategory, string> = {
 /** Share the editor's Bezier wires and pin category colours with run views. */
 export function blueprintEdgeVisual(exec: boolean, category: NodeCategory = 'module') {
   return { type: 'default', class: exec ? 'metteur-edge--exec' : 'metteur-edge--data',
-    animated: false, style: { stroke: exec ? 'var(--exec-wire)' : CATEGORY_ACCENT[category] } }
+    animated: false, style: exec ? undefined : { stroke: CATEGORY_ACCENT[category] } }
 }
