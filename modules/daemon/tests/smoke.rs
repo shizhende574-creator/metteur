@@ -2698,7 +2698,7 @@ async fn spawn_openai_stub() -> String {
                 "data: {\"choices\":[{\"delta\":{\"content\":\"stub reply\"}}]}
 
 ",
-                "data: {\"choices\":[{\"delta\":{}}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}
+                "data: {\"choices\":[{\"delta\":{}}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"completion_tokens_details\":{\"reasoning_tokens\":5}}}
 
 ",
                 "data: [DONE]
@@ -2783,7 +2783,7 @@ async fn smoke_chat_uses_configured_model() {
             "done" => {
                 saw_done = true;
                 assert!(
-                    event.detail_json.contains("\"total_tokens\":5"),
+                    event.detail_json.contains("\"total_tokens\":110"),
                     "usage must reach the client: {}",
                     event.detail_json
                 );
@@ -2795,6 +2795,16 @@ async fn smoke_chat_uses_configured_model() {
     assert_eq!(deltas, "stub reply");
     assert_eq!(final_text, "stub reply");
     assert!(saw_done, "the turn must terminate with a done event");
+
+    let audit = client.list_audit_log(ListAuditLogRequest { workspace_path: ws_path.clone() }).await.unwrap().into_inner();
+    let usage = audit.entries.iter().find(|e| e.operation == "llm.usage").unwrap();
+    let detail: serde_json::Value = serde_json::from_str(&usage.detail_json).unwrap();
+    assert_eq!(detail["accounting_version"], 1);
+    let summary = client.get_execution_usage(proto::GetExecutionUsageRequest {
+        workspace_path: ws_path.clone(), run_id: detail["run_id"].as_str().unwrap().into(),
+    }).await.unwrap().into_inner();
+    assert_eq!(summary.models.len(), 1);
+    assert_eq!((summary.models[0].input_tokens, summary.models[0].output_tokens, summary.models[0].reasoning_tokens), (100, 10, 5));
 
     client
         .close_workspace(CloseWorkspaceRequest {

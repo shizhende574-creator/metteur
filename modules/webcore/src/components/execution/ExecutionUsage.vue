@@ -44,7 +44,7 @@ function callerUsage(caller: 'supervisor' | 'concierge') {
 function callerCost(caller: 'supervisor' | 'concierge') {
   const calls = oversight.value?.calls.filter(c => c.caller === caller)
   if (!calls?.length) return ''
-  if (calls.some(c => c.cost_micros === null || c.currency !== summary.value?.currency)) return 'Estimated cost unavailable'
+  if (calls.some(c => c.accounting_version !== 1 || c.cost_micros === null || c.currency !== summary.value?.currency)) return 'Estimated cost unavailable'
   return `${summary.value?.currency} ${(calls.reduce((sum, c) => sum + (c.cost_micros ?? 0), 0) / 1e6).toFixed(6)}`
 }
 </script>
@@ -58,6 +58,7 @@ function callerCost(caller: 'supervisor' | 'concierge') {
       <section><span>Estimated cost</span><strong>{{ cost }}</strong></section>
       <section class="cache-card"><span>Cache hit rate</span><strong>{{ rate === null ? 'Unavailable' : `${Number(rate.toFixed(1))}%` }}</strong><div class="meter" role="progressbar" aria-label="Cache hit rate" :aria-valuenow="rate ?? undefined" :aria-valuetext="rate === null ? 'Unavailable' : undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${rate ?? 0}%` }" /></div></section>
       <section><span>Oversight token budget</span><strong>{{ oversight ? `${oversight.charged.toLocaleString()} / ${oversight.limit.toLocaleString()}` : 'Unavailable' }}</strong><span v-if="oversight?.exhausted">Exhausted</span><span v-else-if="oversight?.warning">Budget warning</span></section>
+      <p v-if="oversight?.calls.some(c => c.accounting_version !== 1)">Historical accounting: original budget charges are retained; legacy costs may include reasoning twice.</p>
       <section v-for="caller in (['supervisor', 'concierge'] as const)" :key="caller"><span>{{ caller === 'supervisor' ? 'Supervisor' : 'Concierge' }}</span><strong>{{ callerUsage(caller) }}</strong><span>{{ callerCost(caller) }}</span></section>
     </div>
   </div>

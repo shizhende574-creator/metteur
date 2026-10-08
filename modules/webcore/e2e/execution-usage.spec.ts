@@ -28,6 +28,7 @@ test('usage is token-weighted and unknown, zero, failed and late snapshots remai
   await expect(page.getByText('4,500 / 5,000', { exact: true })).toBeVisible()
   await expect(page.getByText('Budget warning', { exact: true })).toBeVisible()
   await expect(page.getByText('4,500 tokens (estimated / reserved)', { exact: true })).toBeVisible()
+  await expect(page.getByText('Historical accounting:', { exact: false })).toBeVisible()
   for (let i = 0; i < 5; i++) await page.getByRole('separator', { name: 'Resize details', exact: true }).press('ArrowUp')
   await page.screenshot({ path: '../../.tmp/u03-usage.png' })
   // Successive snapshots replace totals; they never add a second copy.
@@ -54,11 +55,11 @@ test('cache aggregation handles zero input, missing fields, cache writes and mix
     const path = '/src/core/execution-usage.ts'; const { executionUsage } = await import(path)
     const model = { model: 'm', calls: 1, inputTokens: 100, cachedInputTokens: 20, cacheWriteInputTokens: 80, outputTokens: 900, reasoningTokens: 100, costMicros: 0, tokensComplete: true, cacheComplete: true, costComplete: false }
     const get = (models: unknown[]) => executionUsage({ currency: 'USD', totalCostMicros: 0, models })
-    return { known: get([model]).cacheHitRate, cost: get([model]).estimatedCost,
+    return { known: get([model]).cacheHitRate, cost: get([model]).estimatedCost, output: get([model]).output,
       zero: get([{ ...model, inputTokens: 0, cachedInputTokens: 0 }]).cacheHitRate,
       unknown: get([{ ...model, cacheComplete: undefined }]).cacheHitRate,
       partial: get([model, { ...model, tokensComplete: false }]).cacheHitRate,
       empty: get([]).cacheHitRate, invalid: get([{ ...model, cachedInputTokens: 101 }]).cacheHitRate }
   })
-  expect(result).toEqual({ known: 0.2, cost: null, zero: null, unknown: null, partial: null, empty: null, invalid: null })
+  expect(result).toEqual({ known: 0.2, cost: null, output: 900, zero: null, unknown: null, partial: null, empty: null, invalid: null })
 })

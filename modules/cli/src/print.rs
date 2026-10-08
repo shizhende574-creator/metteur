@@ -252,7 +252,11 @@ pub fn usage(summary: &UsageSummary) -> String {
     if !summary.oversight_json.is_empty() {
         let mut execution = summary.clone();
         execution.oversight_json.clear();
-        return format!("{}\noversight: {}", usage(&execution), compact_json(&summary.oversight_json));
+        let historical = serde_json::from_str::<serde_json::Value>(&summary.oversight_json)
+            .ok().is_some_and(|value| value["calls"].as_array().is_some_and(|calls|
+                calls.iter().any(|c| c["accounting_version"].as_u64() != Some(1))));
+        return format!("{}\noversight: {}{}", usage(&execution), compact_json(&summary.oversight_json),
+            if historical { "\nHistorical accounting: original oversight budget charges are retained; legacy costs may include reasoning twice." } else { "" });
     }
     if summary.models.is_empty() {
         return "(no usage recorded)".to_string();

@@ -80,7 +80,7 @@ fn actual_usage_releases_unused_reservation_without_double_counting_cache() {
         ..Default::default()
     };
     budget::settle(&db, run, id, Some(usage), "m", &config).unwrap();
-    assert_eq!(budget::summary(&db, run, &settings).unwrap().charged, 115);
+    assert_eq!(budget::summary(&db, run, &settings).unwrap().charged, 110);
     assert!(budget::settle(&db, run, id, Some(usage), "m", &config).is_err());
     let result =
         metteur_daemon::llm::billing::run_usage(&db, &config.billing, &run.to_string()).unwrap();

@@ -1542,6 +1542,7 @@ async fn record_usage(
 ) {
     let model = client.model().to_string();
     let mut detail = serde_json::json!({
+        "accounting_version": 1,
         "tokens_reported": usage.tokens_reported,
         "cache_read_reported": usage.cache_read_reported,
         "provider": client.provider(),
@@ -1578,7 +1579,7 @@ async fn record_usage(
         metrics.llm_input_tokens_total.fetch_add(usage.input_tokens, Ordering::Relaxed);
         metrics
             .llm_output_tokens_total
-            .fetch_add(usage.output_tokens + usage.reasoning_tokens, Ordering::Relaxed);
+            .fetch_add(usage.output_tokens, Ordering::Relaxed);
     }
 }
 

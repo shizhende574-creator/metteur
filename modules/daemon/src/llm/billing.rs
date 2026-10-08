@@ -43,8 +43,8 @@ pub struct UsageSummaryData {
 /// Computes the cost of one LLM call.
 ///
 /// `pricing` is the model's effective price table (see [`effective_pricing`]);
-/// `None` means the model has no configured pricing. Reasoning tokens are
-/// billed as output tokens. When the provider reports cache traffic, the
+/// `None` means the model has no configured pricing. Output already includes
+/// reasoning. When the provider reports cache traffic, the
 /// matching cache rates apply and fall back to the regular input rate when the
 /// model config leaves them unset.
 pub fn cost(
@@ -53,6 +53,9 @@ pub fn cost(
     usage: &metteur_shared::Usage,
 ) -> Option<Cost> {
     let p = pricing?;
+    if !usage.tokens_reported {
+        return None;
+    }
     let uncached = usage.uncached_input_tokens();
     let cache_hit_rate =
         if p.cache_hit_per_mtok > 0.0 { p.cache_hit_per_mtok } else { p.input_per_mtok };
@@ -61,8 +64,7 @@ pub fn cost(
     let input = p.input_per_mtok * uncached as f64
         + cache_hit_rate * usage.cached_input_tokens as f64
         + cache_write_rate * usage.cache_write_input_tokens as f64;
-    let output =
-        p.output_per_mtok * (usage.output_tokens + usage.reasoning_tokens) as f64;
+    let output = p.output_per_mtok * usage.output_tokens as f64;
     let total = (input + output) / 1_000_000.0;
 
     Some(Cost {
@@ -171,6 +173,7 @@ pub fn run_usage(
             && entry.detail.get("cached_input_tokens").and_then(|v| v.as_u64()).is_some()
             && get("cached_input_tokens") <= get("input_tokens");
         slot.cost_complete &= tokens_complete && entry.detail.get("cost_micros").and_then(|v| v.as_u64()).is_some()
+            && (get("reasoning_tokens") == 0 || get("accounting_version") == 1)
             && entry.detail.get("currency").and_then(|v| v.as_str()) == Some(if config.currency.is_empty() { "USD" } else { &config.currency });
         slot.calls += 1;
         slot.input_tokens += get("input_tokens");
@@ -200,7 +203,8 @@ pub fn run_usage(
             slot.calls += 1;
             slot.tokens_complete &= usage.tokens_reported;
             slot.cache_complete &= usage.tokens_reported && usage.cache_read_reported && usage.cached_input_tokens <= usage.input_tokens;
-            slot.cost_complete &= call.cost_micros.is_some() && call.currency == if config.currency.is_empty() { "USD" } else { &config.currency };
+            slot.cost_complete &= usage.tokens_reported && (usage.reasoning_tokens == 0 || call.accounting_version == 1)
+                && call.cost_micros.is_some() && call.currency == if config.currency.is_empty() { "USD" } else { &config.currency };
             slot.input_tokens += usage.input_tokens;
             slot.output_tokens += usage.output_tokens;
             slot.reasoning_tokens += usage.reasoning_tokens;
@@ -267,6 +271,7 @@ mod tests {
         p.cache_hit_per_mtok = 0.1;
         p.cache_write_per_mtok = 1.25;
         let usage = Usage {
+            tokens_reported: true,
             input_tokens: 1_000_000,
             output_tokens: 0,
             cached_input_tokens: 500_000,
@@ -282,6 +287,7 @@ mod tests {
     fn missing_cache_rates_fall_back_to_the_input_rate() {
         let p = pricing(2.0, 10.0);
         let usage = Usage {
+            tokens_reported: true,
             input_tokens: 1_000_000,
             cached_input_tokens: 1_000_000,
             ..Usage::default()
@@ -295,6 +301,7 @@ mod tests {
     fn computes_peak_cost() {
         let p = pricing(1.0, 10.0);
         let usage = Usage {
+            tokens_reported: true,
             input_tokens: 1_000_000,
             output_tokens: 100_000,
             reasoning_tokens: 0,

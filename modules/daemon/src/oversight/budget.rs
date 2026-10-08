@@ -20,6 +20,9 @@ pub enum Caller {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Call {
+    /// Zero identifies historical accounting; it must not refund the durable ledger.
+    #[serde(default)]
+    pub accounting_version: u32,
     pub id: Uuid,
     pub caller: Caller,
     pub model: String,
@@ -96,6 +99,7 @@ pub fn reserve(
     }
     let id = Uuid::new_v4();
     ledger.calls.push(Call {
+        accounting_version: 1,
         id,
         caller,
         model: model.into(),
@@ -134,7 +138,8 @@ pub fn settle(
     if let Some(u) = usage {
         if u.tokens_reported {
             call.charged =
-                u.input_tokens.saturating_add(u.output_tokens).saturating_add(u.reasoning_tokens);
+                u.input_tokens.saturating_add(u.output_tokens);
+            call.accounting_version = 1;
             call.state = "reported".into();
             let pricing = config.llm.models.get(model_key).and_then(|m| {
                 billing::effective_pricing_at(m, &config.billing.timezone, chrono::Utc::now())

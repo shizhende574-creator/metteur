@@ -18,11 +18,11 @@ pub struct Usage {
     pub cache_read_reported: bool,
     /// Tokens consumed by the input (cache reads and writes included).
     pub input_tokens: u64,
-    /// Tokens produced as output.
+    /// Total output tokens, including reasoning tokens.
     pub output_tokens: u64,
-    /// Reasoning tokens (only reported by some models).
+    /// Reasoning detail already included in output (only reported by some models).
     pub reasoning_tokens: u64,
-    /// Total tokens consumed.
+    /// Input plus output tokens, without adding cache or reasoning details again.
     pub total_tokens: u64,
     /// Input tokens served from the provider's prompt cache.
     #[serde(default)]

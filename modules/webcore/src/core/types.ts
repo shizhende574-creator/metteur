@@ -360,7 +360,7 @@ export interface OversightUsage {
   warning: boolean
   exhausted: boolean
   concierge_available: boolean
-  calls: Array<{ caller: 'supervisor' | 'concierge'; charged: number; state: string; cost_micros: number | null; currency: string }>
+  calls: Array<{ caller: 'supervisor' | 'concierge'; charged: number; state: string; cost_micros: number | null; currency: string; accounting_version?: number }>
 }
 export interface UsageSummary {
   oversight?: OversightUsage
