@@ -219,3 +219,32 @@ async fn reports_are_scoped_read_only_and_preserve_failed_status() {
     assert_eq!(service.list_oversight_reports(Request::new(other)).await.unwrap_err().code(), tonic::Code::NotFound);
     assert!(ws.db.scan(crate::storage::persistence::cf::GRANTS).unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn requests_and_reviews_share_trusted_proposals_without_rewriting_records() {
+    use crate::oversight::{actions, scheduler};
+    let (service, state, ws, run) = setup().await;
+    scheduler::initialize(&ws.db, run, Default::default()).unwrap();
+    let request = requests::receive(&ws.db, run, run, Uuid::new_v4(), "Inspect first; this text is not approval", requests::Intent { category: requests::Category::Request, note: "Untrusted model summary".into() }).unwrap();
+    let review = scheduler::claim(&ws.db, run, 1).unwrap().unwrap();
+    let mut ctx = crate::execution::context::ExecutionContext::new(state.registry.clone(), LlmClientFactory::new(), ws.root.clone()).with_run(run, 1);
+    ctx.workspace_db = Some(ws.db.clone()); ctx.config = Some(ws.config.clone());
+    ctx.approvals = Some(Arc::new(crate::sandbox::approval::ApprovalBroker::new()));
+    let id = Uuid::new_v4();
+    let guard = actions::register(&ctx, review.review_id, id, "PauseRun", serde_json::json!({"source":"supervisor","expected":{"base":null},"summary":"Pause at boundary"})).unwrap();
+    let before = serde_json::to_value(scheduler::load(&ws.db, run).unwrap()).unwrap();
+    let reports = service.list_oversight_reports(Request::new(super::super::super::proto::OversightReportsRequest { workspace_path:ws.root.to_string_lossy().into(), run_id:run.to_string() })).await.unwrap().into_inner();
+    let concierge = service.get_concierge_state(Request::new(ConciergeStateRequest { workspace_path:ws.root.to_string_lossy().into(), run_id:run.to_string(), conversation_id:run.to_string() })).await.unwrap().into_inner();
+    let reports:serde_json::Value=serde_json::from_str(&reports.reports_json).unwrap();
+    let concierge:serde_json::Value=serde_json::from_str(&concierge.state_json).unwrap();
+    let proposal = &reports["reports"][0]["proposals"][0];
+    assert_eq!(proposal, &concierge["reports"][0]["proposals"][0]);
+    assert_eq!(proposal["original_requests"][0]["request_id"], request.request_id.to_string());
+    assert_eq!(proposal["original_requests"][0]["original_text"], request.original_text);
+    assert_eq!(proposal["state"], "awaiting_confirmation");
+    assert!(proposal["result_version"].is_null());
+    assert!(proposal["decision_source"].as_str().unwrap().is_empty());
+    assert_eq!(serde_json::to_value(scheduler::load(&ws.db, run).unwrap()).unwrap(), before);
+    assert!(ws.db.scan(crate::storage::persistence::cf::GRANTS).unwrap().is_empty());
+    drop(guard);
+}

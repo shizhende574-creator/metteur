@@ -73,6 +73,18 @@ struct ApplyIntent {
     recovery_note: String,
 }
 
+/// A result link is evidence of this exact committed application, never the
+/// current file binding (which may have advanced since the proposal).
+pub(crate) fn result_version(db: &Db, run: Uuid, review: Uuid, id: Uuid) -> DaemonResult<Option<VersionRef>> {
+    let Some(bytes) = db.get(cf::EXECUTION_STATE, format!("blueprint-apply:{id}").as_bytes())? else { return Ok(None) };
+    let intent: ApplyIntent = serde_json::from_slice(&bytes)
+        .map_err(|_| DaemonError::Persistence("Invalid blueprint application record".into()))?;
+    Ok((intent.committed && !intent.abandoned && intent.proposal.id == id
+        && intent.proposal.run_id == run
+        && matches!(intent.proposal.source, Source::Supervisor { review_id } if review_id == review))
+        .then_some(intent.after_version).flatten())
+}
+
 fn encode(value: &impl Serialize) -> DaemonResult<Vec<u8>> {
     // Canonical map ordering also covers HashMaps in checkpoints.
     serde_json::to_value(value)
@@ -289,6 +301,7 @@ pub(crate) async fn approve(
             "blueprint_edits",
             serde_json::json!({
                 "request_type":"replan_proposal","tool":"ProposeBlueprintEdits","source":"supervisor","retry_node": crate::oversight::scheduler::load(db(ctx)?,ctx.run_id)?.and_then(|s|s.reviews.into_iter().find(|r|r.review_id==review_id)).and_then(|r|r.circuit_node),"base":proposal.base,"state_digest":proposal.state_digest,"edits_digest":proposal.edits_digest,"affected_nodes":proposal.affected,"edits":edits,"summary":summary,
+                "scope":proposal.before.id,
                 "before":proposal.before.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>(),
                 "after":proposal.after.nodes.iter().filter(|n|proposal.affected.contains(&n.id)).collect::<Vec<_>>()
             }),

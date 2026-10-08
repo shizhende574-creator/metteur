@@ -3,7 +3,7 @@ use super::super::proto::{OversightReports, OversightReportsRequest};
 use super::{DaemonService, to_status};
 use crate::{
     execution::DbCheckpointSink,
-    oversight::{budget, scheduler, diagnostic::{Category, Diagnostic, Stage}},
+    oversight::{budget, scheduler, requests, projection},
 };
 use tonic::{Request, Response, Status};
 impl DaemonService {
@@ -39,31 +39,22 @@ impl DaemonService {
         }
         let schedule = scheduler::load(&ws.db, run).map_err(to_status)?;
         let calls = budget::load(&ws.db, run).map_err(to_status)?.calls;
+        let queue = requests::load(&ws.db, run).map_err(to_status)?;
         let cancel_result = schedule.as_ref().and_then(|s| s.cancel_result.clone());
         let reports: Vec<_> = schedule
             .into_iter()
             .flat_map(|s| s.reviews)
             .map(|r| {
-                let mut value = serde_json::to_value(&r).expect("serializable report");
-                if r.diagnostic.is_none() && matches!(r.status, scheduler::Status::Failed | scheduler::Status::TimedOut | scheduler::Status::BudgetExhausted | scheduler::Status::Cancelled) {
-                    value["diagnostic"] = serde_json::json!(Diagnostic::new(Category::UnknownLegacy, Stage::Unknown, run, r.review_id));
-                }
-                for proposal in value["proposals"].as_array_mut().into_iter().flatten() {
-                    if proposal["diagnostic"].is_null() && matches!(proposal["state"].as_str(), Some("failed" | "rejected" | "closed_unhandled")) {
-                        let mut detail = Diagnostic::new(Category::UnknownLegacy, Stage::Unknown, run, r.review_id);
-                        detail.proposal_id = proposal["proposal_id"].as_str().and_then(|id| uuid::Uuid::parse_str(id).ok());
-                        proposal["diagnostic"] = serde_json::json!(detail);
-                    }
-                }
+                let mut value = projection::review(&ws.db, &r, &queue)?;
                 if r.proposals.iter().any(|p| p.kind == "CancelRun") {
                     value["cancel_result"] = serde_json::json!(cancel_result);
                 }
                 value["usage"] = serde_json::json!(
                     calls.iter().filter(|c| r.work.call_ids.contains(&c.id)).collect::<Vec<_>>()
                 );
-                value
+                Ok(value)
             })
-            .collect();
+            .collect::<crate::DaemonResult<Vec<_>>>().map_err(to_status)?;
         Ok(Response::new(OversightReports {
             reports_json: serde_json::json!({"run_id":run,"reports":reports,"closing":closing})
                 .to_string(),

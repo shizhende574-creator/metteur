@@ -2,11 +2,14 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { gateway, type ChatMessage } from '@/core'
 import type { ConciergeState } from '@/core/concierge'
+import type { OversightProposal as Proposal, ProposalTarget, ProposalVersion } from '@/core/oversight'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useExecutionStore } from '@/stores/execution'
 import ChatThread from '@/components/chat/ChatThread.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
+import OversightProposal from './OversightProposal.vue'
 const props = defineProps<{ runId: string | null; connected: boolean; tab?: string }>()
+const emit = defineEmits<{ target: [target: ProposalTarget]; version: [target: ProposalVersion] }>()
 const workspace = useWorkspaceStore(), execution = useExecutionStore()
 const state = ref<ConciergeState | null>(null), error = ref(''), busy = ref(false)
 const composer = ref<InstanceType<typeof ChatComposer>>()
@@ -25,6 +28,7 @@ watch([() => workspace.active?.path, () => props.runId, () => props.connected], 
       const result = await gateway.getConciergeState(ws!, run!, run!)
       if (disposed || ticket !== generation) return
       if (!result.ok) throw new Error(result.error)
+      if (result.data.run_id !== run || result.data.conversation_id !== run) throw new Error('Concierge identity does not match this run.')
       if (version === revision) state.value = result.data
     } catch (e) { if (!disposed && ticket === generation) { if (version === revision) { state.value = null; error.value = String(e) } } }
     finally { if (!disposed && ticket === generation) timer = setTimeout(refresh, 1000) }
@@ -79,6 +83,10 @@ const controls = computed(() => ({ files: [], pendingFiles: [], addons: [], todo
 }))
 const labels: Record<string, string> = { received: 'Received · not processed', reviewing: 'Reviewing', awaiting_confirmation: 'Awaiting your confirmation', approved_pending_apply: 'Confirmed · not applied', applied: 'Applied', answered: 'Answered', rejected: 'Rejected', failed: 'Failed', closed_unhandled: 'Closed · unhandled' }
 function status(value: string) { return labels[value] ?? `Unknown status: ${value}` }
+function proposalDetails(request: NonNullable<ConciergeState['requests']>[number], item: Proposal): Proposal {
+  return state.value?.reports?.filter(r => r.run_id === props.runId && r.review_id === request.review_id)
+    .flatMap(r => r.proposals ?? []).find(p => p.proposal_id === item.proposal_id && p.run_id === props.runId && p.source_request_ids?.includes(request.request_id)) ?? item
+}
 </script>
 <template>
   <section class="concierge-panel" aria-label="Run concierge">
@@ -97,7 +105,7 @@ function status(value: string) { return labels[value] ?? `Unknown status: ${valu
         <p v-if="request.concierge_note"><span>Model summary:</span> {{ request.concierge_note }}</p>
         <p v-if="request.state === 'received' && !state?.consumer_enabled">Supervisor processing is not enabled yet.</p>
         <p v-if="request.state === 'awaiting_confirmation'">Review the specific action in the independent approval dialog. This conversation does not grant permission.</p>
-        <div v-for="proposal in request.proposals" :key="proposal.proposal_id"><code>{{ proposal.proposal_id }}</code> · {{ status(proposal.state) }}<p v-for="ref in proposal.result_refs" :key="ref">{{ ref }}</p></div>
+        <OversightProposal v-for="proposal in request.proposals" :key="proposal.proposal_id" :proposal="proposalDetails(request, proposal)" :run-id="runId" @target="emit('target', $event)" @version="emit('version', $event)" />
         <details><summary>Evidence</summary><p>Request: {{ request.request_id }}</p><p>Source: {{ request.source }}</p><p v-if="request.review_id">Review: {{ request.review_id }}</p><p v-for="ref in request.result_refs" :key="ref">{{ ref }}</p></details>
       </article>
     </div>

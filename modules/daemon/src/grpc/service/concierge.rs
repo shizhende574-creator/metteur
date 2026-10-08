@@ -60,7 +60,10 @@ impl DaemonService {
             .collect();
         let schedule=crate::oversight::scheduler::load(&ws.db,run).map_err(to_status)?;
         let consumer_enabled=active && schedule.as_ref().is_some_and(|s|!s.closed);
-        let reports:Vec<_>=schedule.into_iter().flat_map(|s|s.reviews).filter(|r|r.source_request_ids.iter().any(|id|messages.iter().any(|m|m.request_id==Some(*id)))).collect();
+        let reports:Vec<_>=schedule.into_iter().flat_map(|s|s.reviews)
+            .filter(|r|r.source_request_ids.iter().any(|id|queue.requests.iter().any(|q|q.request_id==*id && q.conversation_id==conversation_id)))
+            .map(|r|crate::oversight::projection::review(&ws.db,&r,&queue))
+            .collect::<crate::DaemonResult<Vec<_>>>().map_err(to_status)?;
         Ok(Response::new(ConciergeState{state_json:serde_json::json!({"run_id":run,"conversation_id":conversation_id,"read_only":!active||queue.closed,"available":reason.is_empty(),"reason":reason,"consumer_enabled":consumer_enabled,"reports":reports,"messages":messages,"requests":queue.requests,"budget":usage}).to_string()}))
     }
     pub(crate) async fn send_concierge_message(

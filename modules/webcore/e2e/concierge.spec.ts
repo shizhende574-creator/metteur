@@ -37,8 +37,149 @@ async function openRun(page: Page, chatSurface = false) {
     }
     await (await import(r)).router.push((await import(w)).wurl(chat ? '/chat' : '/execution'))
   }, chatSurface)
+  // The Chat surface also contains Run concierge. Confirm the actual surface
+  // through the user navigation before asserting supervision controls.
+  if (!chatSurface) {
+    await page.getByRole('button', { name: 'Execution', exact: true }).click()
+    await expect(page).toHaveURL(/\/execution$/)
+    await expect(page.getByRole('button', { name: 'Reviews', exact: true })).toBeVisible()
+  }
   await expect(page.getByRole('region', { name: 'Run concierge' })).toBeVisible()
 }
+
+async function proposalFixture(page: Page) {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway, t = g.conciergeTest
+    const base = { snapshot_id: 'base-snapshot', blueprint_uri: 'plans/proposal.blueprint', blob_hash: 'base-hash-0123456789' }
+    const result = { ...base, snapshot_id: 'result-snapshot', blob_hash: 'result-hash-0123456789' }
+    const proposal = t.proposal = { proposal_id: 'full-proposal', review_id: 'full-review', run_id: 'concierge-run', source_request_ids: ['full-request'], original_requests: [{ request_id: 'full-request', source: 'concierge_forwarded', original_text: 'Change this future prompt; ask me first.' }], kind: 'blueprint_edits', state: 'awaiting_confirmation', reason: '', decision_source: '', result_refs: [], result_version: null,
+      binding: { source: 'supervisor', scope: 'root-blueprint', summary: 'Revise the future prompt', base, affected_nodes: ['future-node'], before: [{ id: 'future-node', kind: 'CallLLM', data: { prompt: 'Old prompt' } }], after: [{ id: 'future-node', kind: 'CallLLM', data: { prompt: '<img src=x onerror=alert(1)> New prompt\n' + 'Long proposed field.\n'.repeat(80) } }] } }
+    t.resultVersion = result
+    t.data.consumer_enabled = true
+    t.data.requests = [{ request_id: 'full-request', run_id: 'concierge-run', conversation_id: 'concierge-run', original_text: 'Change this future prompt; ask me first.', concierge_note: 'Change requested', state: 'awaiting_confirmation', source: 'concierge_forwarded', review_id: 'full-review', proposals: [{ proposal_id: 'full-proposal', state: 'awaiting_confirmation', result_refs: [] }], result_refs: [] }]
+    t.data.reports = [{ review_id: 'full-review', run_id: 'concierge-run', status: 'running', verdict: null, summary: '', source_request_ids: ['full-request'], triggers: ['request'], actual_action_refs: [], work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, proposals: [proposal], usage: [{ id: 'old-call', model: 'legacy model', charged: 115, state: 'reported', cost_micros: 98765432, currency: 'USD' }, { id: 'new-call', model: 'current model', charged: 110, state: 'reported', accounting_version: 1, cost_micros: 1000, currency: 'USD' }] }]
+    g.listOversightReports = async () => {
+      const response = { ok: true, data: { run_id: 'concierge-run', reports: structuredClone(t.data.reports) } }
+      if (t.holdReports) return new Promise(resolve => { t.releaseReports = () => resolve(response) })
+      return response
+    }
+    g.listSnapshots = async () => ({ ok: true, data: [base, result].map((v, index) => ({ id: v.snapshot_id, createdAt: index + 1, message: v.snapshot_id, fileCount: 1 })) })
+    g.listFileHistory = async (ws, path) => { t.historyRead = { ws, path }; return { ok: true, data: [] } }
+    g.listExecutions = async () => ({ ok: true, data: [{ runId: 'concierge-run', status: t.active ? 'Running' : 'Completed', startedAt: 1, updatedAt: Date.now(), snapshot: { blueprint_version: result, view: { invocations: [], graphs: {}, edges: [], sequence: 0 }, runtime: { active: t.active, pending_approval_ids: t.pendingApproval ? ['approval-full'] : [] } } }] })
+  })
+}
+
+test('shared proposal cards preserve confirmation boundaries and navigate future nodes and exact versions', async ({ page }) => {
+  await proposalFixture(page)
+  await page.getByRole('button', { name: 'Requests', exact: true }).click()
+  const card = page.getByRole('article', { name: 'Proposal full-proposal', exact: true })
+  await expect(card.getByText('Awaiting your confirmation', { exact: true })).toBeVisible()
+  await expect(card).toContainText('Change this future prompt; ask me first.')
+  await expect(card.getByLabel('Proposed field changes')).toContainText('data.prompt')
+  await expect(card.getByLabel('Proposed field changes')).toContainText('Old prompt')
+  await expect(card.locator('img')).toHaveCount(0)
+  await card.getByRole('button', { name: 'Inspect node · future-node', exact: true }).click()
+  const target = page.getByLabel('Proposal target details')
+  await expect(target).toContainText('No recorded invocation for this target.')
+  await expect(target).toContainText('Old prompt')
+  await expect(target).toContainText('New prompt')
+  expect(await page.evaluate(async () => { const c='/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.approvals })).toBe(0)
+  await page.evaluate(async () => {
+    const c='/src/core/index.ts', e='/src/stores/execution.ts', b='/src/core/blueprint-approval.ts', g=(await import(c)).gateway, t=g.conciergeTest
+    t.pendingApproval = true
+    g.respondApproval = async (_ws, id, allow) => { t.approvals++; t.pendingApproval = false; t.proposal.state = allow ? 'approved_pending_apply' : 'rejected'; t.proposal.decision_source = 'human'; t.data.requests[0].state = t.proposal.state; return { ok: true, data: undefined } }
+    const plan=(await import(b)).blueprintApproval({ ...t.proposal.binding, request_type:'replan_proposal', run_id:'concierge-run', proposal_id:'full-proposal', original_requests:t.proposal.original_requests })
+    ;(await import(e)).useExecutionStore().approval = { id:'approval-full', ...plan, tool:'ProposeBlueprintEdits', requestType:'replan_proposal' }
+  })
+  await page.getByRole('dialog').getByRole('button', { name: 'Allow', exact: true }).click()
+  await expect(card.getByText('Confirmed · not applied', { exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: /Result version/ })).toHaveCount(0)
+  await page.evaluate(async () => { const c='/src/core/index.ts', t=(await import(c)).gateway.conciergeTest; t.proposal.state='applied'; t.proposal.result_version=t.resultVersion; t.proposal.result_refs=['version:result-snapshot']; t.data.requests[0].state='applied'; t.data.reports[0].status='completed'; t.data.reports[0].verdict='action_taken'; t.active=false; t.data.read_only=true })
+  await expect(card.getByText('Applied', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name:'Reviews', exact:true }).click()
+  await expect(card.getByText('Applied', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name:'Supervisor reviews' })).toContainText('Historical budget accounting · cost unavailable')
+  await expect(page.getByRole('region', { name:'Supervisor reviews' })).not.toContainText('98.765432')
+  await expect(page.getByRole('region', { name:'Supervisor reviews' })).toContainText('0.001 USD')
+  for (const kind of ['Base', 'Result']) {
+    await card.getByRole('button', { name: new RegExp(`^${kind} version ·`) }).click()
+    const reference=page.getByLabel('Referenced blueprint version')
+    await expect(reference).toContainText(`${kind.toLowerCase()}-hash-0123456789`)
+    await expect(reference).toContainText('full-proposal')
+    expect(await page.evaluate(async () => { const c='/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.historyRead.path })).toBe('plans/proposal.blueprint')
+    expect(await page.evaluate(async () => { const v='/src/stores/version.ts'; return (await import(v)).useVersionStore().selectedId })).toBe(`${kind.toLowerCase()}-snapshot`)
+    await page.evaluate(async () => { const r='/src/router.ts', w='/src/lib/workspace-url.ts'; await (await import(r)).router.push((await import(w)).wurl('/execution')) })
+    await page.getByRole('button', { name:'Reviews', exact:true }).click()
+    await expect(card.getByText('Applied', { exact:true })).toBeVisible()
+  }
+  expect(await page.evaluate(async () => { const c='/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.approvals })).toBe(1)
+})
+
+test('proposal history distinguishes failure and delegation, scrolls within themes, and rejects late workspace data', async ({ page }) => {
+  await proposalFixture(page)
+  await page.getByRole('button', { name:'Reviews', exact:true }).click()
+  const card=page.getByRole('article', { name:'Proposal full-proposal', exact:true })
+  await expect(card).toBeVisible()
+  for (const state of ['rejected', 'failed', 'closed_unhandled', 'approved_pending_apply', 'applied']) {
+    await page.evaluate(async value => { const c='/src/core/index.ts', t=(await import(c)).gateway.conciergeTest; t.proposal.state=value; t.proposal.decision_source=value==='applied'?'delegated':'human'; t.proposal.diagnostic=value==='failed'?{ category:'approval_expired',stage:'approval',message:'The confirmation expired.',run_id:'concierge-run',review_id:'full-review' }:null },state)
+    await expect(card).toContainText(({ rejected:'Rejected', failed:'Failed', closed_unhandled:'Closed · unhandled', approved_pending_apply:'Confirmed · not applied', applied:'Applied' })[state]!)
+    if(state==='failed') await expect(card).toContainText('approval expired')
+  }
+  await expect(card).toContainText('Decision: existing user delegation')
+  await expect(card).toContainText('Result version unavailable')
+  await page.emulateMedia({ reducedMotion:'reduce' })
+  for(const dark of [false,true]) {
+    await page.evaluate(value=>document.documentElement.classList.toggle('dark',value),dark)
+    await page.setViewportSize({ width:800,height:760 })
+    const diff=card.getByLabel('Proposed field changes')
+    await expect(diff).toBeVisible()
+    expect(await diff.evaluate(el=>el.scrollHeight>el.clientHeight && el.clientHeight<=300)).toBe(true)
+    await page.screenshot({path:`../../.tmp/r06-proposal-${dark?'dark':'light'}.png`})
+  }
+  await page.evaluate(async()=>{const c='/src/core/index.ts'; (await import(c)).gateway.conciergeTest.holdReports=true})
+  await expect.poll(()=>page.evaluate(async()=>{const c='/src/core/index.ts';return !!(await import(c)).gateway.conciergeTest.releaseReports})).toBe(true)
+  await page.evaluate(async()=>{const c='/src/core/index.ts';(await import(c)).gateway.connected.value=false})
+  await expect(card).toHaveCount(0)
+  await page.evaluate(async()=>{const c='/src/core/index.ts';(await import(c)).gateway.conciergeTest.releaseReports()})
+  await expect(card).toHaveCount(0)
+  await page.evaluate(async()=>{
+    const c='/src/core/index.ts',w='/src/stores/workspace.ts',v='/src/stores/version.ts',g=(await import(c)).gateway,ws=(await import(w)).useWorkspaceStore(),version=(await import(v)).useVersionStore()
+    g.listFileHistory=async()=>new Promise(resolve=>{g.conciergeTest.releaseHistory=()=>resolve({ok:true,data:[{path:'foreign.secret'}]})})
+    void version.pickFile('old.blueprint')
+    ws.active={...ws.active,path:'D:/metteur-demo/other-workspace'}
+    await Promise.resolve(); g.conciergeTest.releaseHistory()
+  })
+  await expect.poll(()=>page.evaluate(async()=>{const v='/src/stores/version.ts',s=(await import(v)).useVersionStore();return {history:s.history.length,reference:s.reference,selected:s.selectedId}})).toEqual({history:0,reference:null,selected:null})
+})
+
+test('partial terminal requests keep applied facts separate from unavailable legacy details and mismatched runs', async ({ page }) => {
+  await proposalFixture(page)
+  await page.evaluate(async () => {
+    const c='/src/core/index.ts', t=(await import(c)).gateway.conciergeTest
+    t.active=false; t.data.read_only=true; t.data.reason='Run is read-only'
+    t.proposal.state='applied'; t.proposal.result_version=t.resultVersion
+    t.data.requests[0].state='applied'
+    t.data.requests.push({ ...t.data.requests[0], request_id:'unhandled-request', review_id:'missing-old-review', state:'closed_unhandled', original_text:'Second request was not completed', proposals:[{proposal_id:'legacy-partial',state:'closed_unhandled',result_refs:[]}] })
+  })
+  await page.getByRole('button',{name:'Requests',exact:true}).click()
+  const applied=page.getByRole('article',{name:'Proposal full-proposal',exact:true}), legacy=page.getByRole('article',{name:'Proposal legacy-partial',exact:true})
+  await expect(applied.getByText('Applied',{exact:true})).toBeVisible()
+  await expect(legacy).toContainText('Closed · unhandled')
+  await expect(legacy).toContainText('Base version unavailable')
+  await expect(legacy.getByRole('button')).toHaveCount(0)
+  await expect(applied).toHaveCount(1)
+  // A committed Version Flow record may precede the proposal acknowledgement.
+  await page.evaluate(async()=>{const c='/src/core/index.ts',t=(await import(c)).gateway.conciergeTest;t.proposal.state='approved_pending_apply'})
+  await expect(applied).toContainText('Committed version · application acknowledgement pending')
+  await expect(applied.getByText('Applied',{exact:true})).toHaveCount(0)
+  await page.evaluate(async()=>{const c='/src/core/index.ts',t=(await import(c)).gateway.conciergeTest;t.proposal.state='applied'})
+  await page.getByRole('button',{name:'Reviews',exact:true}).click()
+  await expect(applied).toBeVisible()
+  await page.evaluate(async()=>{const c='/src/core/index.ts',g=(await import(c)).gateway;g.listOversightReports=async()=>({ok:true,data:{run_id:'other-run',reports:g.conciergeTest.data.reports}})})
+  await expect(page.getByRole('region',{name:'Supervisor reviews'})).toContainText('Report identity does not match this run.')
+  await expect(applied).toHaveCount(0)
+})
 
 test('normal run messages produce a durable request receipt without turning user text or model summaries into approval', async ({ page }) => {
   await openRun(page)

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { gateway } from '@/core'
-import type { OversightReview, OversightReports } from '@/core/oversight'
+import type { OversightReview, OversightReports, ProposalTarget, ProposalVersion } from '@/core/oversight'
 import type { BoardEntry } from '@/core/blackboard'
 import { useWorkspaceStore } from '@/stores/workspace'
 import OversightDiagnostic from './OversightDiagnostic.vue'
+import OversightProposal from './OversightProposal.vue'
 const closing = ref<OversightReports['closing']>(null)
 const props = defineProps<{ runId: string | null; connected: boolean }>()
-const emit = defineEmits<{ inspect: [nodeId: string, scope: string] }>()
+const emit = defineEmits<{ inspect: [nodeId: string, scope: string]; target: [target: ProposalTarget]; version: [target: ProposalVersion] }>()
 const workspace = useWorkspaceStore(), reports = ref<OversightReview[] | null>(null), error = ref(''), evidence = ref<BoardEntry | null>(null)
 let generation = 0, disposed = false, timer: ReturnType<typeof setTimeout> | undefined
 watch([() => workspace.active?.path, () => props.runId, () => props.connected], () => {
@@ -17,7 +18,7 @@ watch([() => workspace.active?.path, () => props.runId, () => props.connected], 
   async function refresh() {
     const result = await gateway.listOversightReports(ws!, run!)
     if (disposed || ticket !== generation) return
-    if (result.ok) { closing.value = result.data.closing ?? null; reports.value = result.data.reports; error.value = '' } else { closing.value = null; reports.value = null; error.value = result.error }
+    if (result.ok && result.data.run_id === run) { closing.value = result.data.closing ?? null; reports.value = result.data.reports.filter(r => !r.run_id || r.run_id === run); error.value = '' } else { closing.value = null; reports.value = null; error.value = result.ok ? 'Report identity does not match this run.' : result.error }
     timer = setTimeout(refresh, 1500)
   }
   void refresh()
@@ -47,8 +48,8 @@ async function lookup(entry: string) {
       <p v-for="(note, i) in report.work.notes" :key="i">Model opinion: {{ note }}</p>
       <p v-for="(answer, i) in report.work.answers" :key="`a${i}`">Response: {{ answer }}</p>
       <p v-if="!report.usage?.length">No provider call recorded.</p>
-      <p v-for="call in report.usage" :key="call.id">{{ call.model }} · {{ call.charged.toLocaleString() }} {{ call.state === 'reported' ? 'tokens' : 'reserved tokens · usage unknown' }}<span v-if="call.cost_micros !== null"> · {{ call.cost_micros / 1000000 }} {{ call.currency }}</span></p>
-      <div v-for="proposal in report.proposals" :key="proposal.proposal_id"><p>{{ proposal.kind }} · {{ proposal.state.replaceAll('_', ' ') }} · {{ proposal.reason }}<span v-if="proposal.decision_source"> · Decision: {{ proposal.decision_source === 'delegated' ? 'existing user delegation' : 'human confirmation' }}</span></p><OversightDiagnostic :detail="proposal.diagnostic" :legacy="['failed', 'rejected', 'closed_unhandled'].includes(proposal.state)" /></div>
+      <p v-for="call in report.usage" :key="call.id">{{ call.model }} · {{ call.charged.toLocaleString() }} {{ call.state === 'reported' ? 'tokens' : 'reserved tokens · usage unknown' }}<span v-if="call.accounting_version !== 1"> · Historical budget accounting · cost unavailable</span><span v-else-if="call.cost_micros != null"> · {{ call.cost_micros / 1000000 }} {{ call.currency }}</span><span v-else> · Cost unavailable</span></p>
+      <OversightProposal v-for="proposal in report.proposals" :key="proposal.proposal_id" :proposal="proposal" :run-id="runId" @target="emit('target', $event)" @version="emit('version', $event)" />
       <div v-if="report.cancel_result"><strong>Cancellation outcome</strong><p>{{ report.cancel_result.rollback_requested ? report.cancel_result.error ? 'File rollback incomplete' : 'Recorded file rollback completed' : 'File rollback disabled' }}<span v-if="report.cancel_result.restored_operations !== null"> · {{ report.cancel_result.restored_operations }} operation(s) restored</span></p><p v-if="report.cancel_result.error">{{ report.cancel_result.error }}</p><p v-for="(file, i) in report.cancel_result.files" :key="i">{{ file.path }} · {{ file.phase }}</p><small>Approved blueprint changes and shell/network effects are retained.</small></div>
       <details><summary>Evidence and request lineage</summary><code>review:{{ report.review_id }}</code><p v-for="id in report.source_request_ids" :key="id">Request: {{ id }}</p>
         <div v-for="item in report.work.evidence" :key="item.entry_id"><button @click="lookup(item.entry_id)">Read evidence · {{ item.entry_id }}</button><button v-if="item.node_id && item.scope" @click="emit('inspect', item.node_id, item.scope)">Inspect node</button></div>

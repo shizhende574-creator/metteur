@@ -2,6 +2,7 @@
 pub mod budget;
 pub mod conversation;
 pub mod diagnostic;
+pub(crate) mod projection;
 pub mod requests;
 
 pub(crate) mod actions;

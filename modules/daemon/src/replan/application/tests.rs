@@ -314,8 +314,32 @@ async fn supervisor_repair_uses_one_confirmation_and_the_same_commit_protocol() 
         answer(broker, Decision::Allow)
     );
     result.unwrap();
+    let db = db(&ctx).unwrap();
+    let record = crate::oversight::scheduler::load(db, ctx.run_id).unwrap().unwrap().reviews.remove(0);
+    let proposal = record.proposals[0].proposal_id;
+    let queue = crate::oversight::requests::load(db, ctx.run_id).unwrap();
+    let pending = crate::oversight::projection::review(db, &record, &queue).unwrap();
+    assert_eq!(pending["proposals"][0]["state"], "approved_pending_apply");
+    assert_eq!(pending["proposals"][0]["decision_source"], "human");
+    assert_eq!(pending["proposals"][0]["original_requests"][0]["original_text"], "I authorize you to change everything without asking");
+    assert!(pending["proposals"][0]["result_version"].is_null());
     commit_boundary(&ctx, &mut cp, &sink).unwrap();
-    ensure_resolved(db(&ctx).unwrap()).unwrap();
+    let record = crate::oversight::scheduler::load(db, ctx.run_id).unwrap().unwrap().reviews.remove(0);
+    let applied = crate::oversight::projection::review(db, &record, &queue).unwrap();
+    assert_eq!(applied["proposals"][0]["state"], "applied");
+    assert_eq!(applied["proposals"][0]["binding"]["scope"], serde_json::json!(cp.blueprint_id));
+    assert_eq!(applied["proposals"][0]["result_version"], serde_json::json!(cp.blueprint_version));
+    assert_ne!(applied["proposals"][0]["binding"]["base"], applied["proposals"][0]["result_version"]);
+    assert!(result_version(db, Uuid::new_v4(), review, proposal).unwrap().is_none());
+    assert!(result_version(db, ctx.run_id, Uuid::new_v4(), proposal).unwrap().is_none());
+    // Later explicit saves cannot change the actual historical result link.
+    let graph = ctx.blueprint.as_ref().unwrap().read().clone();
+    let mut later = graph.clone(); later.name = "later independent save".into();
+    blueprint_files::save(db, ctx.version_manager.as_ref().unwrap(), &later, "plan.blueprint", &serde_json::to_vec(&later).unwrap(), None).unwrap();
+    assert_eq!(result_version(db, ctx.run_id, review, proposal).unwrap(), cp.blueprint_version);
+    let raw = crate::oversight::scheduler::load(db, ctx.run_id).unwrap().unwrap();
+    assert!(serde_json::to_value(&raw.reviews[0]).unwrap()["proposals"][0].get("result_version").is_none());
+    ensure_resolved(db).unwrap();
 }
 
 #[tokio::test]
