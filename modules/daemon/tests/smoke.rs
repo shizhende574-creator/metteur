@@ -4223,3 +4223,5 @@ mod blueprint_entrypoints;
 mod addon_nodes;
 #[path = "smoke/addon_functions.rs"]
 mod addon_functions;
+#[path = "smoke/r_batch.rs"]
+mod r_batch;

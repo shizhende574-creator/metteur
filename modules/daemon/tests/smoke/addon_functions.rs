@@ -1,6 +1,6 @@
 use super::*;
 use metteur_shared::{Blueprint, DataType, Edge, Node, NodeType, Pin, PinType};
-fn body(kind: &str) -> Blueprint {
+pub(super) fn body(kind: &str) -> Blueprint {
     let signature = metteur_shared::node_catalog::builtin_signature(kind).unwrap();
     let entry = Node {
         id: uuid::Uuid::new_v4(),
