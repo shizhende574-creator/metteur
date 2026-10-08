@@ -15,9 +15,10 @@ use metteur_shared::Value;
 use crate::error::{DaemonError, DaemonResult};
 use crate::registry::Tool;
 
-mod host;
 pub(crate) mod hooks;
+mod host;
 mod lsp;
+mod nodes;
 pub(crate) mod services;
 pub use host::{AddonHost, AddonInfoData};
 
@@ -73,6 +74,15 @@ impl Tool for AddonTool {
         ctx: &mut crate::execution::context::ExecutionContext,
     ) -> DaemonResult<Value> {
         let input = serde_json::json!({"args": args_to_object(args)}).to_string();
+        self.invoke_json(input, ctx).await
+    }
+}
+impl AddonTool {
+    async fn invoke_json(
+        &self,
+        input: String,
+        ctx: &mut crate::execution::context::ExecutionContext,
+    ) -> DaemonResult<Value> {
         ctx.attach_file_journal();
         let mut execution = ctx.child_nested();
         execution.permission_mode = ctx.permission_mode;

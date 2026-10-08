@@ -148,6 +148,12 @@ impl AddonHost {
             .collect()
     }
     fn install_into(&self, registry: &mut Registry, loaded: &Loaded) -> DaemonResult<()> {
+        let mut candidate = registry.snapshot();
+        self.install_contributions(&mut candidate, loaded)?;
+        *registry = candidate;
+        Ok(())
+    }
+    fn install_contributions(&self, registry: &mut Registry, loaded: &Loaded) -> DaemonResult<()> {
         let identity = &loaded.package.identity;
         for language in &loaded.package.manifest.lsp {
             for extension in &language.language.extensions {
@@ -169,6 +175,24 @@ impl AddonHost {
             return Err(failure("Workspace addon cannot shadow a global addon identity"));
         }
         registry.replace_owned_tools(&identity.owner(), self.tools(loaded))?;
+        registry.replace_owned_nodes(
+            &identity.owner(),
+            loaded
+                .package
+                .manifest
+                .nodes
+                .iter()
+                .map(|entry| {
+                    Arc::new(super::nodes::AddonNode::new(
+                        loaded.package.clone(),
+                        entry,
+                        loaded.permissions.clone(),
+                        self.fallback_timeout_ms,
+                    )) as Arc<dyn crate::registry::NodeExecutor>
+                })
+                .collect(),
+            serde_json::to_value(identity).map_err(|_| failure("Invalid addon node identity"))?,
+        )?;
         for language in &loaded.package.manifest.lsp {
             for extension in &language.language.extensions {
                 registry.addon_lsp_claims.insert(extension.to_ascii_lowercase(), identity.owner());

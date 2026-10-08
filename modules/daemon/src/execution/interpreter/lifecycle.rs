@@ -56,6 +56,7 @@ impl Interpreter {
             .filter(|_| self.owns_approvals)
             .map(|broker| broker.close_on_drop());
         // Reject blueprints whose execution graph contains a cycle.
+        self.registry.validate_addon_nodes(&blueprint.read())?;
         if has_exec_cycle(&blueprint.read()) {
             return Err(DaemonError::Execution(
                 "execution cycle detected in blueprint".to_string(),
@@ -91,6 +92,7 @@ impl Interpreter {
             .filter(|_| self.owns_approvals)
             .map(|broker| broker.close_on_drop());
         resume.ensure_addons(&self.registry)?;
+        self.registry.validate_addon_nodes(&blueprint.read())?;
         if !resume.status.resumable() {
             return Err(DaemonError::Interrupted(format!(
                 "run {} is not resumable",

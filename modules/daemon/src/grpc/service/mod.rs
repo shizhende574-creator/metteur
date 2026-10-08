@@ -253,7 +253,7 @@ impl Daemon for DaemonService {
 
     async fn list_node_kinds(
         &self,
-        request: Request<Empty>,
+        request: Request<metteur_proto::proto::RegistryRequest>,
     ) -> Result<Response<NodeKindList>, Status> {
         self.list_node_kinds(request).await
     }

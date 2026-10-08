@@ -4,6 +4,7 @@
 //! must use that snapshot; this module is not a list of installed capabilities.
 use crate::{DataType, NodeType, Pin, PinType};
 use std::collections::BTreeMap;
+pub mod addon;
 
 /// An immutable, sorted snapshot of the registered node contracts.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12,6 +13,9 @@ pub struct NodeCatalog {
     pub nodes: BTreeMap<String, NodeSignature>,
     /// Dynamic CallFunction contracts from the function library.
     pub functions: BTreeMap<String, crate::FunctionSignature>,
+    /// Verified immutable package identity, persisted on newly authored nodes.
+    #[serde(default)]
+    pub addon_bindings: BTreeMap<String, serde_json::Value>,
 }
 
 impl std::ops::Deref for NodeCatalog {
@@ -32,6 +36,7 @@ impl FromIterator<(String, NodeSignature)> for NodeCatalog {
         Self {
             nodes: iter.into_iter().collect(),
             functions: BTreeMap::new(),
+            addon_bindings: BTreeMap::new(),
         }
     }
 }

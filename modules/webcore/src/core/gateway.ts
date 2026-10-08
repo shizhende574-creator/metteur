@@ -155,9 +155,9 @@ export interface DaemonGateway {
   deleteChatSession(workspacePath: string, sessionId?: string): Promise<Result<void>>
 
   // Blueprints -----------------------------------------------------------------
-  listNodeKinds(): Promise<Result<NodeCatalog>>
+  listNodeKinds(workspacePath?: string): Promise<Result<NodeCatalog>>
   listFunctions(workspacePath: string): Promise<Result<FunctionItem[]>>
-  compileDsl(source: string): Promise<Result<Blueprint>>
+  compileDsl(source: string, workspacePath?: string): Promise<Result<Blueprint>>
   decompileBlueprint(workspacePath: string, blueprintOrId: Blueprint | string): Promise<Result<string>>
   saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath?: string): Promise<Result<void>>
   loadBlueprint(workspacePath: string, blueprintId: string): Promise<Result<Blueprint>>

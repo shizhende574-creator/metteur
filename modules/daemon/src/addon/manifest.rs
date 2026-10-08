@@ -88,8 +88,44 @@ pub struct HookEntry {
 #[serde(deny_unknown_fields)]
 pub struct NodeEntry {
     pub name: String,
+    #[serde(deserialize_with = "bounded_node_signature")]
     pub signature: metteur_shared::node_catalog::NodeSignature,
     pub function: String,
+}
+fn bounded_node_signature<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<metteur_shared::node_catalog::NodeSignature, D::Error> {
+    // Check compact type syntax before its recursive parser sees package input.
+    let value = serde_json::Value::deserialize(de)?;
+    let pins = value
+        .get("pins")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| serde::de::Error::custom("node pins required"))?;
+    if pins.len() > 64 {
+        return Err(serde::de::Error::custom("node pin limit"));
+    }
+    for pin in pins {
+        let ty = pin
+            .get("data_type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| serde::de::Error::custom("compact node type required"))?;
+        let mut depth = 0i32;
+        for b in ty.bytes() {
+            if b == b'<' || b == b'{' {
+                depth += 1;
+            }
+            if b == b'>' || b == b'}' {
+                depth -= 1;
+            }
+            if !(0..=8).contains(&depth) {
+                return Err(serde::de::Error::custom("node type nesting limit"));
+            }
+        }
+        if ty.len() > 2048 || depth != 0 {
+            return Err(serde::de::Error::custom("node type limit"));
+        }
+    }
+    serde_json::from_value(value).map_err(serde::de::Error::custom)
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -213,6 +249,7 @@ impl Manifest {
         if self.addon.entry.is_empty()
             && (!self.tools.is_empty()
                 || !self.hooks.is_empty()
+                || !self.nodes.is_empty()
                 || (self.mcp.is_empty() && self.lsp.is_empty()))
         {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
@@ -317,7 +354,27 @@ impl Manifest {
                 ));
             }
         }
-        if !self.nodes.is_empty() || !self.functions.is_empty() {
+        names.clear();
+        if self.nodes.len() > 64 {
+            return Err(DaemonError::Addon("Addon node declaration limit exceeded".into()));
+        }
+        for node in &self.nodes {
+            if !is_valid_tool_name(&node.name)
+                || node.name.len() > 128
+                || !names.insert(node.name.as_str())
+                || node.function.is_empty()
+                || node.function.len() > 128
+                || node.signature.kind != node.name
+                || node.signature.executor_kind != node.name
+            {
+                return Err(DaemonError::Addon(
+                    "Invalid or duplicate addon node declaration".into(),
+                ));
+            }
+            metteur_shared::node_catalog::addon::validate_signature(&node.signature)
+                .map_err(DaemonError::Addon)?;
+        }
+        if !self.functions.is_empty() {
             return Err(DaemonError::Addon(
                 "this daemon does not yet support the declared addon contribution category".into(),
             ));

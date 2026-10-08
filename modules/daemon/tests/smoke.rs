@@ -1385,7 +1385,7 @@ async fn smoke_abstract_node_expands_and_runs() {
         .unwrap();
 
     // The registry must expose the Abstract kind.
-    let kinds = client.list_node_kinds(proto::Empty {}).await.unwrap().into_inner();
+    let kinds = client.list_node_kinds(proto::RegistryRequest::default()).await.unwrap().into_inner();
     assert!(kinds.kinds.iter().any(|k| k == "Abstract"));
 
     // Outer blueprint: Start -> Abstract(mock-planned sub-blueprint).
@@ -1592,7 +1592,7 @@ command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
     dispatch(&mut client,&mut state,parse(&format!("{install} --grant process")).unwrap()).await.unwrap();
     let status=client.list_addons(proto::ListAddonsRequest {workspace_path:ws.clone()}).await.unwrap().into_inner();
     assert_eq!(status.addons[0].status,"Loaded");
-    let blueprint=client.compile_dsl(CompileDslRequest {source:"blueprint \"Addon LSP\"\nentry start: Start\ncheck: LspCheck(Path = \"file.r09\")\ne: End\nstart -> check\ncheck -> e\n".into()}).await.unwrap().into_inner();
+    let blueprint=client.compile_dsl(CompileDslRequest { workspace_path: String::new(),source:"blueprint \"Addon LSP\"\nentry start: Start\ncheck: LspCheck(Path = \"file.r09\")\ne: End\nstart -> check\ncheck -> e\n".into()}).await.unwrap().into_inner();
     client.save_blueprint(SaveBlueprintRequest {workspace_path:ws.clone(),blueprint:Some(blueprint.clone()),file_path:"blueprints/lsp.blueprint".into(),file_json:String::new()}).await.unwrap();
     let mut stream=client.execute_blueprint(ExecuteBlueprintRequest {workspace_path:ws.clone(),blueprint_id:blueprint.id,blueprint_json:String::new()}).await.unwrap().into_inner();
     while let Some(event)=stream.message().await.unwrap() {assert_ne!(event.kind,"error","{}",event.message);}
@@ -1668,7 +1668,7 @@ async fn addon_hooks_real_workspace_and_run_events_reach_rpc_and_cli() {
     let ws=root.to_string_lossy().into_owned();
     client.open_workspace(OpenWorkspaceRequest{path:ws.clone()}).await.unwrap();
     client.open_workspace(OpenWorkspaceRequest{path:ws.clone()}).await.unwrap();
-    let blueprint=client.compile_dsl(CompileDslRequest{source:"blueprint \"Hook delivery\"\nentry start: Start\ne: End\nstart -> e\n".into()}).await.unwrap().into_inner();
+    let blueprint=client.compile_dsl(CompileDslRequest{workspace_path: String::new(),source:"blueprint \"Hook delivery\"\nentry start: Start\ne: End\nstart -> e\n".into()}).await.unwrap().into_inner();
     client.save_blueprint(SaveBlueprintRequest{workspace_path:ws.clone(),blueprint:Some(blueprint.clone()),file_path:"blueprints/hooks.blueprint".into(),file_json:String::new()}).await.unwrap();
     let mut stream=client.execute_blueprint(ExecuteBlueprintRequest{workspace_path:ws.clone(),blueprint_id:blueprint.id,blueprint_json:String::new()}).await.unwrap().into_inner();
     while let Some(event)=stream.message().await.unwrap(){assert_ne!(event.kind,"error","{}",event.message);}
@@ -2276,7 +2276,7 @@ async fn smoke_extended_pure_nodes_run_via_dsl() {
         .unwrap();
 
     let compiled = client
-        .compile_dsl(CompileDslRequest {
+        .compile_dsl(CompileDslRequest { workspace_path: String::new(),
             source: "\
 blueprint \"ExtendedNodes\"
 entry start: Start(A = 8, B = 3)
@@ -2632,7 +2632,7 @@ async fn smoke_save_blueprint_roundtrip_decompile() {
         .unwrap();
 
     let compiled = client
-        .compile_dsl(CompileDslRequest {
+        .compile_dsl(CompileDslRequest { workspace_path: String::new(),
             source: "\
 blueprint \"Roundtrip\"
 entry start: Start
@@ -2687,7 +2687,7 @@ async fn rejected_blueprint_mirror_preserves_the_previous_graph() {
     let (mut client, workspace) = start_server(metteur_shared::config::Config::default()).await;
     let ws_path = workspace.to_string_lossy().to_string();
     client.open_workspace(OpenWorkspaceRequest { path: ws_path.clone() }).await.unwrap();
-    let compiled = client.compile_dsl(CompileDslRequest {
+    let compiled = client.compile_dsl(CompileDslRequest { workspace_path: String::new(),
         source: "blueprint \"Saved\"\nentry start: Start\ne: End\nstart -> e\n".into(),
     }).await.unwrap().into_inner();
     client.save_blueprint(SaveBlueprintRequest { file_path: format!("blueprints/{}.blueprint", uuid::Uuid::new_v4()), file_json: String::new(),
@@ -2719,7 +2719,7 @@ async fn smoke_full_pipeline() {
 
     // Compile a DSL source straight into a blueprint and save it.
     let compiled = client
-        .compile_dsl(CompileDslRequest {
+        .compile_dsl(CompileDslRequest { workspace_path: String::new(),
             source: "\
 blueprint \"FullFlow\"
 entry start: Start(A = 4, B = 3)
@@ -3204,7 +3204,7 @@ edit -> check
 check -> stop
 "#;
     let compiled = client
-        .compile_dsl(CompileDslRequest {
+        .compile_dsl(CompileDslRequest { workspace_path: String::new(),
             source: source.to_string(),
         })
         .await
@@ -4118,7 +4118,7 @@ async fn smoke_rejects_exec_output_wired_to_data_input() {
 #[tokio::test]
 async fn node_catalog_rpc_matches_registry_and_web_fixture() {
     let (mut client, _workspace) = start_server(metteur_shared::config::Config::default()).await;
-    let list = client.list_node_kinds(proto::Empty {}).await.unwrap().into_inner();
+    let list = client.list_node_kinds(proto::RegistryRequest::default()).await.unwrap().into_inner();
     let registry = metteur_daemon::registry::Registry::with_builtins();
     let catalog = registry.node_signatures();
     assert_eq!(list.signature_version, 1);
@@ -4132,7 +4132,7 @@ async fn node_catalog_rpc_matches_registry_and_web_fixture() {
         assert_eq!(info.description, signature.description);
         assert_eq!(info.pins.len(), signature.pins.len());
         let compiled = client
-            .compile_dsl(proto::CompileDslRequest {
+            .compile_dsl(proto::CompileDslRequest { workspace_path: String::new(),
                 source: format!("entry n: {}", info.kind),
             })
             .await
@@ -4219,3 +4219,5 @@ async fn config_presence_survives_rpc_file_and_reset() {
 
 #[path = "smoke/blueprint_entrypoints.rs"]
 mod blueprint_entrypoints;
+#[path = "smoke/addon_nodes.rs"]
+mod addon_nodes;

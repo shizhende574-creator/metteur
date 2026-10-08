@@ -266,9 +266,28 @@ impl Registry {
         self.nodes.get(kind)
     }
 
+    pub(crate) fn replace_owned_nodes(&mut self, owner:&str, additions:Vec<Arc<dyn NodeExecutor>>, binding:serde_json::Value) -> DaemonResult<()> {
+        for node in &additions {
+            if self.tools.read().values.contains_key(node.kind()) || self.functions.read().contains_key(node.kind()) {
+                return Err(DaemonError::Addon("Addon node conflicts with a tool or function".into()));
+            }
+        }
+        Arc::make_mut(&mut self.nodes).replace_owned(owner,additions,binding)
+    }
+
     /// Returns all registered node kinds.
     pub fn node_kinds(&self) -> Vec<String> {
         self.nodes.kinds()
+    }
+
+    pub(crate) fn validate_addon_nodes(&self, blueprint:&metteur_shared::Blueprint) -> DaemonResult<()> {
+        let report=metteur_shared::model::validate::validate_with_catalog(blueprint,&self.node_signatures());
+        for error in report.errors {
+            if matches!(error,metteur_shared::model::validate::BlueprintError::AddonContract{..}) {
+                return Err(DaemonError::Addon(error.to_string()));
+            }
+        }
+        Ok(())
     }
 
     /// Canonical signatures of the executors actually installed in this registry.

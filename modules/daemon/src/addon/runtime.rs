@@ -361,7 +361,7 @@ fn bounded_manifest(wasm: &[u8], timeout: u64) -> ExtismManifest {
 /// Compile and link every declared export before registering any contribution.
 /// Admission exposes inert host functions; package startup cannot gain effects.
 pub(crate) fn validate(wasm: &[u8], manifest: &Manifest) -> DaemonResult<()> {
-    if wasm.is_empty() && manifest.tools.is_empty() && manifest.hooks.is_empty() {return Ok(());}
+    if wasm.is_empty() && manifest.tools.is_empty() && manifest.hooks.is_empty() && manifest.nodes.is_empty() {return Ok(());}
     let mut builder = PluginBuilder::new(bounded_manifest(wasm, 1000)).with_wasi(true);
     for (name, arguments, results) in [
         ("log", 2, 0),
@@ -389,6 +389,11 @@ pub(crate) fn validate(wasm: &[u8], manifest: &Manifest) -> DaemonResult<()> {
     for hook in &manifest.hooks {
         if !plugin.function_exists(&hook.function) {
             return Err(DaemonError::Addon(format!("Missing addon hook export: {}", hook.function)));
+        }
+    }
+    for node in &manifest.nodes {
+        if !plugin.function_exists(&node.function) {
+            return Err(DaemonError::Addon(format!("Missing addon node export: {}",node.function)));
         }
     }
     Ok(())

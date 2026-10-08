@@ -253,6 +253,7 @@ pub(crate) async fn handle_bp_compile(
         .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", file))?;
     let blueprint = client
         .compile_dsl(CompileDslRequest {
+            workspace_path: ws.clone(),
             source,
         })
         .await

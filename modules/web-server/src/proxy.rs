@@ -255,7 +255,7 @@ impl Daemon for ForwardService {
     // Registry.
     async fn list_node_kinds(
         &self,
-        request: Request<Empty>,
+        request: Request<metteur_proto::proto::RegistryRequest>,
     ) -> Result<Response<NodeKindList>, Status> {
         self.client.clone().list_node_kinds(request).await
     }
@@ -708,7 +708,7 @@ mod tests {
         }
         async fn list_node_kinds(
             &self,
-            _: Request<Empty>,
+            _: Request<metteur_proto::proto::RegistryRequest>,
         ) -> Result<Response<NodeKindList>, Status> {
             Err(Status::unimplemented("list_node_kinds"))
         }

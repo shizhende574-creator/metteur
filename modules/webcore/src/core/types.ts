@@ -231,6 +231,7 @@ export interface BlueprintNode {
 
 /** Daemon-owned execution metadata, separate from visual presets. */
 export interface NodeKindInfo {
+  addonBinding?: Record<string, unknown>
   kind: string
   nodeType: string
   pins: BlueprintPin[]

@@ -2,7 +2,7 @@
 
 use metteur_proto::proto::daemon_client::DaemonClient;
 use metteur_proto::proto::{
-    DeleteFunctionRequest, Empty, FunctionInfo, ListFunctionsRequest, LoadFunctionRequest,
+    DeleteFunctionRequest, FunctionInfo, ListFunctionsRequest, LoadFunctionRequest,
     SaveFunctionRequest,
 };
 use tonic::transport::Channel;
@@ -138,7 +138,7 @@ pub(crate) async fn handle_tools(client: &mut DaemonClient<Channel>, state: &Ses
 }
 
 /// Handles `nodes`: lists available node kinds.
-pub(crate) async fn handle_nodes(client: &mut DaemonClient<Channel>) -> anyhow::Result<Outcome> {
-    let list = client.list_node_kinds(Empty {}).await.map_err(status)?.into_inner();
+pub(crate) async fn handle_nodes(client: &mut DaemonClient<Channel>, state: &SessionState) -> anyhow::Result<Outcome> {
+    let list = client.list_node_kinds(metteur_proto::proto::RegistryRequest {workspace_path:state.current_ws.clone().unwrap_or_default()}).await.map_err(status)?.into_inner();
     Ok(Outcome::Printed(print::node_catalog(&list)))
 }

@@ -446,12 +446,16 @@ impl DaemonService {
         &self,
         request: Request<CompileDslRequest>,
     ) -> Result<Response<Blueprint>, Status> {
-        let source = request.into_inner().source;
+        let req = request.into_inner();
+        let source = req.source;
+        let workspace=optional_workspace(&req.workspace_path)?;
+        let registry=self.state.registry_for(workspace.as_deref(),false).await?;
         let blueprint = metteur_shared::dsl::compile_with_catalog(
             &source,
-            &self.state.registry.authoring_catalog(),
+            &registry.authoring_catalog(),
         )
         .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        ensure_valid(&blueprint,&registry)?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
 

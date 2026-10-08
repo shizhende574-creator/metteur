@@ -53,7 +53,7 @@ service Daemon {
   rpc GetBlackboard(GetBlackboardRequest) returns (BlackboardProjection);
 
   // Registry.
-  rpc ListNodeKinds(Empty) returns (NodeKindList);
+  rpc ListNodeKinds(RegistryRequest) returns (NodeKindList);
 
   // MCP host.
   rpc ListMcpServers(RegistryRequest) returns (McpServerList);
@@ -366,6 +366,7 @@ message NodeKindInfo {
   repeated Pin pins = 3;
   string description = 4;
   bool dynamic_pins = 5;
+  string addon_binding_json = 6;
 }
 
 message McpServerInfo {
@@ -489,7 +490,7 @@ message DeleteFunctionRequest {
 
 // ---- Blueprint DSL -----------------------------------------------------------
 
-message CompileDslRequest { string source = 1; }
+message CompileDslRequest { string source = 1; string workspace_path = 2; }
 
 message DecompileBlueprintRequest {
   string workspace_path = 1;

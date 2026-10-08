@@ -945,9 +945,9 @@ export class GrpcGateway implements DaemonGateway {
   }
 
   // Blueprints -----------------------------------------------------------------
-  async listNodeKinds(): Promise<Result<NodeCatalog>> {
+  async listNodeKinds(workspacePath = ''): Promise<Result<NodeCatalog>> {
     try {
-      const kinds = await this.client.listNodeKinds({})
+      const kinds = await this.client.listNodeKinds({ workspacePath })
       return ok(fromWireCatalog(kinds))
     } catch (e) {
       return toErr(e)
@@ -971,9 +971,9 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async compileDsl(source: string): Promise<Result<Blueprint>> {
+  async compileDsl(source: string, workspacePath = ''): Promise<Result<Blueprint>> {
     try {
-      const bp = await this.client.compileDsl({ source })
+      const bp = await this.client.compileDsl({ source, workspacePath })
       return ok(fromProtoBlueprint(bp))
     } catch (e) {
       return toErr(e)

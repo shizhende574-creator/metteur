@@ -1344,7 +1344,7 @@ async function importDslFrom(filePath: string) {
     feedback.toast('error', 'DSL read failed', file.error)
     return
   }
-  const compiled = await gateway.compileDsl(file.data.content)
+  const compiled = await gateway.compileDsl(file.data.content, ws.path)
   if (!compiled.ok) {
     feedback.toast('error', 'DSL compile failed', compiled.error)
     return

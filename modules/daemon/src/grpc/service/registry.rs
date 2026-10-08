@@ -33,14 +33,17 @@ impl DaemonService {
 
     pub(crate) async fn list_node_kinds(
         &self,
-        _request: Request<Empty>,
+        request: Request<super::super::proto::RegistryRequest>,
     ) -> Result<Response<NodeKindList>, Status> {
-        let catalog = self.state.registry.node_signatures();
+        let workspace=optional_workspace(&request.into_inner().workspace_path)?;
+        let registry=self.state.registry_for(workspace.as_deref(),false).await?;
+        let catalog = registry.node_signatures();
         let kinds = catalog.keys().cloned().collect();
         let infos = catalog
             .values()
             .map(|signature| NodeKindInfo {
                 kind: signature.kind.clone(),
+                addon_binding_json: catalog.addon_bindings.get(&signature.kind).map(|v|v.to_string()).unwrap_or_default(),
                 node_type: format!("{:?}", signature.node_type),
                 pins: signature
                     .pins
