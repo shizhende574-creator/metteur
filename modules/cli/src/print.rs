@@ -372,6 +372,9 @@ pub fn addons(list: &metteur_proto::proto::AddonList) -> String {
         if !addon.fingerprint.is_empty() { out.push_str(&format!("  fingerprint={}",addon.fingerprint)); }
         if !addon.error.is_empty() { out.push_str(&format!("  error={}",addon.error)); }
         out.push('\n');
+        for hook in &addon.hooks {
+            out.push_str(&format!("  hook {} {}: {} completed={} failed={} workspace={} event={}{}\n",hook.name,hook.event,hook.status,hook.completed,hook.failed,hook.scope_root,hook.event_id,if hook.error.is_empty(){String::new()}else{format!(" error={}",hook.error)}));
+        }
     }
     out.trim_end().to_string()
 }

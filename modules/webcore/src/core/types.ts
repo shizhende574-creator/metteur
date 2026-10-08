@@ -357,6 +357,7 @@ export interface AddonInfo {
   error?: string
   requiredPermissions?: string[]
   grantedPermissions?: string[]
+  hooks?: Array<{ name: string; event: string; scopeRoot: string; eventId: string; status: string; completed: number; failed: number; error: string }>
 }
 
 /** Aggregated token/cost usage for an execution scope. Missing completeness fields are unknown. */

@@ -102,6 +102,7 @@ pub struct Interpreter {
     /// Task list restored from a checkpoint, applied to the first context built
     /// for the resumed run (the list lives on the context, not the scheduler).
     pub(crate) resume_todos: Vec<TodoItem>,
+    pub(crate) hook_cursor: crate::addon::hooks::Cursor,
 }
 
 impl Interpreter {
@@ -146,6 +147,7 @@ impl Interpreter {
             frame_trees: Vec::new(),
             current_tree: None,
             resume_todos: Vec::new(),
+            hook_cursor: Default::default(),
         }
     }
 

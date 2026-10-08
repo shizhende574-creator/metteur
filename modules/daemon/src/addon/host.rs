@@ -46,6 +46,7 @@ pub struct AddonInfoData {
     pub granted_permissions: Vec<String>,
     pub tool_count: u32,
     pub fragment_count: u32,
+    pub hooks: Vec<super::hooks::Report>,
 }
 pub struct AddonHost {
     global_dir: PathBuf,
@@ -60,6 +61,7 @@ pub struct AddonHost {
     maintenance: Mutex<()>,
     lifecycle: Arc<AsyncRwLock<()>>,
     services: Arc<Mutex<super::services::Services>>,
+    hooks: Arc<super::hooks::Bus>,
 }
 fn failure(message: impl Into<String>) -> DaemonError {
     DaemonError::Addon(message.into())
@@ -94,6 +96,7 @@ impl AddonHost {
             maintenance: Mutex::new(()),
             lifecycle: Arc::new(AsyncRwLock::new(())),
             services: Default::default(),
+            hooks: Default::default(),
         })
     }
     fn directory(&self, root: Option<&Path>) -> PathBuf {
@@ -310,6 +313,7 @@ impl AddonHost {
             .map(|(k, v)| (k.clone(), v.package.identity.fingerprint.clone()))
             .collect();
         self.services.lock().await.prune(&identities, idle).await;
+        self.hooks.prune(&identities);
     }
     #[cfg(test)]
     pub(crate) async fn close_services(&self, root: &Path) {
@@ -332,7 +336,11 @@ impl AddonHost {
         self.services.lock().await.close(root).await;
         self.roots.write().remove(root);
         self.closed_roots.write().insert(root.to_path_buf());
+        self.hooks.workspace(root, false);
         Ok(())
+    }
+    pub(crate) fn observe_workspace_open(&self, root: &Path) {
+        self.hooks.workspace(root, true);
     }
     pub(crate) async fn opened_workspace(&self, root: &Path) {
         let _maintenance = self.maintenance.lock().await;
@@ -403,6 +411,9 @@ impl AddonHost {
                 let mut candidate = registry.snapshot();
                 self.install_into(&mut candidate, &entry)?;
                 candidate.replace_owned_tools(&owner, tools)?;
+                candidate
+                    .addon_hooks
+                    .extend(self.hooks.bind(entry.package.clone(), normalized.as_deref()));
                 if let Some(lsp) = lsp {
                     candidate.addon_lsp.push(lsp);
                 }
@@ -424,6 +435,7 @@ impl AddonHost {
                 }
                 Err(error) => {
                     lsp_failure |= !entry.package.manifest.lsp.is_empty();
+                    self.hooks.retire(normalized.as_deref(), &owner);
                     if let Some(instance) = services.active.remove(&key) {
                         if idle {
                             instance.shutdown().await;
@@ -625,6 +637,7 @@ impl AddonHost {
                 remove_owned_directory(&base, &backup)?;
             }
             self.refresh_locked();
+            self.hooks.retire_owner(&candidate.package.identity.owner());
             self.info(&id, root.as_deref())
         })();
         if staging.exists() {
@@ -645,6 +658,7 @@ impl AddonHost {
         if receipt.exists() {
             std::fs::remove_file(receipt)?;
         }
+        self.hooks.retire_owner(&owner(root.as_deref(), id));
         self.refresh_locked();
         self.prune_services(true).await;
         Ok(())
@@ -672,6 +686,7 @@ impl AddonHost {
         }
         receipt.enabled = enabled;
         write_receipt(&self.receipt_path(&receipt.identity.owner()), &receipt)?;
+        self.hooks.retire_owner(&receipt.identity.owner());
         self.refresh_locked();
         self.prune_services(true).await;
         Ok(())
@@ -715,6 +730,7 @@ impl AddonHost {
             granted_permissions: receipt.map(|r| r.granted).unwrap_or_default(),
             tool_count: manifest.tools.len() as u32,
             fragment_count: manifest.fragments.len() as u32,
+            hooks: vec![],
         })
     }
     pub async fn list(&self, roots: &[PathBuf]) -> Vec<AddonInfoData> {
@@ -735,6 +751,7 @@ impl AddonHost {
                 match self.info(&id, root.as_deref()) {
                     Ok(mut info) => {
                         let key = owner(root.as_deref(), &info.id);
+                        info.hooks = self.hooks.reports(&key, &info.fingerprint, &selected_roots);
                         let relevant: Vec<_> =
                             std::iter::once(super::services::key(root.as_deref(), &key))
                                 .chain(
@@ -788,6 +805,7 @@ impl AddonHost {
                         granted_permissions: vec![],
                         tool_count: 0,
                         fragment_count: 0,
+                        hooks: vec![],
                     }),
                 }
             }

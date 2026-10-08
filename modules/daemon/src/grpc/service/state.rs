@@ -682,6 +682,9 @@ pub(crate) fn addon_info_to_proto(info: crate::addon::AddonInfoData) -> AddonInf
         granted_permissions: info.granted_permissions,
         tool_count: info.tool_count,
         fragment_count: info.fragment_count,
+        hooks: info.hooks.into_iter().map(|hook| super::super::proto::AddonHookStatus {
+            name:hook.name,event:hook.event,scope_root:hook.scope_root,event_id:hook.event_id,status:hook.status,completed:hook.completed,failed:hook.failed,error:hook.error,
+        }).collect(),
     }
 }
 

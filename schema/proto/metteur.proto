@@ -406,6 +406,18 @@ message AddonInfo {
   string fingerprint = 12;
   string status = 13;
   string error = 14;
+  repeated AddonHookStatus hooks = 15;
+}
+
+message AddonHookStatus {
+  string name = 1;
+  string event = 2;
+  string scope_root = 3;
+  string event_id = 4;
+  string status = 5;
+  uint64 completed = 6;
+  uint64 failed = 7;
+  string error = 8;
 }
 
 message ListAddonsRequest {

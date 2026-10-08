@@ -19,6 +19,7 @@ impl DaemonService {
         let subject = subject_from_request(&request).unwrap_or_else(|| "local".to_string());
         let req = request.into_inner();
         let _config_guard = self.state.config_gate.lock().await;
+        let already_open = self.state.workspaces.get(&PathBuf::from(&req.path)).await.is_some();
         let ws = self.state.workspaces.open(&PathBuf::from(req.path)).await.map_err(to_status)?;
         if let Some(host)=&self.state.addon_host {host.opened_workspace(ws.root()).await;}
         // Register this workspace's function library into the shared registry,
@@ -35,6 +36,7 @@ impl DaemonService {
             // available through ListMcpServers; SetConfig reports this failure.
             tracing::warn!("workspace MCP reload failed: {error}");
         }
+        if !already_open && let Some(host) = &self.state.addon_host { host.observe_workspace_open(ws.root()); }
         record_global_audit(
             &self.state,
             &subject,

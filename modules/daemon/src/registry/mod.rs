@@ -32,6 +32,7 @@ pub struct Registry {
     pub(crate) addon_lease: Option<Arc<crate::addon::services::Lease>>,
     pub(crate) addon_lsp: Vec<Arc<crate::integration::lsp::LspManager>>,
     pub(crate) addon_lsp_claims: std::collections::BTreeMap<String, String>,
+    pub(crate) addon_hooks: Vec<Arc<crate::addon::hooks::Binding>>,
 }
 
 #[derive(Default, Clone)]
@@ -149,6 +150,7 @@ impl Registry {
             addon_lease: self.addon_lease.clone(),
             addon_lsp: self.addon_lsp.clone(),
             addon_lsp_claims: self.addon_lsp_claims.clone(),
+            addon_hooks: self.addon_hooks.clone(),
         }
     }
 

@@ -151,6 +151,7 @@ impl Interpreter {
         // slip past a replan threshold it had already reached.
         self.circuit_failures = resume.circuit_failures;
         self.view = resume.view.clone();
+        self.hook_cursor.seed(&self.view);
         self.tree = resume.exec_tree.clone();
         self.tree_root = resume.exec_tree.roots.first().cloned();
         self.frame_trees = resume.frame_trees.clone();
@@ -175,6 +176,7 @@ impl Interpreter {
 
     /// Resets the interpreter for a fresh run of `blueprint`.
     fn reset_run(&mut self, blueprint: &SharedBlueprint) {
+        self.hook_cursor = Default::default();
         let bp = blueprint.read();
         self.state = ExecutionState::default();
         self.in_flight = None;

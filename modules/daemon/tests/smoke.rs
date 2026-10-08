@@ -1654,6 +1654,48 @@ type = \"object\"
 }
 
 #[tokio::test]
+async fn addon_hooks_real_workspace_and_run_events_reach_rpc_and_cli() {
+    use metteur_cli::commands::{parse,dispatch,SessionState,Outcome};
+    let (mut client,root)=start_server(Default::default()).await;
+    let source=root.join("hook-source");build_addon_package(&source,"com.test.hookscli","Unused","observe");
+    let mut manifest="id=\"com.test.hookscli\"\nversion=\"1.0.0\"\nname=\"Hook CLI\"\n[addon]\nentry=\"main.wasm\"\n".to_owned();
+    for (name,event) in [("Open","workspace.open"),("Close","workspace.close"),("Node","node.finished"),("Terminal","run.terminal")] {
+        manifest.push_str(&format!("[[hooks]]\nname=\"{name}\"\nevent=\"{event}\"\nfunction=\"observe\"\n"));
+    }
+    std::fs::write(source.join("manifest.toml"),manifest).unwrap();
+    let mut state=SessionState::default();
+    dispatch(&mut client,&mut state,parse(&format!("install {} global",source.display())).unwrap()).await.unwrap();
+    let ws=root.to_string_lossy().into_owned();
+    client.open_workspace(OpenWorkspaceRequest{path:ws.clone()}).await.unwrap();
+    client.open_workspace(OpenWorkspaceRequest{path:ws.clone()}).await.unwrap();
+    let blueprint=client.compile_dsl(CompileDslRequest{source:"blueprint \"Hook delivery\"\nentry start: Start\ne: End\nstart -> e\n".into()}).await.unwrap().into_inner();
+    client.save_blueprint(SaveBlueprintRequest{workspace_path:ws.clone(),blueprint:Some(blueprint.clone()),file_path:"blueprints/hooks.blueprint".into(),file_json:String::new()}).await.unwrap();
+    let mut stream=client.execute_blueprint(ExecuteBlueprintRequest{workspace_path:ws.clone(),blueprint_id:blueprint.id,blueprint_json:String::new()}).await.unwrap().into_inner();
+    while let Some(event)=stream.message().await.unwrap(){assert_ne!(event.kind,"error","{}",event.message);}
+    let mut observed=false;
+    for _ in 0..200 {
+        let addons=client.list_addons(proto::ListAddonsRequest{workspace_path:ws.clone()}).await.unwrap().into_inner();
+        let hooks=&addons.addons[0].hooks;
+        if hooks.iter().any(|h|h.name=="Terminal" && h.completed==1) {
+            assert_eq!(hooks.iter().find(|h|h.name=="Open").unwrap().completed,1,"idempotent workspace open cannot duplicate callbacks");
+            assert_eq!(hooks.iter().find(|h|h.name=="Node").unwrap().completed,2);
+            assert!(hooks.iter().all(|h|h.failed==0));observed=true;break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(observed);
+    let Outcome::Printed(text)=dispatch(&mut client,&mut state,parse("addons").unwrap()).await.unwrap() else{panic!("addon status output missing")};
+    assert!(text.contains("hook Terminal run.terminal: Succeeded completed=1"));
+    client.close_workspace(CloseWorkspaceRequest{path:ws}).await.unwrap();
+    for _ in 0..200 {
+        let addons=client.list_addons(proto::ListAddonsRequest::default()).await.unwrap().into_inner();
+        if addons.addons[0].hooks.iter().any(|h|h.name=="Close" && h.completed==1){return;}
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("committed workspace close was not observed");
+}
+
+#[tokio::test]
 async fn smoke_addon_install_call_uninstall() {
     let (mut client, workspace) = start_server(metteur_shared::config::Config::default()).await;
     let ws_path = workspace.to_string_lossy().to_string();

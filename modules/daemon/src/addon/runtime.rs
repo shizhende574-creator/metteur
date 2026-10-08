@@ -361,7 +361,7 @@ fn bounded_manifest(wasm: &[u8], timeout: u64) -> ExtismManifest {
 /// Compile and link every declared export before registering any contribution.
 /// Admission exposes inert host functions; package startup cannot gain effects.
 pub(crate) fn validate(wasm: &[u8], manifest: &Manifest) -> DaemonResult<()> {
-    if wasm.is_empty() && manifest.tools.is_empty() {return Ok(());}
+    if wasm.is_empty() && manifest.tools.is_empty() && manifest.hooks.is_empty() {return Ok(());}
     let mut builder = PluginBuilder::new(bounded_manifest(wasm, 1000)).with_wasi(true);
     for (name, arguments, results) in [
         ("log", 2, 0),
@@ -386,5 +386,26 @@ pub(crate) fn validate(wasm: &[u8], manifest: &Manifest) -> DaemonResult<()> {
             return Err(DaemonError::Addon(format!("Missing addon export: {}", tool.function)));
         }
     }
+    for hook in &manifest.hooks {
+        if !plugin.function_exists(&hook.function) {
+            return Err(DaemonError::Addon(format!("Missing addon hook export: {}", hook.function)));
+        }
+    }
+    Ok(())
+}
+
+/// Lifecycle observers receive only a host-built event. No execution context,
+/// WASI, log, filesystem, tool, process, network or model capability is attached.
+pub(super) fn observe(wasm: &[u8], function: &str, input: &str, timeout_ms: u64) -> DaemonResult<()> {
+    let failure = || DaemonError::Addon("Hook callback failed, exceeded its limits or timed out".into());
+    if input.len() > 4096 { return Err(failure()); }
+    let mut builder = PluginBuilder::new(bounded_manifest(wasm, timeout_ms.clamp(1, 1000))).with_wasi(false);
+    for (name, arguments, results) in [("log",2,0),("call_tool",2,1),("fs_read",1,1),("fs_write",2,0),("http_request",4,1),("llm_complete",3,1)] {
+        builder = builder.with_function(name, vec![PTR;arguments], vec![PTR;results], UserData::new(()), |_,_,_,_|Err(denied("lifecycle observers have no capabilities")));
+    }
+    let mut plugin = builder.build().map_err(|_|failure())?;
+    let output: Vec<u8> = plugin.call(function,input).map_err(|_|failure())?;
+    if output.len() > 65536 { return Err(failure()); }
+    // Plugin output is untrusted and cannot supply another event or authority.
     Ok(())
 }

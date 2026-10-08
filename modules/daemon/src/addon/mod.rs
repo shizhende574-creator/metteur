@@ -16,6 +16,7 @@ use crate::error::{DaemonError, DaemonResult};
 use crate::registry::Tool;
 
 mod host;
+pub(crate) mod hooks;
 mod lsp;
 pub(crate) mod services;
 pub use host::{AddonHost, AddonInfoData};

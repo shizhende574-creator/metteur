@@ -63,6 +63,9 @@ impl Package {
             .tools
             .iter()
             .map(|tool| format!("tool:{}{}", super::pascal(&manifest.id), tool.name))
+            .chain(manifest.hooks.iter().map(|hook| {
+                format!("hook:{}{}:{}", super::pascal(&manifest.id), hook.name, hook.event)
+            }))
             .chain(manifest.fragments.iter().map(|fragment| format!("fragment:{}", fragment.name)))
             .chain(
                 manifest

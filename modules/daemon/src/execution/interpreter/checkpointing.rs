@@ -102,6 +102,7 @@ impl Interpreter {
         })?;
         // A successful apply may add validity changes at the same boundary.
         self.view = checkpoint.view;
+        self.hook_cursor.committed(&ctx.registry.addon_hooks, &self.view, &ctx.workspace_root, sink.run_id(), checkpoint.status);
         Ok(())
     }
 }

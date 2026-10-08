@@ -997,6 +997,7 @@ const modelsText = computed(() => {
 
     <!-- Addons (live daemon data) -->
     <section v-else-if="settings.active === 'addons'" class="max-w-2xl space-y-4 p-5">
+      <button class="btn btn-outline" type="button" @click="addons.refresh()">Refresh addon status</button>
       <div class="panel divide-y divide-divider">
         <div v-for="a in addons.addons" :key="`${a.scopeRoot ?? a.scope}:${a.id}`" class="flex items-center gap-3 px-4 py-3">
           <div class="min-w-0 flex-1">
@@ -1010,6 +1011,16 @@ const modelsText = computed(() => {
             <p class="break-all text-[12px] text-muted-foreground">{{ a.scopeRoot || 'Global' }} · {{ a.status || 'Status unavailable' }}</p>
             <p v-if="a.error" class="break-words text-[12px] text-destructive">{{ a.error }}</p>
             <p class="text-[12px] text-muted-foreground">Granted: {{ a.grantedPermissions?.join(', ') || 'None' }}</p>
+            <div v-if="a.hooks?.length" class="mt-2 space-y-2 border-t border-divider pt-2" data-testid="addon-hook-status">
+              <p class="text-[12px] font-medium">Lifecycle observers</p>
+              <div v-for="hook in a.hooks" :key="`${hook.scopeRoot}:${hook.name}`" class="break-words text-[12px]">
+                <p>{{ hook.name }} · {{ hook.event }} · {{ hook.status }}</p>
+                <p class="text-muted-foreground">{{ hook.completed }} completed · {{ hook.failed }} failed · {{ hook.scopeRoot }}</p>
+                <p v-if="hook.eventId" class="break-all text-muted-foreground">Event {{ hook.eventId }}</p>
+                <p v-if="hook.error" class="text-destructive">{{ hook.error }}</p>
+              </div>
+              <p class="text-[11px] text-muted-foreground">Read-only notifications. Delivery is bounded and is not replayed after restart.</p>
+            </div>
           </div>
           <button
             class="btn"

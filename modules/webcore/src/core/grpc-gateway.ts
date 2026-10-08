@@ -1213,6 +1213,7 @@ export class GrpcGateway implements DaemonGateway {
           error: a.error,
           requiredPermissions: a.requiredPermissions,
           grantedPermissions: a.grantedPermissions,
+          hooks: a.hooks.map((hook) => ({ ...hook, completed: Number(hook.completed), failed: Number(hook.failed) })),
         })),
       )
     } catch (e) {

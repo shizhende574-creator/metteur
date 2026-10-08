@@ -211,7 +211,9 @@ impl Manifest {
             }
         }
         if self.addon.entry.is_empty()
-            && (!self.tools.is_empty() || (self.mcp.is_empty() && self.lsp.is_empty()))
+            && (!self.tools.is_empty()
+                || !self.hooks.is_empty()
+                || (self.mcp.is_empty() && self.lsp.is_empty()))
         {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
         }
@@ -295,7 +297,27 @@ impl Manifest {
             }
             .validate(files, &self.permissions.required)?;
         }
-        if !self.hooks.is_empty() || !self.nodes.is_empty() || !self.functions.is_empty() {
+        names.clear();
+        if self.hooks.len() > 16 {
+            return Err(DaemonError::Addon("Addon hook declaration limit exceeded".into()));
+        }
+        let mut subscriptions = HashSet::new();
+        for hook in &self.hooks {
+            if !is_valid_tool_name(&hook.name)
+                || !names.insert(hook.name.as_str())
+                || hook.function.is_empty()
+                || !subscriptions.insert((&hook.event, &hook.function))
+                || !matches!(
+                    hook.event.as_str(),
+                    "workspace.open" | "workspace.close" | "node.finished" | "run.terminal"
+                )
+            {
+                return Err(DaemonError::Addon(
+                    "Invalid or duplicate lifecycle hook declaration".into(),
+                ));
+            }
+        }
+        if !self.nodes.is_empty() || !self.functions.is_empty() {
             return Err(DaemonError::Addon(
                 "this daemon does not yet support the declared addon contribution category".into(),
             ));
