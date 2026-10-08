@@ -457,14 +457,19 @@ message FunctionInfo {
   string description = 3;
   repeated FnPin inputs = 4;
   repeated FnPin outputs = 5;
-  string source = 6; // builtin | global | workspace
+  string source = 6; // builtin | global | workspace | addon (read-only)
   int64 updated_at = 7;
+  string addon_binding_json = 8;
+  string file_path = 9;
 }
 
 message SaveFunctionRequest {
   string workspace_path = 1; // empty = global library
   FunctionInfo info = 2;
   Blueprint body = 3;
+  string import_from = 4; // explicit read-only addon -> editable workspace copy
+  string file_path = 5; // required for import; existing bound path for later edits
+  string expected_addon_binding_json = 6;
 }
 
 message SaveFunctionResponse { FunctionInfo info = 1; }

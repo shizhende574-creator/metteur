@@ -60,7 +60,7 @@ impl AddonNode {
 fn failure(message: &str) -> DaemonError {
     DaemonError::Addon(message.into())
 }
-fn raw(value: &Value) -> DaemonResult<serde_json::Value> {
+pub(crate) fn raw(value: &Value) -> DaemonResult<serde_json::Value> {
     Ok(match value {
         Value::Null => serde_json::Value::Null,
         Value::Bool(v) => serde_json::json!(v),
@@ -149,4 +149,4 @@ impl NodeExecutor for AddonNode {
 
 #[cfg(test)]
 #[path = "nodes_tests.rs"]
-mod tests;
+pub(super) mod tests;

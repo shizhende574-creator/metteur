@@ -158,6 +158,7 @@ async fn resumes_with_function_frame_from_checkpoint() {
     let checkpoint = ExecutionCheckpoint {
         addon_identity_version: 1,
         addon_packages: Default::default(),
+        function_identities: Some(registry.function_identities()),
         view: Default::default(),
         blueprint_version: None,
         transition_version: metteur_daemon::execution::checkpoint::CHECKPOINT_TRANSITION_VERSION,

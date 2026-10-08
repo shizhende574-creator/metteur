@@ -51,7 +51,7 @@ async fn confirmed_while_paused(cancel: bool) {
     interpreter.reset_run(&shared);
     let pause = Arc::new(AtomicBool::new(true));
     let cancelled = Arc::new(AtomicBool::new(false));
-    let mut ctx = interpreter.make_context(None, pause.clone(), cancelled.clone());
+    let mut ctx = interpreter.make_context(None, pause.clone(), cancelled.clone()).await;
     application::attach(&ctx, None).unwrap();
     interpreter.write_checkpoint(&ctx).unwrap();
     scheduler::initialize(&db, run, Default::default()).unwrap();

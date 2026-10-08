@@ -127,6 +127,7 @@ pub enum Command {
         file: String,
         workspace: bool,
     },
+    FuncImport { source:String, name:String, file:String },
     FuncList {
         workspace: bool,
     },
@@ -165,6 +166,7 @@ fn parse_func(args: &[&str]) -> Result<Command, String> {
         Some(other) => Err(format!("unknown scope '{other}', expected 'ws' or 'global'")),
     };
     match args {
+        ["import",source,name,file] => Ok(Command::FuncImport {source:(*source).into(),name:(*name).into(),file:(*file).into()}),
         ["save", name, file] | ["save", name, file, "ws"] | ["save", name, file, "workspace"] => {
             Ok(Command::FuncSave {
                 name: (*name).to_string(),
@@ -330,6 +332,7 @@ Metteur REPL commands:
                                         Install with only explicitly selected grants.
   uninstall <id> [ws|global]            Remove an addon.
   addon <id> on|off [ws|global]         Enable/disable an addon in its scope.
+  func import <source> <name> <file>     Import an editable workspace copy.
   func save <name> <file.json> [ws|global]
                                         Save a blueprint function.
   func list [ws|global]                 List registered functions.
@@ -759,6 +762,7 @@ pub async fn dispatch(
             file,
             workspace,
         } => assets::handle_func_save(client, state, name, file, workspace).await,
+        Command::FuncImport {source,name,file} => assets::handle_func_import(client,state,source,name,file).await,
         Command::FuncList {
             workspace,
         } => assets::handle_func_list(client, state, workspace).await,

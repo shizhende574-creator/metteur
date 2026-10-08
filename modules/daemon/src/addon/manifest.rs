@@ -250,7 +250,7 @@ impl Manifest {
             && (!self.tools.is_empty()
                 || !self.hooks.is_empty()
                 || !self.nodes.is_empty()
-                || (self.mcp.is_empty() && self.lsp.is_empty()))
+                || (self.mcp.is_empty() && self.lsp.is_empty() && self.functions.is_empty()))
         {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
         }
@@ -374,10 +374,13 @@ impl Manifest {
             metteur_shared::node_catalog::addon::validate_signature(&node.signature)
                 .map_err(DaemonError::Addon)?;
         }
-        if !self.functions.is_empty() {
-            return Err(DaemonError::Addon(
-                "this daemon does not yet support the declared addon contribution category".into(),
-            ));
+        names.clear();
+        if self.functions.len()>64 {return Err(DaemonError::Addon("Addon function limit exceeded".into()));}
+        for function in &self.functions {
+            if !is_valid_tool_name(&function.name) || function.name.len()>128 || !names.insert(function.name.as_str()) || function.dependencies.len()>128 || function.dependencies.iter().any(|d|!is_valid_tool_name(d) || d.len()>256) {
+                return Err(DaemonError::Addon("Invalid or duplicate function declaration".into()));
+            }
+            if package_file(files,&function.file)?.len()>1024*1024 {return Err(DaemonError::Addon("Addon function body exceeds limit".into()));}
         }
         Ok(())
     }

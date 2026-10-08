@@ -997,6 +997,10 @@ export class MockGateway implements DaemonGateway {
     return ok({ name: header[1], nodes: [], edges: [] } as unknown as Blueprint)
   }
 
+  async importFunction(): Promise<Result<{ name: string; filePath: string }>> {
+    return err('Connect a daemon to import addon functions')
+  }
+
   async decompileBlueprint(_ws: string, blueprintOrId: Blueprint | string): Promise<Result<string>> {
     // When given the live canvas, produce a compact textual skeleton so the
     // export flow stays usable without a real DSL compiler.

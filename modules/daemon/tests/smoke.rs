@@ -2443,9 +2443,9 @@ async fn smoke_function_library_save_execute() {
     // Save a workspace-scoped function.
     let body = smoke_add_function();
     let saved = client
-        .save_function(SaveFunctionRequest {
+        .save_function(SaveFunctionRequest { import_from:String::new(),file_path:String::new(),expected_addon_binding_json:String::new(),
             workspace_path: ws_path.clone(),
-            info: Some(FunctionInfo {
+            info: Some(FunctionInfo { addon_binding_json:String::new(),file_path:String::new(),
                 id: uuid::Uuid::new_v4().to_string(),
                 name: "SmokeAdd".to_string(),
                 description: "adds numbers".to_string(),
@@ -4221,3 +4221,5 @@ async fn config_presence_survives_rpc_file_and_reset() {
 mod blueprint_entrypoints;
 #[path = "smoke/addon_nodes.rs"]
 mod addon_nodes;
+#[path = "smoke/addon_functions.rs"]
+mod addon_functions;

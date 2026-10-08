@@ -17,6 +17,7 @@ use crate::registry::Tool;
 
 pub(crate) mod hooks;
 mod host;
+pub(crate) mod functions;
 mod lsp;
 mod nodes;
 pub(crate) mod services;

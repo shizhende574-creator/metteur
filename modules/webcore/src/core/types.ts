@@ -426,6 +426,8 @@ export interface FnPinInfo {
 
 /** A callable blueprint function from the daemon's function library. */
 export interface FunctionItem {
+  addonBinding?: Record<string, unknown>
+  filePath?: string
   id: string
   name: string
   description: string

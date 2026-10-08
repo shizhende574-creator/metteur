@@ -507,6 +507,7 @@ pub fn checkpoint_after_start(blueprint: &Blueprint) -> ExecutionCheckpoint {
     ExecutionCheckpoint {
         addon_identity_version: 1,
         addon_packages: Default::default(),
+        function_identities: None,
         view: Default::default(),
         blueprint_version: None,
         transition_version: metteur_daemon::execution::checkpoint::CHECKPOINT_TRANSITION_VERSION,

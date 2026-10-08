@@ -333,37 +333,181 @@ impl DaemonService {
         request: Request<SaveFunctionRequest>,
     ) -> Result<Response<SaveFunctionResponse>, Status> {
         let req = request.into_inner();
-        let info = req.info.ok_or_else(|| Status::invalid_argument("info is required"))?;
-        let body_proto = req.body.ok_or_else(|| Status::invalid_argument("body is required"))?;
-        let body = proto_to_blueprint(&body_proto).map_err(to_status)?;
-        let mut entry = proto_to_function(&info, body).map_err(to_status)?;
+        let info = req
+            .info
+            .ok_or_else(|| Status::invalid_argument("info is required"))?;
+        let root = optional_workspace(&req.workspace_path)?;
+        let registry = self.state.registry_for(root.as_deref(), true).await?;
+        if registry
+            .function(&info.name)
+            .is_some_and(|f| matches!(f.source, FunctionSource::Addon | FunctionSource::Builtin))
+        {
+            return Err(Status::permission_denied(
+                "Read-only function; import an explicitly named editable copy",
+            ));
+        }
+        let importing = !req.import_from.is_empty();
+        if importing
+            && (registry.node_executor(&info.name).is_some() || registry.tool(&info.name).is_some())
+        {
+            return Err(Status::already_exists(
+                "Function copy name conflicts with a node or tool",
+            ));
+        }
+        let mut entry = if importing {
+            if root.is_none()
+                || req.file_path.is_empty()
+                || !crate::registry::tool::is_valid_tool_name(&info.name)
+                || registry.function(&info.name).is_some()
+            {
+                return Err(Status::invalid_argument(
+                    "Import requires an open workspace, new PascalCase name and explicit new file path",
+                ));
+            }
+            let source = registry
+                .function(&req.import_from)
+                .filter(|f| f.source == FunctionSource::Addon)
+                .ok_or_else(|| Status::not_found("Addon function unavailable"))?;
+            let expected: serde_json::Value =
+                serde_json::from_str(&req.expected_addon_binding_json).map_err(|_| {
+                    Status::failed_precondition("Current addon binding required for import")
+                })?;
+            if registry.addon_function_bindings.get(&req.import_from) != Some(&expected) {
+                return Err(Status::failed_precondition(
+                    "Addon function changed; reload before importing",
+                ));
+            }
+            let mut body = source.body;
+            body.id = uuid::Uuid::new_v4();
+            body.name = info.name.clone();
+            if let Some(node) = body.nodes.iter_mut().find(|n| n.id == body.entry_node_id) {
+                if !node.data.is_object() {
+                    node.data = serde_json::json!({});
+                }
+                node.data["_imported_from"] = expected;
+            }
+            FunctionEntry {
+                id: body.id,
+                name: info.name,
+                description: info.description,
+                signature: source.signature,
+                body,
+                source: FunctionSource::Workspace,
+            }
+        } else {
+            let body = proto_to_blueprint(
+                &req.body
+                    .ok_or_else(|| Status::invalid_argument("body is required"))?,
+            )
+            .map_err(to_status)?;
+            proto_to_function(&info, body).map_err(to_status)?
+        };
         crate::registry::library::validate(&entry).map_err(Status::invalid_argument)?;
+        ensure_valid(&entry.body, &registry)?;
         entry.signature =
             FunctionEntry::derive_signature(&entry.body).map_err(Status::invalid_argument)?;
-
-        if req.workspace_path.is_empty() {
-            let db = self
-                .state
-                .global_db
-                .clone()
-                .ok_or_else(|| Status::unavailable("global database is not enabled"))?;
-            entry.source = FunctionSource::Global;
-            crate::registry::library::save(&db, &entry).map_err(to_status)?;
-            self.state.registry.register_function(entry.clone());
-        } else {
+        if registry
+            .functions()
+            .iter()
+            .any(|f| f.name != entry.name && (f.id == entry.id || f.body.id == entry.body.id))
+        {
+            return Err(Status::already_exists(
+                "Function identity belongs to another name; create an explicit copy",
+            ));
+        }
+        let mut file_path = String::new();
+        if let Some(root) = root {
             let ws = self
                 .state
                 .workspaces
-                .get(&PathBuf::from(&req.workspace_path))
+                .get(&root)
                 .await
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
+            let _admission = ws.activity_gate.lock().await;
+            if self.state.running.read().await.contains_key(ws.root())
+                || self.state.chats.read().await.contains_key(ws.root())
+            {
+                return Err(Status::failed_precondition(
+                    "Function edits require the workspace execution and chat to finish",
+                ));
+            }
+            crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
+            let old = crate::registry::library::load_all(&ws.db)
+                .map_err(to_status)?
+                .into_iter()
+                .find(|f| f.name == entry.name);
+            if importing && old.is_some() {
+                return Err(Status::already_exists("Function copy name is already used"));
+            }
+            if let Some(old) = old
+                && crate::storage::blueprint_files::binding(&ws.db, old.body.id)
+                    .map_err(to_status)?
+                    .is_some()
+                && (entry.id != old.id || entry.body.id != old.body.id)
+            {
+                return Err(Status::failed_precondition(
+                    "Editable copy identity must remain stable",
+                ));
+            }
+            let bound = crate::storage::blueprint_files::binding(&ws.db, entry.body.id)
+                .map_err(to_status)?;
+            file_path = if req.file_path.is_empty() {
+                bound
+                    .as_ref()
+                    .map(|v| v.blueprint_uri.clone())
+                    .unwrap_or_default()
+            } else {
+                req.file_path
+            };
+            if !file_path.is_empty() {
+                if importing
+                    && ws
+                        .version_manager
+                        .blueprint_path(&file_path)
+                        .map_err(to_status)?
+                        .exists()
+                {
+                    return Err(Status::already_exists("Import path already exists"));
+                }
+                let bytes = crate::storage::blueprint_files::encode_native(&entry.body)
+                    .map_err(to_status)?;
+                crate::storage::blueprint_files::save(
+                    &ws.db,
+                    &ws.version_manager,
+                    &entry.body,
+                    &file_path,
+                    &bytes,
+                    bound.as_ref(),
+                )
+                .map_err(to_status)?;
+            }
             entry.source = FunctionSource::Workspace;
             crate::registry::library::save(&ws.db, &entry).map_err(to_status)?;
-            self.state.registry.register_function(entry.clone());
+        } else {
+            if !req.file_path.is_empty() {
+                return Err(Status::invalid_argument(
+                    "Versioned function copies belong to a workspace",
+                ));
+            }
+            if !self.state.running.read().await.is_empty()
+                || !self.state.chats.read().await.is_empty()
+            {
+                return Err(Status::failed_precondition(
+                    "Global function edits require executions and chats to finish",
+                ));
+            }
+            let db = self
+                .state
+                .global_db
+                .as_ref()
+                .ok_or_else(|| Status::unavailable("global database is not enabled"))?;
+            entry.source = FunctionSource::Global;
+            crate::registry::library::save(db, &entry).map_err(to_status)?;
         }
-        Ok(Response::new(SaveFunctionResponse {
-            info: Some(function_to_proto(&entry)),
-        }))
+        self.state.registry.register_function(entry.clone());
+        let mut info = function_to_proto(&entry);
+        info.file_path = file_path;
+        Ok(Response::new(SaveFunctionResponse { info: Some(info) }))
     }
 
     pub(crate) async fn list_functions(
@@ -371,21 +515,34 @@ impl DaemonService {
         request: Request<ListFunctionsRequest>,
     ) -> Result<Response<FunctionList>, Status> {
         let req = request.into_inner();
-        let functions = self.state.registry.functions();
-        let filtered: Vec<ProtoFunctionInfo> = functions
-            .into_iter()
-            .filter(|f| {
-                if req.workspace_path.is_empty() {
-                    f.source != FunctionSource::Workspace
-                } else {
-                    f.source == FunctionSource::Workspace || f.source == FunctionSource::Builtin
+        let root = optional_workspace(&req.workspace_path)?;
+        let registry = self.state.registry_for(root.as_deref(), false).await?;
+        let ws = if let Some(root) = &root {
+            self.state.workspaces.get(root).await
+        } else {
+            None
+        };
+        let functions = registry
+            .functions()
+            .iter()
+            .map(|entry| {
+                let mut info = function_to_proto(entry);
+                info.addon_binding_json = registry
+                    .addon_function_bindings
+                    .get(&entry.name)
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                if let Some(ws) = &ws {
+                    info.file_path =
+                        crate::storage::blueprint_files::binding(&ws.db, entry.body.id)
+                            .map_err(to_status)?
+                            .map(|v| v.blueprint_uri)
+                            .unwrap_or_default();
                 }
+                Ok(info)
             })
-            .map(|f| function_to_proto(&f))
-            .collect();
-        Ok(Response::new(FunctionList {
-            functions: filtered,
-        }))
+            .collect::<Result<Vec<_>, Status>>()?;
+        Ok(Response::new(FunctionList { functions }))
     }
 
     pub(crate) async fn load_function(
@@ -393,17 +550,28 @@ impl DaemonService {
         request: Request<LoadFunctionRequest>,
     ) -> Result<Response<LoadFunctionResponse>, Status> {
         let req = request.into_inner();
-        let entry = if req.workspace_path.is_empty() {
-            self.state
-                .registry
-                .function(&req.name)
-                .filter(|f| f.source != FunctionSource::Workspace)
-        } else {
-            self.state.registry.function(&req.name)
+        let root = optional_workspace(&req.workspace_path)?;
+        let registry = self.state.registry_for(root.as_deref(), false).await?;
+        let entry = registry
+            .function(&req.name)
+            .ok_or_else(|| Status::not_found("function not found"))?;
+        ensure_valid(&entry.body, &registry)?;
+        let mut info = function_to_proto(&entry);
+        info.addon_binding_json = registry
+            .addon_function_bindings
+            .get(&entry.name)
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        if let Some(root) = root
+            && let Some(ws) = self.state.workspaces.get(&root).await
+        {
+            info.file_path = crate::storage::blueprint_files::binding(&ws.db, entry.body.id)
+                .map_err(to_status)?
+                .map(|v| v.blueprint_uri)
+                .unwrap_or_default();
         }
-        .ok_or_else(|| Status::not_found(format!("function '{}' not found", req.name)))?;
         Ok(Response::new(LoadFunctionResponse {
-            info: Some(function_to_proto(&entry)),
+            info: Some(info),
             body: Some(blueprint_to_proto(&entry.body)),
         }))
     }
@@ -413,7 +581,24 @@ impl DaemonService {
         request: Request<DeleteFunctionRequest>,
     ) -> Result<Response<Empty>, Status> {
         let req = request.into_inner();
+        let root = optional_workspace(&req.workspace_path)?;
+        let registry = self.state.registry_for(root.as_deref(), false).await?;
+        if registry
+            .function(&req.name)
+            .is_some_and(|f| matches!(f.source, FunctionSource::Addon | FunctionSource::Builtin))
+        {
+            return Err(Status::permission_denied(
+                "Read-only function is owned by its package or daemon",
+            ));
+        }
         if req.workspace_path.is_empty() {
+            if !self.state.running.read().await.is_empty()
+                || !self.state.chats.read().await.is_empty()
+            {
+                return Err(Status::failed_precondition(
+                    "Global function edits require executions and chats to finish",
+                ));
+            }
             let db = self
                 .state
                 .global_db
@@ -432,6 +617,15 @@ impl DaemonService {
                 .get(&PathBuf::from(&req.workspace_path))
                 .await
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
+            let _admission = ws.activity_gate.lock().await;
+            if self.state.running.read().await.contains_key(ws.root())
+                || self.state.chats.read().await.contains_key(ws.root())
+            {
+                return Err(Status::failed_precondition(
+                    "Function edits require the workspace execution and chat to finish",
+                ));
+            }
+            crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
             crate::registry::library::delete(&ws.db, &req.name).map_err(to_status)?;
             if let Some(entry) = self.state.registry.function(&req.name)
                 && entry.source == FunctionSource::Workspace
@@ -441,7 +635,6 @@ impl DaemonService {
         }
         Ok(Response::new(Empty {}))
     }
-
     pub(crate) async fn compile_dsl(
         &self,
         request: Request<CompileDslRequest>,
@@ -678,6 +871,7 @@ fn blueprint_to_proto(blueprint: &metteur_shared::Blueprint) -> Blueprint {
 /// Converts a shared function entry into the proto model.
 fn function_to_proto(entry: &FunctionEntry) -> ProtoFunctionInfo {
     let source = match entry.source {
+        FunctionSource::Addon => "addon",
         FunctionSource::Builtin => "builtin",
         FunctionSource::Global => "global",
         FunctionSource::Workspace => "workspace",
@@ -690,6 +884,8 @@ fn function_to_proto(entry: &FunctionEntry) -> ProtoFunctionInfo {
         outputs: entry.signature.outputs.iter().map(fn_pin_to_proto).collect(),
         source: source.to_string(),
         updated_at: 0,
+        addon_binding_json:String::new(),
+        file_path:String::new(),
     }
 }
 

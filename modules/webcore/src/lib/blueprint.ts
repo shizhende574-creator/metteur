@@ -104,6 +104,7 @@ export function makeCallFunctionNode(entry: FunctionItem, signature: NodeKindInf
   node.data!.outputs.push(...pins(entry.outputs, 'data-out'))
   node.data!.title = entry.name
   node.data!.data = { function: entry.name }
+  if (entry.addonBinding) node.data!.data['_addon_function_binding'] = JSON.parse(JSON.stringify(entry.addonBinding))
   return node
 }
 

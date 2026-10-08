@@ -61,6 +61,7 @@ impl Interpreter {
         let entry = self.registry.function(name).ok_or_else(|| {
             DaemonError::Execution(format!("function '{name}' is not registered"))
         })?;
+        self.registry.validate_addon_nodes(&entry.body)?;
         if self.function_depth() >= MAX_FUNCTION_DEPTH {
             return Err(DaemonError::Execution(
                 "function nesting depth limit exceeded".to_string(),
@@ -93,6 +94,12 @@ impl Interpreter {
                     fp.name
                 ))
             })?;
+            if entry.source == metteur_shared::FunctionSource::Addon
+                && !(fp.optional && matches!(value, Value::Null))
+                && !crate::addon::functions::value_matches(&value, &fp.data_type)
+            {
+                return Err(DaemonError::Execution("Addon function input type mismatch".into()));
+            }
             let entry_pin = entry_node
                 .pins
                 .iter()
@@ -191,6 +198,12 @@ impl Interpreter {
             let value = exit_inputs.get(&pin.id).cloned().ok_or_else(|| {
                 DaemonError::Execution(format!("missing function output '{}'", pin.name))
             })?;
+            if caller.data.get(metteur_shared::node_catalog::addon::FUNCTION_BINDING_KEY).is_some()
+                && !(pin.optional && matches!(value, Value::Null))
+                && !crate::addon::functions::value_matches(&value, &pin.data_type)
+            {
+                return Err(DaemonError::Execution("Addon function output type mismatch".into()));
+            }
             let out_pin = caller
                 .pins
                 .iter()

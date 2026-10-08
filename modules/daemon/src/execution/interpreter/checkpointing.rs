@@ -67,6 +67,7 @@ impl Interpreter {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
             addon_identity_version: 1,
             addon_packages: ctx.registry.addon_packages.clone(),
+            function_identities: Some(ctx.registry.function_identities()),
             in_flight: self.in_flight,
             run_id: sink.run_id(),
             blueprint_id: self.blueprint_id,

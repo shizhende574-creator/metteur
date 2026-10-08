@@ -64,6 +64,8 @@ pub struct ExecutionCheckpoint {
     #[serde(default)]
     pub addon_packages: std::collections::BTreeMap<String, crate::addon::package::Identity>,
     #[serde(default)]
+    pub function_identities: Option<std::collections::BTreeMap<String,String>>,
+    #[serde(default)]
     pub view: super::view::ExecutionView,
     /// An executor may have started, but its outcome is not committed. Never
     /// replay it automatically: external effects may already have happened.
@@ -142,6 +144,10 @@ impl ExecutionCheckpoint {
         if self.addon_packages != registry.addon_packages {
             return Err(DaemonError::Addon("Addon identity, version, scope or content differs from checkpoint; start a new run explicitly".into()));
         }
+        let functions=registry.function_identities();
+        if self.function_identities.as_ref().is_some_and(|saved|saved!=&functions) || (self.function_identities.is_none() && !functions.is_empty()) {
+            return Err(DaemonError::Addon("Function identity or body differs from checkpoint, or legacy evidence is missing; start a new run explicitly".into()));
+        }
         Ok(())
     }
 
@@ -151,6 +157,7 @@ impl ExecutionCheckpoint {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
             addon_identity_version: 1,
             addon_packages: Default::default(),
+            function_identities: None,
             view: Default::default(),
             in_flight: None,
             run_id,

@@ -20,6 +20,7 @@ use std::{
 
 #[derive(Clone, Default)]
 pub(crate) struct ServiceContext {
+    pub base_registry: Option<Arc<Registry>>,
     pub config: McpConfig,
     pub lsp_config: metteur_shared::config::LspConfig,
     pub lsp_disabled: bool,

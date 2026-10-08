@@ -4,6 +4,7 @@ use crate::{Node, NodeType};
 use serde_json::Value;
 
 pub const BINDING_KEY: &str = "_addon_binding";
+pub const FUNCTION_BINDING_KEY: &str = "_addon_function_binding";
 
 pub fn json_matches(value: &Value, ty: &DataType) -> bool {
     match ty {
@@ -117,7 +118,15 @@ pub fn validate_instance(
     signature: &NodeSignature,
     binding: &Value,
 ) -> Result<(), String> {
-    if node.data.get(BINDING_KEY) != Some(binding) {
+    validate_bound_instance(node, signature, binding, BINDING_KEY)
+}
+pub fn validate_bound_instance(
+    node: &Node,
+    signature: &NodeSignature,
+    binding: &Value,
+    key: &str,
+) -> Result<(), String> {
+    if node.data.get(key) != Some(binding) {
         return Err("Addon node package identity changed or is missing; recreate explicitly".into());
     }
     if node.kind != signature.kind
@@ -127,8 +136,18 @@ pub fn validate_instance(
         return Err("Addon node signature changed".into());
     }
     for spec in &signature.pins {
-        let matches: Vec<_> =
-            node.pins.iter().filter(|p| p.key.as_deref() == Some(&spec.key)).collect();
+        let matches: Vec<_> = node
+            .pins
+            .iter()
+            .filter(|p| {
+                p.pin_type == spec.pin_type
+                    && if spec.key.is_empty() {
+                        p.name == spec.name && p.key.as_deref().is_none_or(|key| key == spec.name)
+                    } else {
+                        p.key.as_deref() == Some(&spec.key)
+                    }
+            })
+            .collect();
         if matches.len() != 1 {
             return Err("Addon node has missing or duplicate pins".into());
         }

@@ -75,6 +75,10 @@ fn owner(root: Option<&Path>, id: &str) -> String {
 fn workspace_root(root: &Path) -> DaemonResult<PathBuf> {
     Ok(crate::workspace::fs::WorkspaceFs::new(root.canonicalize()?).root().to_path_buf())
 }
+fn ordered(entries: Vec<Loaded>) -> Vec<Loaded> {
+    let manifests: Vec<_> = entries.iter().map(|e| &e.package.manifest).collect();
+    super::functions::order(&manifests).into_iter().map(|i| entries[i].clone()).collect()
+}
 
 impl AddonHost {
     pub fn new(
@@ -155,6 +159,7 @@ impl AddonHost {
     }
     fn install_contributions(&self, registry: &mut Registry, loaded: &Loaded) -> DaemonResult<()> {
         let identity = &loaded.package.identity;
+        registry.remove_owned_functions(&identity.owner());
         for language in &loaded.package.manifest.lsp {
             for extension in &language.language.extensions {
                 let key = extension.to_ascii_lowercase();
@@ -198,6 +203,7 @@ impl AddonHost {
                 registry.addon_lsp_claims.insert(extension.to_ascii_lowercase(), identity.owner());
             }
         }
+        super::functions::install(registry, &loaded.package)?;
         registry.addon_packages.insert(identity.owner(), identity.clone());
         // Keep global fragments before workspace fragments at equal priority,
         // matching the existing prompt assembly order.
@@ -214,16 +220,26 @@ impl AddonHost {
         Ok(())
     }
     fn snapshot_locked(&self, root: Option<&Path>) -> DaemonResult<Registry> {
-        let mut registry = self.registry.snapshot();
+        let mut registry = self.registry.addon_base_snapshot();
         let loaded = self.loaded.read();
-        for entry in loaded.values().filter(|entry| entry.package.identity.scope == "global") {
-            self.install_into(&mut registry, entry)?;
+        for entry in ordered(
+            loaded
+                .values()
+                .filter(|entry| entry.package.identity.scope == "global")
+                .cloned()
+                .collect(),
+        ) {
+            self.install_into(&mut registry, &entry)?;
         }
         if let Some(root) = root {
-            for entry in
-                loaded.values().filter(|entry| entry.package.identity.scope == scope(Some(root)))
-            {
-                self.install_into(&mut registry, entry)?;
+            for entry in ordered(
+                loaded
+                    .values()
+                    .filter(|entry| entry.package.identity.scope == scope(Some(root)))
+                    .cloned()
+                    .collect(),
+            ) {
+                self.install_into(&mut registry, &entry)?;
             }
         }
         Ok(registry)
@@ -240,18 +256,18 @@ impl AddonHost {
         let mut loaded = BTreeMap::<String, Loaded>::new();
         let mut errors = BTreeMap::new();
         for root in roots {
-            let dirs = package_dirs(&self.directory(root.as_deref()));
+            let dirs = super::functions::order_dirs(package_dirs(&self.directory(root.as_deref())));
             let mut ids = BTreeMap::<String, usize>::new();
             for dir in &dirs {
                 if let Ok((manifest, _)) = Manifest::load(dir) {
                     *ids.entry(manifest.id).or_default() += 1;
                 }
             }
-            let mut scoped = self.registry.snapshot();
+            let mut scoped = self.registry.addon_base_snapshot();
             if root.is_some() {
-                for entry in loaded.values() {
+                for entry in ordered(loaded.values().cloned().collect()) {
                     if entry.package.identity.scope == "global" {
-                        let _ = self.install_into(&mut scoped, entry);
+                        let _ = self.install_into(&mut scoped, &entry);
                     }
                 }
             }
@@ -399,7 +415,11 @@ impl AddonHost {
             })
             .cloned()
             .collect();
-        let mut registry = self.registry.snapshot();
+        let mut registry = context
+            .base_registry
+            .as_ref()
+            .map(|r| r.snapshot())
+            .unwrap_or_else(|| self.registry.addon_base_snapshot());
         let mut services = self.services.lock().await;
         let mut lsp_failure =
             std::iter::once(None).chain(normalized.as_deref().map(Some)).any(|root| {
@@ -409,7 +429,7 @@ impl AddonHost {
                     })
                 })
             });
-        for entry in selected {
+        for entry in ordered(selected) {
             let owner = entry.package.identity.owner();
             let key = super::services::key(normalized.as_deref(), &owner);
             let outcome = async {
@@ -562,13 +582,15 @@ impl AddonHost {
         if root.is_none() {
             for root in self.roots.read().iter() {
                 let mut scoped = registry.snapshot();
-                for entry in self
-                    .loaded
-                    .read()
-                    .values()
-                    .filter(|entry| entry.package.identity.scope == scope(Some(root)))
-                {
-                    self.install_into(&mut scoped, entry)?;
+                for entry in ordered(
+                    self.loaded
+                        .read()
+                        .values()
+                        .filter(|entry| entry.package.identity.scope == scope(Some(root)))
+                        .cloned()
+                        .collect(),
+                ) {
+                    self.install_into(&mut scoped, &entry)?;
                 }
             }
         }

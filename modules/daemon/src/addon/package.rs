@@ -63,6 +63,7 @@ impl Package {
             .tools
             .iter()
             .map(|tool| format!("tool:{}{}", super::pascal(&manifest.id), tool.name))
+            .chain(manifest.functions.iter().map(|function|format!("function:{}{}",super::pascal(&manifest.id),function.name)))
             .chain(
                 manifest
                     .nodes

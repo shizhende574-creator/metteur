@@ -65,7 +65,7 @@ impl Interpreter {
 
         self.shared_blueprint = Some(blueprint.clone());
         self.reset_run(blueprint);
-        let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
+        let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested).await;
         crate::replan::application::attach(&ctx, None)?;
         self.write_checkpoint(&ctx)?;
         let _oversight = crate::oversight::runtime::start(&ctx).await;
@@ -124,7 +124,8 @@ impl Interpreter {
         }
         // Verify version identity before moving fields out of the checkpoint.
         self.shared_blueprint = Some(blueprint.clone());
-        let probe = self.make_context(None, pause_requested.clone(), cancel_requested.clone());
+        let probe =
+            self.make_context(None, pause_requested.clone(), cancel_requested.clone()).await;
         crate::replan::application::attach(&probe, Some(&resume))?;
         self.in_flight = None;
         self.shared_blueprint = Some(blueprint.clone());
@@ -159,7 +160,7 @@ impl Interpreter {
         self.frame_trees = resume.frame_trees.clone();
         self.current_tree = resume.current_tree.clone();
 
-        let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested);
+        let mut ctx = self.make_context(interrupts, pause_requested, cancel_requested).await;
         ctx.blueprint_apply = probe.blueprint_apply;
         ctx.transaction_log = TransactionLog::from_entries(resume.transaction_log);
         ctx.attach_file_journal();
@@ -206,7 +207,7 @@ impl Interpreter {
     }
 
     /// Creates the per-run execution context.
-    fn make_context(
+    async fn make_context(
         &self,
         interrupts: Option<InterruptBus>,
         pause_requested: Arc<std::sync::atomic::AtomicBool>,
@@ -223,6 +224,9 @@ impl Interpreter {
             ctx.audit = Some(audit.clone());
         }
         if let Some(config) = &self.config {
+            let mode =
+                metteur_shared::config::effective_permission_mode(&config.read().await.sandbox);
+            ctx.permission_mode = crate::sandbox::PermissionMode::parse(mode);
             ctx.config = Some(config.clone());
         }
         ctx.user = self.user.clone();

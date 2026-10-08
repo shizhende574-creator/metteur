@@ -320,6 +320,16 @@ pub fn validate_with_catalog(
     }
     let mut report = validate(&resolved);
     for node in &blueprint.nodes {
+        let function_binding = node.data.get("function").and_then(|v|v.as_str()).and_then(|name|catalog.addon_function_bindings.get(name));
+        if node.kind=="CallFunction" {
+            let key=crate::node_catalog::addon::FUNCTION_BINDING_KEY;
+            let result=match function_binding {
+                Some(binding)=>catalog.resolve(&node.kind,&node.data).ok_or_else(||"Addon function unavailable".into()).and_then(|s|crate::node_catalog::addon::validate_bound_instance(node,&s,binding,key)),
+                None if node.data.get(key).is_some()=>Err("Addon function or dependency is missing or disabled".into()),
+                _=>Ok(())
+            };
+            if let Err(detail)=result {report.errors.push(BlueprintError::AddonContract{node_id:node.id,detail});}
+        }
         let result = match catalog.addon_bindings.get(&node.kind) {
             Some(binding) => catalog.get(&node.kind).ok_or_else(|| "Addon node unavailable".into())
                 .and_then(|s| crate::node_catalog::addon::validate_instance(node,s,binding)),

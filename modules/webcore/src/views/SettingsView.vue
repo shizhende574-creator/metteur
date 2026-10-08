@@ -16,6 +16,7 @@ import { projectName } from '@/lib/path'
 import { USER_CONFIG_PATH, WORKSPACE_CONFIG_PATH } from '@/lib/toml'
 import { fileRoute } from '@/lib/file-token'
 import SettingsNav from '@/components/SettingsNav.vue'
+import AddonFunctions from '@/components/settings/AddonFunctions.vue'
 import SettingRow from '@/components/settings/SettingRow.vue'
 import ConfigModal, { type ModalField } from '@/components/settings/ConfigModal.vue'
 import Combobox from '@/components/settings/Combobox.vue'
@@ -1037,6 +1038,7 @@ const modelsText = computed(() => {
         </p>
       </div>
       <p v-if="addons.error" role="alert" class="text-[12px] text-destructive">{{ addons.error }}</p>
+      <AddonFunctions :workspace-path="workspace.active?.path ?? ''" />
     </section>
 
     <!-- Versioning -->

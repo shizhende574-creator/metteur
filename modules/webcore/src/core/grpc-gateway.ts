@@ -962,6 +962,8 @@ export class GrpcGateway implements DaemonGateway {
         name: f.name,
         description: f.description,
         source: f.source,
+        addonBinding: parseDefault(f.addonBindingJson) as Record<string, unknown> | undefined,
+        filePath: f.filePath,
         inputs: (f.inputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
         outputs: (f.outputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
       }))
@@ -978,6 +980,14 @@ export class GrpcGateway implements DaemonGateway {
     } catch (e) {
       return toErr(e)
     }
+  }
+
+  async importFunction(workspacePath: string, source: FunctionItem, name: string, filePath: string): Promise<Result<{ name: string; filePath: string }>> {
+    try {
+      const result = await this.client.saveFunction({ workspacePath, importFrom: source.name, info: { name }, filePath, expectedAddonBindingJson: JSON.stringify(source.addonBinding) })
+      if (!result.info) return err('Import result unavailable')
+      return ok({ name: result.info.name, filePath: result.info.filePath })
+    } catch (e) { return toErr(e) }
   }
 
   async decompileBlueprint(

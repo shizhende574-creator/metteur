@@ -16,6 +16,8 @@ pub struct NodeCatalog {
     /// Verified immutable package identity, persisted on newly authored nodes.
     #[serde(default)]
     pub addon_bindings: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub addon_function_bindings: BTreeMap<String, serde_json::Value>,
 }
 
 impl std::ops::Deref for NodeCatalog {
@@ -37,6 +39,7 @@ impl FromIterator<(String, NodeSignature)> for NodeCatalog {
             nodes: iter.into_iter().collect(),
             functions: BTreeMap::new(),
             addon_bindings: BTreeMap::new(),
+            addon_function_bindings: BTreeMap::new(),
         }
     }
 }

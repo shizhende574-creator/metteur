@@ -26,6 +26,8 @@ pub struct Registry {
     tools: RwLock<Tools>,
     nodes: Arc<NodeRegistry>,
     functions: RwLock<HashMap<String, FunctionEntry>>,
+    pub(crate) addon_function_bindings: std::collections::BTreeMap<String, serde_json::Value>,
+    function_owners: std::collections::BTreeMap<String,String>,
     pub(crate) addon_packages: std::collections::BTreeMap<String, crate::addon::package::Identity>,
     pub(crate) addon_fragments:
         std::collections::BTreeMap<String, Vec<metteur_shared::SystemFragment>>,
@@ -145,6 +147,8 @@ impl Registry {
             tools: RwLock::new(self.tools.read().clone()),
             nodes: self.nodes.clone(),
             functions: RwLock::new(self.functions.read().clone()),
+            addon_function_bindings:self.addon_function_bindings.clone(),
+            function_owners:self.function_owners.clone(),
             addon_packages: self.addon_packages.clone(),
             addon_fragments: self.addon_fragments.clone(),
             addon_lease: self.addon_lease.clone(),
@@ -153,7 +157,52 @@ impl Registry {
             addon_hooks: self.addon_hooks.clone(),
         }
     }
-
+    pub(crate) fn addon_base_snapshot(&self) -> Self {
+        let snapshot = self.snapshot();
+        snapshot
+            .functions
+            .write()
+            .retain(|_, f| f.source != FunctionSource::Workspace);
+        snapshot
+    }
+    pub(crate) fn scoped_functions(
+        &self,
+        global: Option<&crate::storage::persistence::Db>,
+        workspace: Option<(
+            &crate::storage::persistence::Db,
+            &crate::storage::versioning::VersionManager,
+        )>,
+    ) -> DaemonResult<Self> {
+        let snapshot = self.snapshot();
+        snapshot.functions.write().retain(|_, f| {
+            f.source == FunctionSource::Builtin
+                || (global.is_none() && f.source == FunctionSource::Global)
+        });
+        if let Some(db) = global {
+            snapshot.load_functions(db, FunctionSource::Global)?;
+        }
+        if let Some((db, versions)) = workspace {
+            for mut entry in crate::registry::library::load_all(db)? {
+                entry.source = FunctionSource::Workspace;
+                if crate::storage::blueprint_files::binding(db, entry.body.id)?.is_some() {
+                    entry.body =
+                        crate::storage::blueprint_files::load(db, versions, entry.body.id)?;
+                    entry.signature =
+                        FunctionEntry::derive_signature(&entry.body).map_err(DaemonError::Addon)?;
+                }
+                snapshot.register_function(entry);
+            }
+        }
+        Ok(snapshot)
+    }
+    /// Canonical immutable evidence used by checkpoints for non-builtin functions.
+    pub fn function_identities(&self) -> std::collections::BTreeMap<String, String> {
+        self.functions()
+            .into_iter()
+            .filter(|f| f.source != FunctionSource::Builtin)
+            .map(|f| (f.name.clone(), crate::addon::functions::digest(&f)))
+            .collect()
+    }
     pub(crate) fn replace_owned_tools(
         &self,
         owner: &str,
@@ -201,6 +250,17 @@ impl Registry {
     /// Registers a function, replacing any existing one with the same name.
     pub fn register_function(&self, entry: FunctionEntry) {
         self.functions.write().insert(entry.name.clone(), entry);
+    }
+
+    pub(crate) fn remove_owned_functions(&mut self,owner:&str) {
+        let names:Vec<_>=self.function_owners.iter().filter(|(_,o)|o.as_str()==owner).map(|(n,_)|n.clone()).collect();
+        for name in names {self.functions.write().remove(&name);self.function_owners.remove(&name);self.addon_function_bindings.remove(&name);}
+    }
+    pub(crate) fn register_owned_function(&mut self,owner:&str,entry:FunctionEntry,binding:serde_json::Value)->DaemonResult<()> {
+        if self.function(&entry.name).is_some() || self.function_by_id(entry.id).is_some() || self.node_executor(&entry.name).is_some() || self.tool(&entry.name).is_some() {
+            return Err(DaemonError::Addon("Addon function name or identity conflicts".into()));
+        }
+        self.function_owners.insert(entry.name.clone(),owner.into());self.addon_function_bindings.insert(entry.name.clone(),binding);self.register_function(entry);Ok(())
     }
 
     /// Removes a function by name, returning it when registered.
@@ -295,6 +355,7 @@ impl Registry {
         let mut catalog = self.nodes.signatures();
         catalog.functions =
             self.functions().into_iter().map(|entry| (entry.name, entry.signature)).collect();
+        catalog.addon_function_bindings=self.addon_function_bindings.clone();
         catalog
     }
 

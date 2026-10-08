@@ -14,7 +14,7 @@ fn temp() -> PathBuf {
     p
 }
 
-fn write_wasm(path: &str) -> Vec<u8> {
+pub(in crate::addon) fn write_wasm(path: &str) -> Vec<u8> {
     fn alloc(text: &str, local: &str) -> String {
         let stores = text
             .bytes()
@@ -113,7 +113,7 @@ async fn node_file_effects_keep_grants_original_approval_journal_and_path_bounda
         }
     }
 }
-fn signature() -> NodeSignature {
+pub(in crate::addon) fn signature() -> NodeSignature {
     NodeSignature {
         kind: "Calculate".into(),
         executor_kind: "Calculate".into(),
@@ -152,7 +152,7 @@ fn signature() -> NodeSignature {
         ],
     }
 }
-fn wasm(output: &str) -> Vec<u8> {
+pub(in crate::addon) fn wasm(output: &str) -> Vec<u8> {
     let input = r#"{"inputs":{"a":7}}"#;
     let check = input
         .bytes()
@@ -185,7 +185,7 @@ fn wasm(output: &str) -> Vec<u8> {
     ))
     .unwrap()
 }
-fn package(base: &Path, version: &str, sig: &NodeSignature, bytes: &[u8]) -> PathBuf {
+pub(in crate::addon) fn package(base: &Path, version: &str, sig: &NodeSignature, bytes: &[u8]) -> PathBuf {
     let p = base.join(uuid::Uuid::new_v4().to_string());
     std::fs::create_dir(&p).unwrap();
     std::fs::write(p.join("main.wasm"), bytes).unwrap();
