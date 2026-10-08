@@ -60,6 +60,8 @@ pub struct Review {
     pub work: Work,
     #[serde(default)]
     pub proposals: Vec<super::actions::Proposal>,
+    #[serde(default)]
+    pub diagnostic: Option<super::diagnostic::Diagnostic>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Schedule {
@@ -124,6 +126,7 @@ fn enqueue(
             actual_action_refs: vec![],
             work: Work::default(),
             proposals: vec![],
+            diagnostic: None,
         });
         s.reviews.len() - 1
     });
@@ -349,6 +352,12 @@ pub struct Outcome {
     pub notes: Vec<String>,
 }
 pub fn finish(db: &Db, run: Uuid, id: Uuid, outcome: Outcome) -> DaemonResult<Review> {
+    finish_with_diagnostic(db, run, id, outcome, None)
+}
+pub(crate) fn finish_with_diagnostic(
+    db: &Db, run: Uuid, id: Uuid, outcome: Outcome,
+    diagnostic: Option<super::diagnostic::Diagnostic>,
+) -> DaemonResult<Review> {
     let Outcome {
         status,
         summary,
@@ -379,6 +388,7 @@ pub fn finish(db: &Db, run: Uuid, id: Uuid, outcome: Outcome) -> DaemonResult<Re
         .find(|r| r.review_id == id && r.status == Status::Running)
         .ok_or_else(|| error("stale review completion"))?;
     r.status = status;
+    r.diagnostic = diagnostic;
     r.summary = summary;
     r.model_verdict = verdict.map(str::to_string);
     r.verdict = if r.status == Status::Completed && !r.actual_action_refs.is_empty() {

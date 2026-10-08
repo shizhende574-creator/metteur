@@ -316,6 +316,24 @@ pub fn mcp_servers(list: &McpServerList) -> String {
 }
 
 /// Pretty-prints JSON text, falling back to the raw string.
+pub fn oversight_reports(text: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return pretty_json(text);
+    };
+    fn legacy(record: &mut serde_json::Value, state: &str) {
+        if matches!(record[state].as_str(), Some("failed" | "timed_out" | "budget_exhausted" | "cancelled" | "rejected" | "closed_unhandled")) && record["diagnostic"].is_null() {
+            record["diagnostic"] = serde_json::json!({"category":"unknown_legacy","stage":"unknown","message":"Unknown legacy: no failure category was recorded."});
+        }
+    }
+    for report in value.get_mut("reports").and_then(serde_json::Value::as_array_mut).into_iter().flatten() {
+        legacy(report, "status");
+        for proposal in report.get_mut("proposals").and_then(serde_json::Value::as_array_mut).into_iter().flatten() {
+            legacy(proposal, "state");
+        }
+    }
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string())
+}
+
 pub fn pretty_json(text: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(text) {
         Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string()),

@@ -11,6 +11,7 @@ use crate::execution::checkpoint::{
     CheckpointSink, DbCheckpointSink, ExecutionCheckpoint, RunStatus,
 };
 use crate::execution::context::ExecutionContext;
+use crate::oversight::diagnostic::{self, Category, Stage};
 use crate::storage::{
     blueprint_files,
     persistence::{Db, cf},
@@ -198,6 +199,13 @@ pub(crate) async fn approve(
     edits: &serde_json::Value,
     source: Source,
 ) -> DaemonResult<String> {
+    let argument_error = |error| if matches!(source, Source::Supervisor { .. }) {
+        diagnostic::error(Category::ToolArguments, Stage::ToolDispatch)
+    } else { error };
+    let version_error = |error| if matches!(source, Source::Supervisor { .. }) {
+        let (category, stage) = diagnostic::classify(&error, Stage::VersionCheck);
+        diagnostic::error(category, stage)
+    } else { error };
     if ctx.blueprint_apply.lock().pending.is_some() {
         return Err(rejected("a replan is already awaiting the next node boundary"));
     }
@@ -208,25 +216,25 @@ pub(crate) async fn approve(
     let base = ctx.blueprint_apply.lock().version.clone().ok_or_else(|| {
         rejected("legacy blueprint must be explicitly saved to a file before modification")
     })?;
-    versions.verify_blueprint(&base)?;
+    versions.verify_blueprint(&base).map_err(version_error)?;
     let file = std::fs::read(versions.blueprint_path(&base.blueprint_uri)?)?;
-    if blueprint_files::decode(&file)? != before {
-        return Err(rejected("executing graph differs from its authoritative file"));
+    if blueprint_files::decode(&file).map_err(version_error)? != before {
+        return Err(version_error(rejected("executing graph differs from its authoritative file")));
     }
     let state = checkpoint(ctx)?;
     if state.blueprint_id != before.id || state.blueprint_version.as_ref() != Some(&base) {
-        return Err(rejected(
+        return Err(version_error(rejected(
             "run has no matching blueprint version; start a new run after saving",
-        ));
+        )));
     }
     let mut after = before.clone();
-    let changed = super::apply_edits(&mut after, edits).map_err(DaemonError::Execution)?;
+    let changed = super::apply_edits(&mut after, edits).map_err(DaemonError::Execution).map_err(argument_error)?;
     let report = metteur_shared::model::validate::validate_with_catalog(
         &after,
         &ctx.registry.node_signatures(),
     );
     if !report.is_ok() {
-        return Err(rejected(&format!("invalid proposal: {:?}", report.errors)));
+        return Err(argument_error(rejected(&format!("invalid proposal: {:?}", report.errors))));
     }
     let affected: Vec<_> =
         before.nodes.iter().zip(&after.nodes).filter(|(a, b)| a != b).map(|(n, _)| n.id).collect();
@@ -304,11 +312,20 @@ pub(crate) async fn approve(
     .await?
     };
     if !allowed {
+        if matches!(source, Source::Supervisor { .. }) {
+            return Err(diagnostic::error(Category::ApprovalRejected, Stage::Approval));
+        }
         return Err(rejected("replan denied by user"));
     }
-    verify(ctx, &proposal)?;
+    if let Err(error) = verify(ctx, &proposal) {
+        if let Some(guard) = &mut oversight { guard.failed(&error, Stage::VersionCheck)?; }
+        return Err(error);
+    }
     let mut state = ctx.blueprint_apply.lock();
     if state.pending.is_some() || state.blocked {
+        if let Some(guard) = &mut oversight {
+            guard.failed(&diagnostic::error(Category::Application, Stage::Application), Stage::Application)?;
+        }
         return Err(rejected("another proposal is pending or recovery is required"));
     }
     state.pending = Some(proposal);
@@ -367,13 +384,13 @@ pub(crate) fn commit_boundary(
         && (verification.is_err()
             || proposal.affected.iter().any(|id| checkpoint.executed.contains(id)))
     {
-        crate::oversight::actions::transition(
+        let error = verification.err().unwrap_or_else(|| diagnostic::error(Category::VersionStale, Stage::VersionCheck));
+        crate::oversight::actions::fail(
             db(ctx)?,
             ctx.run_id,
             proposal.id,
-            crate::oversight::requests::State::Failed,
-            vec![],
-            "Proposal became stale before the apply boundary",
+            &error,
+            Stage::VersionCheck,
         )?;
         return sink.write(checkpoint);
     }
@@ -383,9 +400,13 @@ pub(crate) fn commit_boundary(
     {
         return Err(rejected("affected node completed before the safe apply boundary"));
     }
+    let oversight_id = matches!(proposal.source, Source::Supervisor { .. }).then_some(proposal.id);
     let result = commit(ctx, checkpoint, sink, proposal);
-    if result.is_err() {
+    if let Err(error) = &result {
         ctx.blueprint_apply.lock().blocked = true;
+        if let Some(id) = oversight_id {
+            crate::oversight::actions::fail(db(ctx)?, ctx.run_id, id, error, Stage::Application)?;
+        }
     }
     result
 }

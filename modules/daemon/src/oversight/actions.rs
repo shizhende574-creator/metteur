@@ -1,5 +1,6 @@
 //! Trusted proposal state. Neither identity, lineage nor decisions are model input.
 use super::{
+    diagnostic::{self, Category, Diagnostic, Stage},
     requests::{self, State},
     scheduler::{self, Status},
 };
@@ -24,6 +25,8 @@ pub struct Proposal {
     pub reason: String,
     #[serde(default)]
     pub decision_source: String,
+    #[serde(default)]
+    pub diagnostic: Option<Diagnostic>,
 }
 fn error(text: &str) -> DaemonError {
     DaemonError::Execution(text.into())
@@ -110,6 +113,7 @@ pub(crate) fn register(
         result_refs: vec![],
         reason: String::new(),
         decision_source: String::new(),
+        diagnostic: None,
     };
     for request in &mut q.requests {
         if r.source_request_ids.contains(&request.request_id) {
@@ -148,6 +152,7 @@ pub(crate) fn transition(
             refs,
             reason,
             completes_review: false,
+            diagnostic: None,
         },
         || Ok(()),
     )
@@ -157,6 +162,7 @@ struct Change<'a> {
     refs: Vec<String>,
     reason: &'a str,
     completes_review: bool,
+    diagnostic: Option<Diagnostic>,
 }
 fn transition_with(
     db: &Db,
@@ -170,6 +176,7 @@ fn transition_with(
         refs,
         reason,
         completes_review,
+        diagnostic,
     } = change;
     let _gate = db.oversight_gate.lock().map_err(|_| error("Oversight lock poisoned"))?;
     let mut s = scheduler::load(db, run)?.ok_or_else(|| error("Review unavailable"))?;
@@ -212,6 +219,15 @@ fn transition_with(
     p.state = state;
     p.result_refs = refs.clone();
     p.reason = reason.into();
+    if let Some(mut detail) = diagnostic {
+        detail.call_id = r.work.call_ids.last().copied();
+        p.diagnostic = Some(detail);
+    } else if state == State::Rejected {
+        let mut detail = Diagnostic::new(Category::ApprovalRejected, Stage::Approval, run, r.review_id);
+        detail.proposal_id = Some(id);
+        detail.call_id = r.work.call_ids.last().copied();
+        p.diagnostic = Some(detail);
+    }
     for request in &mut q.requests {
         if p.source_request_ids.contains(&request.request_id) {
             let child = request
@@ -259,6 +275,7 @@ pub(crate) fn apply_control(
             refs: vec![format!("control:{kind}:{id}"), format!("run:{run}")],
             reason: &reason,
             completes_review: true,
+            diagnostic: None,
         },
         apply,
     )
@@ -271,6 +288,9 @@ pub(crate) struct Guard {
 }
 impl Guard {
     pub(crate) async fn confirm(&mut self, ctx: &ExecutionContext) -> DaemonResult<bool> {
+        self.confirm_with_timeout(ctx, 120).await
+    }
+    pub(crate) async fn confirm_with_timeout(&mut self, ctx: &ExecutionContext, timeout_secs: u64) -> DaemonResult<bool> {
         enabled(ctx)?;
         let s = scheduler::load(&self.db, self.run)?.ok_or_else(|| error("Review unavailable"))?;
         let p = s
@@ -312,9 +332,16 @@ impl Guard {
             crate::sandbox::command_hash(&format!("{subject}\n{detail}")),
             &subject,
             detail,
-            120,
+            timeout_secs,
         )
-        .await?;
+        .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                self.failed(&error, Stage::Approval)?;
+                return Err(diagnostic::error(Category::ApprovalExpired, Stage::Approval));
+            }
+        };
         decision_source(&self.db, self.run, self.id, "human")?;
         if response.decision == crate::sandbox::approval::Decision::Deny {
             transition(
@@ -345,17 +372,31 @@ impl Guard {
     pub(crate) fn staged(&mut self) {
         self.armed = false;
     }
+    pub(crate) fn failed(&mut self, error: &DaemonError, stage: Stage) -> DaemonResult<()> {
+        fail(&self.db, self.run, self.id, error, stage)?;
+        self.armed = false;
+        Ok(())
+    }
+}
+pub(crate) fn fail(db: &Db, run: Uuid, id: Uuid, error: &DaemonError, stage: Stage) -> DaemonResult<()> {
+    let review = scheduler::load(db, run)?.and_then(|s| s.reviews.into_iter()
+        .find(|r| r.proposals.iter().any(|p| p.proposal_id == id)))
+        .ok_or_else(|| diagnostic::error(Category::Persistence, Stage::Persistence))?;
+    let mut detail = Diagnostic::from_error(error, stage, run, review.review_id);
+    detail.proposal_id = Some(id);
+    let message = detail.message.clone();
+    transition_with(db, run, id, Change { state: State::Failed, refs: vec![], reason: &message,
+        completes_review: false, diagnostic: Some(detail) }, || Ok(()))
 }
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.armed {
-            let _ = transition(
+            let _ = fail(
                 &self.db,
                 self.run,
                 self.id,
-                State::Failed,
-                vec![],
-                "Proposal expired, was interrupted, or became stale; no completed action is implied",
+                &diagnostic::error(Category::ApprovalExpired, Stage::Approval),
+                Stage::Approval,
             );
         }
     }

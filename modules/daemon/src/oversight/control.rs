@@ -1,5 +1,5 @@
 //! Confirmed model control requests. Direct user controls do not enter this path.
-use super::{actions, requests::State};
+use super::{actions, requests::State, diagnostic::{self, Category, Stage}};
 use crate::{
     DaemonError, DaemonResult,
     execution::{
@@ -80,7 +80,7 @@ pub(crate) async fn propose(
         json!({"request_type":"oversight_control","tool":kind,"summary":summary,"dangerous":kind=="CancelRun","expected":before,"rollback_notice":"Only recorded file mutations are eligible for rollback. Approved blueprint changes and shell/network effects are retained. In-flight file operations may extend this scope; conflicts will be reported after cancellation."}),
     )?;
     if !guard.confirm(ctx).await? {
-        return Err(error("Control rejected by user"));
+        return Err(diagnostic::error(Category::ApprovalRejected, Stage::Approval));
     }
     let db = ctx.workspace_db.as_ref().ok_or_else(|| error("Workspace unavailable"))?;
     let flag = if kind == "CancelRun" {
@@ -88,17 +88,19 @@ pub(crate) async fn propose(
     } else {
         &ctx.pause_requested
     };
-    actions::apply_control(db, ctx.run_id, id, kind, || {
+    let result = actions::apply_control(db, ctx.run_id, id, kind, || {
         actions::authorize_application(ctx, id)?;
         if snapshot(ctx)? != before {
-            return Err(error(
-                "Control proposal is stale; execution state or rollback scope changed",
-            ));
+            return Err(diagnostic::error(Category::VersionStale, Stage::VersionCheck));
         }
         flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .map_err(|_| error("Control was already requested"))?;
         Ok(())
-    })?;
+    });
+    if let Err(error) = result {
+        guard.failed(&error, Stage::Application)?;
+        return Err(error);
+    }
     guard.staged();
     if kind == "CancelRun"
         && let Some(broker) = &ctx.approvals

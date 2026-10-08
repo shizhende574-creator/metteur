@@ -646,7 +646,7 @@ pub async fn dispatch(
     match cmd {
         Command::Reviews {run_id} => {
             let result=client.list_oversight_reports(metteur_proto::proto::OversightReportsRequest{workspace_path:require_ws(state)?,run_id}).await?.into_inner();
-            Ok(Outcome::Printed(crate::print::pretty_json(&result.reports_json)))
+            Ok(Outcome::Printed(crate::print::oversight_reports(&result.reports_json)))
         }
         Command::ConciergeState { run_id } => concierge::state(client,state,run_id).await,
         Command::Concierge { run_id,message_id,message } => concierge::send(client,state,run_id,message_id,message).await,

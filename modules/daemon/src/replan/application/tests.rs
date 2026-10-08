@@ -181,6 +181,92 @@ impl CheckpointSink for FailingSink {
         Err(DaemonError::Persistence("injected checkpoint failure".into()))
     }
 }
+
+#[tokio::test]
+async fn oversight_failure_diagnostics_preserve_real_proposal_causes() {
+    use crate::oversight::{diagnostic::{Category, Stage}, scheduler};
+    for kind in ["persistence", "storage", "stale", "expiry", "application"] {
+        let (mut ctx, sink, mut cp) = setup();
+        let proposal_id = if kind == "application" {
+            let review = supervisor(&mut ctx, "assisted");
+            let broker = ctx.approvals.clone().unwrap();
+            let apply = ctx.blueprint_apply.clone();
+            let script = edits();
+            let (result, ()) = tokio::join!(approve(&mut ctx, "Concurrent application", &script, Source::Supervisor { review_id: review }), async {
+                while broker.pending_ids().is_empty() { tokio::time::sleep(std::time::Duration::from_millis(5)).await; }
+                apply.lock().blocked = true;
+                answer(broker, Decision::Allow).await;
+            });
+            assert!(result.is_err());
+            scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap().reviews[0].proposals[0].proposal_id
+        } else if kind == "expiry" {
+            let review = supervisor(&mut ctx, "assisted");
+            let id = Uuid::new_v4();
+            let mut guard = crate::oversight::actions::register(&ctx, review, id, "PauseRun", serde_json::json!({})).unwrap();
+            assert!(guard.confirm_with_timeout(&ctx, 0).await.is_err());
+            id
+        } else {
+            let id = staged_oversight(&mut ctx).await;
+            match kind {
+                "stale" => {
+                    std::fs::write(ctx.workspace_root.join("plan.blueprint"), "external change").unwrap();
+                    commit_boundary(&ctx, &mut cp, &sink).unwrap();
+                }
+                "storage" => {
+                    let bytes = ctx.blueprint_apply.lock().pending.as_ref().unwrap().file.clone();
+                    let hash = crate::storage::versioning::hash_content(&bytes);
+                    db(&ctx).unwrap().put(cf::FILE_BLOBS, hash.as_bytes(), b"collision").unwrap();
+                    assert!(commit_boundary(&ctx, &mut cp, &sink).is_err());
+                }
+                _ => assert!(commit_boundary(&ctx, &mut cp, &FailingSink(ctx.run_id)).is_err()),
+            }
+            id
+        };
+        let report = scheduler::load(db(&ctx).unwrap(), ctx.run_id).unwrap().unwrap().reviews.remove(0);
+        let proposal = &report.proposals[0];
+        assert_eq!(proposal.proposal_id, proposal_id);
+        assert_eq!(proposal.state, crate::oversight::requests::State::Failed);
+        assert!(proposal.result_refs.is_empty());
+        let detail = proposal.diagnostic.as_ref().unwrap();
+        let expected = match kind { "persistence" | "storage" => Category::Persistence, "stale" => Category::VersionStale, "expiry" => Category::ApprovalExpired, _ => Category::Application };
+        assert_eq!(detail.category, expected, "{kind}: {detail:?}");
+        assert_eq!(detail.run_id, ctx.run_id);
+        assert_eq!(detail.review_id, report.review_id);
+        assert_eq!(detail.proposal_id, Some(proposal_id));
+        if kind == "expiry" { assert_eq!(detail.stage, Stage::Approval); }
+        let root = ctx.workspace_root.clone();
+        let run = ctx.run_id;
+        let encoded = serde_json::to_string(&report).unwrap();
+        drop(ctx); drop(sink);
+        let reopened = Db::open(&root.join(".metteur/db")).unwrap();
+        assert_eq!(serde_json::to_string(&scheduler::load(&reopened, run).unwrap().unwrap().reviews[0]).unwrap(), encoded);
+    }
+}
+
+#[tokio::test]
+async fn rejected_review_is_cancelled_with_linked_diagnostic_and_no_model_failure() {
+    use crate::oversight::{diagnostic::Category, review, scheduler, requests};
+    let (mut ctx, _, _) = setup();
+    let review_id = supervisor(&mut ctx, "assisted");
+    let database = db(&ctx).unwrap().clone();
+    let pending = scheduler::load(&database, ctx.run_id).unwrap().unwrap().reviews.remove(0);
+    let config = ctx.config.as_ref().unwrap().read().await.clone();
+    let broker = ctx.approvals.clone().unwrap();
+    let client = crate::llm::MockClient::new(vec![crate::llm::MockStep::Tools(vec![metteur_shared::llm::ToolCall { id:"control-call".into(), name:"PauseRun".into(), arguments:serde_json::json!({"summary":"Pause for inspection"}) }])]);
+    let (result, ()) = tokio::join!(review::evaluate_with_actions(&database, &pending, &config, "test", &client, Some(&mut ctx)), answer(broker, Decision::Deny));
+    let result = result.unwrap();
+    assert_eq!(result.status, scheduler::Status::Cancelled);
+    assert!(result.verdict.is_none());
+    assert!(result.actual_action_refs.is_empty());
+    let detail = result.diagnostic.unwrap();
+    assert_eq!(detail.category, Category::ApprovalRejected);
+    assert_eq!(detail.review_id, review_id);
+    assert_eq!(detail.proposal_id, Some(result.proposals[0].proposal_id));
+    assert_eq!(detail.call_id, result.work.call_ids.first().copied());
+    assert_eq!(result.proposals[0].state, requests::State::Rejected);
+    assert_eq!(requests::load(&database, ctx.run_id).unwrap().requests[0].state, requests::State::Rejected);
+    assert!(!ctx.pause_requested.load(std::sync::atomic::Ordering::SeqCst));
+}
 #[tokio::test]
 async fn checkpoint_failure_leaves_recovery_intent_and_never_reports_applied() {
     let (mut ctx, sink, mut cp) = setup();

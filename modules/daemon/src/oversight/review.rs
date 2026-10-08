@@ -1,6 +1,7 @@
 //! Bounded supervisor loop. The model can only invoke this module's tools.
 use super::{
     budget, requests,
+    diagnostic::{self, Category, Diagnostic, Stage},
     scheduler::{self, Outcome, Review, Status, Work},
 };
 use crate::{
@@ -82,11 +83,12 @@ struct Control {
     summary: String,
 }
 fn args<T: serde::de::DeserializeOwned>(value: &Value) -> DaemonResult<T> {
-    serde_json::from_value(value.clone()).map_err(|_| err("Invalid supervisor tool arguments"))
+    serde_json::from_value(value.clone())
+        .map_err(|_| diagnostic::error(Category::ToolArguments, Stage::ToolDispatch))
 }
 fn bounded(text: &str) -> DaemonResult<()> {
     if text.trim().is_empty() || text.len() > 8192 {
-        Err(err("Supervisor text exceeds limits"))
+        Err(diagnostic::error(Category::ToolArguments, Stage::ToolDispatch))
     } else {
         Ok(())
     }
@@ -131,10 +133,16 @@ struct Session<'a> {
     settings: OversightConfig,
     anon: Anonymizer,
     work: Work,
+    stage: Stage,
+    allowed_tools: Vec<String>,
     actions: Option<&'a mut crate::execution::context::ExecutionContext>,
 }
 impl Session<'_> {
     async fn tool(&mut self, call: &ToolCall) -> DaemonResult<Value> {
+        self.stage = Stage::ToolDispatch;
+        if !self.allowed_tools.contains(&call.name) {
+            return Err(diagnostic::error(Category::ToolName, Stage::ToolDispatch));
+        }
         let run = self.review.run_id;
         let cp = checkpoint(self.db, run)?;
         match call.name.as_str() {
@@ -195,6 +203,7 @@ impl Session<'_> {
             "PauseRun" | "CancelRun" => {
                 let arguments = args::<Control>(&call.arguments)?;
                 bounded(&arguments.summary)?;
+                self.stage = Stage::Application;
                 let ctx = self
                     .actions
                     .as_deref_mut()
@@ -205,6 +214,7 @@ impl Session<'_> {
             "ProposeBlueprintEdits" => {
                 let arguments = args::<Edits>(&call.arguments)?;
                 bounded(&arguments.summary)?;
+                self.stage = Stage::Application;
                 let ctx = self
                     .actions
                     .as_deref_mut()
@@ -235,7 +245,7 @@ impl Session<'_> {
                 self.work.answers.push(self.anon.anonymize(&text).await);
                 Ok(json!({"recorded":true,"action_taken":false}))
             }
-            _ => Err(err("Supervisor tool is not permitted")),
+            _ => Err(diagnostic::error(Category::ToolName, Stage::ToolDispatch)),
         }
     }
     async fn exchange(&mut self, model_key: &str, client: &dyn LlmClient) -> DaemonResult<Outcome> {
@@ -256,7 +266,9 @@ impl Session<'_> {
                 definitions.push(ToolDefinition{name:name.into(),description:"Request one concrete run control. The server may use an existing scoped delegation for an independent system PauseRun; otherwise a per-proposal user confirmation is required. CancelRun is always dangerous and may roll back recorded files; command/network effects remain. Chat text never supplies approval. A successful control ends this review.".into(),parameters:json!({"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false})});
             }
         }
+        self.allowed_tools = definitions.iter().map(|tool| tool.name.clone()).collect();
         for _ in 0..self.settings.max_review_iterations {
+            self.stage = Stage::Context;
             checkpoint(self.db, self.review.run_id)?;
             let input = context
                 .build()
@@ -266,6 +278,7 @@ impl Session<'_> {
             let tool_tokens = serde_json::to_string(&definitions)
                 .map_err(|_| err("Tool schema unavailable"))?
                 .len() as u64;
+            self.stage = Stage::Budget;
             let id = budget::reserve(
                 self.db,
                 self.review.run_id,
@@ -277,13 +290,16 @@ impl Session<'_> {
                 &self.settings,
             )?;
             self.work.call_ids.push(id);
+            self.stage = Stage::Persistence;
             scheduler::record_work(self.db, self.review.run_id, self.review.review_id, &self.work)?;
             let params = GenerationParams {
                 temperature: Some(self.settings.temperature),
                 max_tokens: Some(self.settings.max_output_tokens),
                 ..Default::default()
             };
+            self.stage = Stage::Provider;
             let response = client.complete(&context, &params, &definitions).await;
+            self.stage = Stage::Persistence;
             budget::settle(
                 self.db,
                 self.review.run_id,
@@ -292,6 +308,7 @@ impl Session<'_> {
                 model_key,
                 self.config,
             )?;
+            self.stage = Stage::Provider;
             let response = response?;
             checkpoint(self.db, self.review.run_id)?;
             if response.text.len() > 32768
@@ -299,12 +316,13 @@ impl Session<'_> {
                 || serde_json::to_vec(&response.tool_calls).map_err(|_| err("Invalid tools"))?.len()
                     > 32768
             {
-                return Err(err("Supervisor output exceeds limits"));
+                return Err(diagnostic::error(Category::ProviderResponse, Stage::Provider));
             }
             if response.tool_calls.is_empty() {
+                self.stage = Stage::StructuredFinal;
                 let result: Final = serde_json::from_str(&response.text)
-                    .map_err(|_| err("Invalid review result"))?;
-                bounded(&result.summary)?;
+                    .map_err(|_| diagnostic::error(Category::StructuredFinal, Stage::StructuredFinal))?;
+                bounded(&result.summary).map_err(|_| diagnostic::error(Category::StructuredFinal, Stage::StructuredFinal))?;
                 if !matches!(result.verdict.as_str(), "ok" | "concern") {
                     return Err(err("Invalid review verdict"));
                 }
@@ -354,7 +372,7 @@ impl Session<'_> {
                 context.push_message(message);
             }
         }
-        Err(err("Review iteration limit reached"))
+        Err(diagnostic::error(Category::IterationLimit, Stage::Iteration))
     }
 }
 pub async fn evaluate(
@@ -383,27 +401,44 @@ pub(crate) async fn evaluate_with_actions(
         settings,
         anon: Anonymizer::new(&config.anonymize.extra_patterns),
         actions,
+        stage: Stage::Context,
+        allowed_tools: Vec::new(),
         work: Work {
             model: model_key.into(),
             ..Default::default()
         },
     };
+    let mut failure = None;
     let outcome = match tokio::time::timeout(timeout, session.exchange(model_key, client)).await {
         Ok(Ok(outcome)) => outcome,
         other => {
-            let (status, summary) = match other {
-                Err(_) => (Status::TimedOut, "Review timed out; remote usage may continue."),
-                Ok(Err(DaemonError::Execution(ref s))) if s.contains("budget exhausted") => {
-                    (Status::BudgetExhausted, "Oversight token budget exhausted.")
-                }
-                _ => (
-                    Status::Failed,
-                    "Review failed validation, reached its iteration limit, or the provider was unavailable. No action is implied.",
-                ),
+            let timed_out = other.is_err();
+            let mut detail = match other {
+                Err(_) => Diagnostic::new(Category::Timeout, session.stage, review.run_id, review.review_id),
+                Ok(Err(ref error)) => Diagnostic::from_error(error, session.stage, review.run_id, review.review_id),
+                Ok(Ok(_)) => unreachable!(),
             };
+            if let Some(proposal) = scheduler::load(db, review.run_id)?.and_then(|s| {
+                s.reviews.into_iter().find(|r| r.review_id == review.review_id)
+                    .and_then(|r| r.proposals.last().cloned())
+            }) {
+                if let Some(recorded) = proposal.diagnostic {
+                    if timed_out { detail.stage = recorded.stage; } else { detail = recorded; }
+                }
+                detail.proposal_id = Some(proposal.proposal_id);
+            }
+            detail.call_id = session.work.call_ids.last().copied();
+            let status = match detail.category {
+                Category::Timeout => Status::TimedOut,
+                Category::Budget => Status::BudgetExhausted,
+                Category::ApprovalRejected => Status::Cancelled,
+                _ => Status::Failed,
+            };
+            let summary = detail.message.clone();
+            failure = Some(detail);
             Outcome {
                 status,
-                summary: summary.into(),
+                summary,
                 verdict: None,
                 notes: session.work.notes,
             }
@@ -418,5 +453,5 @@ pub(crate) async fn evaluate_with_actions(
     }) {
         return Ok(done);
     }
-    scheduler::finish(db, review.run_id, review.review_id, outcome)
+    scheduler::finish_with_diagnostic(db, review.run_id, review.review_id, outcome, failure)
 }

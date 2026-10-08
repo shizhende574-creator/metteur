@@ -213,6 +213,8 @@ async fn reports_are_scoped_read_only_and_preserve_failed_status() {
     assert_eq!(value["reports"][0]["status"], "failed");
     assert!(value["reports"][0]["verdict"].is_null());
     assert_eq!(value["reports"][0]["usage"], serde_json::json!([]));
+    assert_eq!(value["reports"][0]["diagnostic"]["category"], "unknown_legacy");
+    assert!(crate::oversight::scheduler::load(&ws.db, run).unwrap().unwrap().reviews[0].diagnostic.is_none());
     let mut other = request; other.run_id = Uuid::new_v4().to_string();
     assert_eq!(service.list_oversight_reports(Request::new(other)).await.unwrap_err().code(), tonic::Code::NotFound);
     assert!(ws.db.scan(crate::storage::persistence::cf::GRANTS).unwrap().is_empty());

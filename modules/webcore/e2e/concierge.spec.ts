@@ -127,6 +127,7 @@ test('reviews show truthful failures, escaped opinions and persisted evidence', 
   await page.getByRole('button', { name: 'Reviews', exact: true }).click()
   const reviews = page.getByRole('region', { name: 'Supervisor reviews' })
   await expect(reviews.getByText('timed out', { exact: true })).toBeVisible()
+  await expect(reviews.getByText('Unknown legacy: no failure category was recorded.')).toBeVisible()
   await expect(reviews.getByText('reserved tokens · usage unknown', { exact: false })).toBeVisible()
   await expect(reviews.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible()
   await expect(reviews.locator('img')).toHaveCount(0)
@@ -214,6 +215,30 @@ test('delegated decisions are shown separately from human confirmation', async (
   const panel = page.getByRole('region', { name: 'Supervisor reviews' })
   await expect(panel.getByText('Decision: existing user delegation', { exact: false })).toBeVisible()
   await expect(panel.getByText('human confirmation', { exact: false })).toHaveCount(0)
+})
+
+test('diagnostics expose bounded escaped categories, stages and linked identities', async ({ page }) => {
+  await openRun(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts', g = (await import(c)).gateway
+    g.listOversightReports = async () => ({ ok: true, data: { run_id: 'concierge-run', reports: [{
+      review_id: 'diagnostic-review', run_id: 'concierge-run', status: 'cancelled', verdict: null,
+      summary: 'Proposal rejected', triggers: ['request'], source_request_ids: [], actual_action_refs: [],
+      work: { model: 'supervisor', notes: [], answers: [], evidence: [] }, usage: [],
+      diagnostic: { category: 'approval_rejected', stage: 'approval', message: '<img src=x onerror=alert(1)>' + 'x'.repeat(500) + 'NOT_SHOWN_TAIL', run_id: 'concierge-run', review_id: 'diagnostic-review', proposal_id: 'proposal-linked', call_id: 'call-linked' },
+    }] } })
+  })
+  await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+  const diagnostic = page.getByLabel('Failure diagnostic')
+  await expect(diagnostic.getByText('approval rejected', { exact: true })).toBeVisible()
+  await expect(diagnostic).toContainText('<img src=x onerror=alert(1)>')
+  await expect(diagnostic).not.toContainText('NOT_SHOWN_TAIL')
+  await expect(diagnostic.locator('img')).toHaveCount(0)
+  await diagnostic.getByText('Diagnostic references').click()
+  await expect(diagnostic).toContainText('Proposal: proposal-linked')
+  await expect(diagnostic).toContainText('Call: call-linked')
+  await page.evaluate(async () => { const c = '/src/core/index.ts'; (await import(c)).gateway.connected.value = false })
+  await expect(diagnostic).toHaveCount(0)
 })
 
 test('interrupted cancellation exposes the recorded checkpoint without claiming completion', async ({ page }) => {
