@@ -21,6 +21,8 @@ use std::{
 #[derive(Clone, Default)]
 pub(crate) struct ServiceContext {
     pub config: McpConfig,
+    pub lsp_config: metteur_shared::config::LspConfig,
+    pub lsp_disabled: bool,
     pub workspace_db: Option<Db>,
     pub global_db: Option<Db>,
     pub metrics: Arc<Metrics>,
@@ -33,6 +35,7 @@ pub(super) struct Instance {
     pub tools: Vec<Arc<dyn Tool>>,
     pub overridden: Vec<String>,
     pub binding: String,
+    pub lsp: Option<Arc<crate::integration::lsp::LspManager>>,
     config_binding: String,
     timeout: u64,
     runtime: PathBuf,
@@ -40,6 +43,9 @@ pub(super) struct Instance {
 impl Instance {
     pub async fn shutdown(&self) {
         self.host.shutdown().await;
+        if let Some(lsp) = &self.lsp {
+            lsp.shutdown().await;
+        }
     }
 }
 impl Drop for Instance {
@@ -154,6 +160,9 @@ impl Services {
     ) -> DaemonResult<Arc<Instance>> {
         let key = key(root, &package.identity.owner());
         let signature = package.identity.fingerprint.clone();
+        if let Some(root) = root {
+            super::lsp::authorize(package, permissions, root, context).await?;
+        }
         // Recheck persistent denies even when reusing a live session.
         for entry in &package.manifest.mcp {
             let alias = format!("{}{}", super::pascal(&package.identity.id), entry.name);
@@ -172,6 +181,13 @@ impl Services {
             .collect();
         use sha2::{Digest, Sha256};
         let mut config_hash = Sha256::new();
+        if !package.manifest.lsp.is_empty() {
+            config_hash.update([u8::from(context.lsp_disabled)]);
+            config_hash.update(
+                serde_json::to_vec(&context.lsp_config)
+                    .map_err(|_| error("Invalid LSP configuration"))?,
+            );
+        }
         for alias in &overridden {
             config_hash.update(alias.as_bytes());
             config_hash.update(format!("{:?}", context.config.servers[alias]).as_bytes());
@@ -189,6 +205,11 @@ impl Services {
             && instance.timeout == timeout
             && instance.config_binding == config_binding
         {
+            if let Some(lsp) = &instance.lsp
+                && !lsp.healthy().await
+            {
+                return Err(error("Addon LSP connection failed"));
+            }
             if instance
                 .host
                 .statuses()
@@ -217,6 +238,7 @@ impl Services {
             config_binding,
             timeout,
             runtime,
+            lsp: None,
         };
         let outcome = async {
             for (name, bytes) in package.files.iter() {
@@ -226,6 +248,11 @@ impl Services {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(dest, bytes)?;
+            }
+            if let Some(root) = root {
+                instance.lsp =
+                    super::lsp::start(package, permissions, root, context, &instance.runtime)
+                        .await?;
             }
             for entry in &package.manifest.mcp {
                 let alias = format!("{}{}", super::pascal(&package.identity.id), entry.name);
@@ -371,7 +398,7 @@ impl Tool for NamedTool {
         self.inner.call(args, ctx).await
     }
 }
-async fn authorize(
+pub(super) async fn authorize(
     command: &[String],
     permissions: &HashSet<Permission>,
     root: &Path,
@@ -396,7 +423,7 @@ async fn authorize(
     );
     ctx.approvals = Some(broker);
     if !crate::sandbox::authorize(&ctx, &command).await? {
-        return Err(error("Addon MCP startup denied by sandbox"));
+        return Err(error("Addon service startup denied by sandbox"));
     }
     Ok(())
 }

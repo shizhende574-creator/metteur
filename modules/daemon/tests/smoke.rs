@@ -1564,6 +1564,56 @@ command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
 }
 
 /// Builds a minimal addon package (manifest + WAT plugin) in `dir`.
+#[cfg(unix)]
+#[tokio::test]
+async fn addon_lsp_cli_install_saved_lsp_check_and_scoped_close() {
+    use metteur_cli::commands::{parse,dispatch,SessionState};
+    let (mut client,root)=start_server(Default::default()).await;
+    let ws=root.to_string_lossy().into_owned();
+    client.open_workspace(OpenWorkspaceRequest {path:ws.clone()}).await.unwrap();
+    let source=root.join("lsp-cli-source"); std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("server.py"),include_str!("../src/addon/test_lsp_server.py")).unwrap();
+    std::fs::write(root.join("file.r09"),"valid").unwrap();
+    std::fs::write(source.join("manifest.toml"),format!(r#"id="com.test.lspcli"
+version="1.0.0"
+name="LSP CLI"
+[permissions]
+required=["process"]
+[[lsp]]
+name="Local"
+[lsp.language]
+id="fixture"
+extensions=["r09"]
+command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
+"#,serde_json::to_string(&root.join("lsp.pid").to_string_lossy()).unwrap())).unwrap();
+    let mut state=SessionState {current_ws:Some(ws.clone()),..Default::default()};
+    let install=format!("install {} ws",source.display());
+    assert!(dispatch(&mut client,&mut state,parse(&install).unwrap()).await.is_err());
+    dispatch(&mut client,&mut state,parse(&format!("{install} --grant process")).unwrap()).await.unwrap();
+    let status=client.list_addons(proto::ListAddonsRequest {workspace_path:ws.clone()}).await.unwrap().into_inner();
+    assert_eq!(status.addons[0].status,"Loaded");
+    let blueprint=client.compile_dsl(CompileDslRequest {source:"blueprint \"Addon LSP\"\nentry start: Start\ncheck: LspCheck(Path = \"file.r09\")\ne: End\nstart -> check\ncheck -> e\n".into()}).await.unwrap().into_inner();
+    client.save_blueprint(SaveBlueprintRequest {workspace_path:ws.clone(),blueprint:Some(blueprint.clone()),file_path:"blueprints/lsp.blueprint".into(),file_json:String::new()}).await.unwrap();
+    let mut stream=client.execute_blueprint(ExecuteBlueprintRequest {workspace_path:ws.clone(),blueprint_id:blueprint.id,blueprint_json:String::new()}).await.unwrap().into_inner();
+    while let Some(event)=stream.message().await.unwrap() {assert_ne!(event.kind,"error","{}",event.message);}
+    let runs=client.list_executions(ListExecutionsRequest {workspace_path:ws.clone()}).await.unwrap().into_inner();
+    assert_eq!(runs.executions[0].status,"Completed");
+    assert!(runs.executions[0].data_json.contains("no diagnostics"));
+    assert!(!runs.executions[0].data_json.contains("skipped"));
+    let previous_pids=std::fs::read_to_string(root.join("lsp.pid")).unwrap();
+    client.set_config(SetConfigRequest {workspace_path:ws.clone(),config_json:r#"{"config_version":2,"lsp":{"enabled":false}}"#.into()}).await.unwrap();
+    assert!(!previous_pids.split_whitespace().any(|pid|std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s|!s.split(')').nth(1).unwrap_or_default().trim_start().starts_with('Z'))));
+    client.set_config(SetConfigRequest {workspace_path:ws.clone(),config_json:r#"{"config_version":2,"lsp":{"enabled":true}}"#.into()}).await.unwrap();
+    assert_ne!(std::fs::read_to_string(root.join("lsp.pid")).unwrap(),previous_pids);
+    client.close_workspace(CloseWorkspaceRequest {path:ws}).await.unwrap();
+    let pids=std::fs::read_to_string(root.join("lsp.pid")).unwrap();
+    for _ in 0..100 {
+        if !pids.split_whitespace().any(|pid|std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s|!s.split(')').nth(1).unwrap_or_default().trim_start().starts_with('Z'))) {return;}
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("workspace close left an owned LSP process alive");
+}
+
 fn build_addon_package(dir: &Path, id: &str, tool_name: &str, function: &str) {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(

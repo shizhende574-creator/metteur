@@ -66,7 +66,16 @@ pub struct McpDeclaration {
 #[serde(deny_unknown_fields)]
 pub struct LspEntry {
     pub name: String,
-    pub language: toml::Table,
+    pub language: LspDeclaration,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LspDeclaration {
+    pub id: String,
+    pub extensions: Vec<String>,
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub env_refs: BTreeMap<String, String>,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -201,7 +210,9 @@ impl Manifest {
                 )));
             }
         }
-        if self.addon.entry.is_empty() && (!self.tools.is_empty() || self.mcp.is_empty()) {
+        if self.addon.entry.is_empty()
+            && (!self.tools.is_empty() || (self.mcp.is_empty() && self.lsp.is_empty()))
+        {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
         }
         if !self.addon.entry.is_empty() {
@@ -247,11 +258,44 @@ impl Manifest {
             }
             contribution.server.validate(files, &self.permissions.required)?;
         }
-        if !self.lsp.is_empty()
-            || !self.hooks.is_empty()
-            || !self.nodes.is_empty()
-            || !self.functions.is_empty()
-        {
+        names.clear();
+        let mut extensions = HashSet::new();
+        let mut languages = HashSet::new();
+        if self.lsp.len() > 16 {
+            return Err(DaemonError::Addon("Addon LSP declaration limit exceeded".into()));
+        }
+        for entry in &self.lsp {
+            let language = &entry.language;
+            if !is_valid_tool_name(&entry.name)
+                || !names.insert(&entry.name)
+                || language.id.is_empty()
+                || language.id.len() > 128
+                || !language.id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+                || !languages.insert(&language.id)
+                || language.extensions.is_empty()
+                || language.extensions.len() > 64
+            {
+                return Err(DaemonError::Addon("Invalid or duplicate LSP declaration".into()));
+            }
+            for ext in &language.extensions {
+                if ext.is_empty()
+                    || ext.len() > 64
+                    || !ext.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+                    || !extensions.insert(ext.to_ascii_lowercase())
+                {
+                    return Err(DaemonError::Addon("Invalid or duplicate LSP extension".into()));
+                }
+            }
+            McpDeclaration {
+                transport: "stdio".into(),
+                command: language.command.clone(),
+                env_refs: language.env_refs.clone(),
+                url: None,
+                auth_env: None,
+            }
+            .validate(files, &self.permissions.required)?;
+        }
+        if !self.hooks.is_empty() || !self.nodes.is_empty() || !self.functions.is_empty() {
             return Err(DaemonError::Addon(
                 "this daemon does not yet support the declared addon contribution category".into(),
             ));

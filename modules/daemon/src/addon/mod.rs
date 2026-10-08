@@ -16,11 +16,14 @@ use crate::error::{DaemonError, DaemonResult};
 use crate::registry::Tool;
 
 mod host;
+mod lsp;
 pub(crate) mod services;
 pub use host::{AddonHost, AddonInfoData};
 
 #[cfg(test)]
 mod lifecycle_tests;
+#[cfg(all(test, unix))]
+mod lsp_tests;
 #[cfg(test)]
 mod mcp_tests;
 

@@ -134,9 +134,9 @@ pub struct RmcpConnection {
     child: AsyncMutex<Option<OwnedChild>>,
 }
 
-struct OwnedChild(Option<tokio::process::Child>);
+pub(crate) struct OwnedChild(pub(crate) Option<tokio::process::Child>);
 impl OwnedChild {
-    async fn shutdown(mut self) {
+    pub(crate) async fn shutdown(mut self) {
         if let Some(mut child) = self.0.take() {
             crate::execution::jobs::terminate(&mut child).await;
         }

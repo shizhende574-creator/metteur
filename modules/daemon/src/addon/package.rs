@@ -66,6 +66,12 @@ impl Package {
             .chain(manifest.fragments.iter().map(|fragment| format!("fragment:{}", fragment.name)))
             .chain(
                 manifest
+                    .lsp
+                    .iter()
+                    .map(|entry| format!("lsp:{}{}", super::pascal(&manifest.id), entry.name)),
+            )
+            .chain(
+                manifest
                     .mcp
                     .iter()
                     .map(|entry| format!("mcp:{}{}", super::pascal(&manifest.id), entry.name)),

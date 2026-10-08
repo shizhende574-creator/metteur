@@ -100,6 +100,12 @@ impl AppState {
                 if let Some(root)=root {
                     let ws=self.workspaces.get(root).await.ok_or_else(||Status::not_found("workspace not open"))?;
                     context.workspace_db=Some(ws.db.clone());
+                    context.lsp_config=ws.config.read().await.lsp.clone();
+                    let global_layer=crate::config::load_config_layer(&self.workspaces.global_config_path().map_err(to_status)?).map_err(to_status)?;
+                    let workspace_layer=crate::config::load_config_layer(&ws.root().join(".metteur/config.toml")).map_err(to_status)?;
+                    let flag=|layer:&metteur_shared::config::ConfigLayer|layer.fields.get("lsp").and_then(|v|v.get("enabled")).and_then(serde_json::Value::as_bool);
+                    let workspace_flag=flag(&workspace_layer).filter(|value|workspace_layer.config_version.is_some() || *value);
+                    context.lsp_disabled=workspace_flag.or_else(||flag(&global_layer))==Some(false);
                     context.config=crate::integration::mcp::merge_servers(&context.config,&[crate::config::load_workspace_config(ws.root()).map_err(to_status)?.mcp]);
                 }
                 host.registry_for_context(root,execution,&context).await.map_err(to_status)
@@ -213,6 +219,7 @@ impl AppState {
         let roots:Vec<_>=self.workspaces.list().await.into_iter().map(|ws|ws.root().to_path_buf()).collect();
         for root in &roots {self.registry_for(Some(root),false).await.map_err(|_|DaemonError::Mcp("Workspace addon MCP reconciliation failed".into()))?;}
         if let Some(host)=&self.addon_host {
+            failures.extend(host.list(&roots).await.into_iter().filter(|addon|addon.status=="Failed").map(|addon|format!("Addon {}: {}",addon.id,addon.error)));
             for root in std::iter::once(None).chain(roots.iter().map(|root|Some(root.as_path()))) {
                 failures.extend(host.mcp_statuses(root).await.into_iter().filter(|s|s.status=="Failed").map(|s|format!("{}: {}",s.name,s.error)));
             }

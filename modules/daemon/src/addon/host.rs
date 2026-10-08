@@ -146,6 +146,18 @@ impl AddonHost {
     }
     fn install_into(&self, registry: &mut Registry, loaded: &Loaded) -> DaemonResult<()> {
         let identity = &loaded.package.identity;
+        for language in &loaded.package.manifest.lsp {
+            for extension in &language.language.extensions {
+                let key = extension.to_ascii_lowercase();
+                if registry
+                    .addon_lsp_claims
+                    .get(&key)
+                    .is_some_and(|owner| owner != &identity.owner())
+                {
+                    return Err(failure("Addon language extension conflicts with another package"));
+                }
+            }
+        }
         if registry
             .addon_packages
             .values()
@@ -154,6 +166,11 @@ impl AddonHost {
             return Err(failure("Workspace addon cannot shadow a global addon identity"));
         }
         registry.replace_owned_tools(&identity.owner(), self.tools(loaded))?;
+        for language in &loaded.package.manifest.lsp {
+            for extension in &language.language.extensions {
+                registry.addon_lsp_claims.insert(extension.to_ascii_lowercase(), identity.owner());
+            }
+        }
         registry.addon_packages.insert(identity.owner(), identity.clone());
         // Keep global fragments before workspace fragments at equal priority,
         // matching the existing prompt assembly order.
@@ -352,13 +369,23 @@ impl AddonHost {
             .collect();
         let mut registry = self.registry.snapshot();
         let mut services = self.services.lock().await;
+        let mut lsp_failure =
+            std::iter::once(None).chain(normalized.as_deref().map(Some)).any(|root| {
+                package_dirs(&self.directory(root)).iter().any(|dir| {
+                    Manifest::load(dir).is_ok_and(|(m, _)| {
+                        !m.lsp.is_empty() && self.errors.read().contains_key(&owner(root, &m.id))
+                    })
+                })
+            });
         for entry in selected {
             let owner = entry.package.identity.owner();
             let key = super::services::key(normalized.as_deref(), &owner);
             let outcome = async {
                 let mut tools = self.tools(&entry);
                 let mut binding = None;
-                if !entry.package.manifest.mcp.is_empty() {
+                let mut lsp = None;
+                if !entry.package.manifest.mcp.is_empty() || !entry.package.manifest.lsp.is_empty()
+                {
                     let instance = services
                         .admit(
                             &entry.package,
@@ -370,11 +397,15 @@ impl AddonHost {
                         .await?;
                     tools.extend(instance.tools.iter().cloned());
                     binding = Some(instance.binding.clone());
+                    lsp = instance.lsp.clone();
                 }
                 // Publish every contribution together only after all services started.
                 let mut candidate = registry.snapshot();
                 self.install_into(&mut candidate, &entry)?;
                 candidate.replace_owned_tools(&owner, tools)?;
+                if let Some(lsp) = lsp {
+                    candidate.addon_lsp.push(lsp);
+                }
                 if let Some(binding) = binding {
                     candidate
                         .addon_packages
@@ -392,6 +423,7 @@ impl AddonHost {
                     services.errors.remove(&key);
                 }
                 Err(error) => {
+                    lsp_failure |= !entry.package.manifest.lsp.is_empty();
                     if let Some(instance) = services.active.remove(&key) {
                         if idle {
                             instance.shutdown().await;
@@ -405,6 +437,9 @@ impl AddonHost {
         }
         drop(services);
         self.prune_services(idle).await;
+        if execution && lsp_failure {
+            return Err(failure("Addon LSP admission failed; inspect addon status"));
+        }
         if execution {
             registry.addon_lease =
                 Some(super::services::Lease::acquire(self.lifecycle.clone(), &self.services).await);
@@ -688,6 +723,7 @@ impl AddonHost {
         self.roots.write().extend(roots.iter().cloned());
         self.refresh_locked();
         let selected_roots = roots.clone();
+        self.prune_services(self.lifecycle.try_write().is_ok()).await;
         let roots: Vec<_> = std::iter::once(None).chain(roots.iter().cloned().map(Some)).collect();
         let services = self.services.lock().await;
         let mut result = vec![];
@@ -717,6 +753,15 @@ impl AddonHost {
                             relevant.iter().find_map(|k| services.active.get(k))
                         {
                             info.tool_count += instance.tools.len() as u32;
+                            for service in relevant.iter().filter_map(|k| services.active.get(k)) {
+                                if let Some(lsp) = &service.lsp
+                                    && !lsp.healthy().await
+                                {
+                                    info.status = "Failed".into();
+                                    info.error = "Addon LSP connection failed; disable and enable the package to retry".into();
+                                    info.enabled = false;
+                                }
+                            }
                         }
                         result.push(info)
                     }
