@@ -210,7 +210,7 @@ pub(crate) fn configured_client(config: &Config, factory: &LlmClientFactory, key
             &model.model_id
         },
     )
-    .with_prompt_cache(config.llm.prompt_cache);
+    .with_model_settings(&config.llm, Some(model));
     Ok((key, factory.create(&provider)?))
 }
 pub async fn answer(

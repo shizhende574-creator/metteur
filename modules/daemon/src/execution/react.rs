@@ -1117,7 +1117,12 @@ fn build_client(
         .clone()
         .filter(|m| !m.is_empty())
         .or_else(|| defaults.default_model.clone())
-        .filter(|m| !m.is_empty());
+        .filter(|m| !m.is_empty())
+        .or_else(|| {
+            (defaults.models.len() == 1)
+                .then(|| defaults.models.keys().next().cloned())
+                .flatten()
+        });
     let model_cfg = model_key.as_ref().and_then(|key| defaults.models.get(key));
 
     // A configured `api_type` selects the provider; the option value is the
@@ -1134,16 +1139,6 @@ fn build_client(
         other => return Err(DaemonError::Execution(format!("unknown llm provider '{other}'"))),
     };
 
-    let model_key = model_key.or_else(|| {
-        // A request that names no model (an older client, a stale selection)
-        // still has an unambiguous answer when exactly one is configured.
-        let mut keys: Vec<&String> = defaults.models.keys().collect();
-        keys.sort();
-        match keys.as_slice() {
-            [only] => Some((*only).clone()),
-            _ => None,
-        }
-    });
     let model_key = model_key.ok_or_else(|| {
         let mut available: Vec<&String> = defaults.models.keys().collect();
         available.sort();
@@ -1172,13 +1167,8 @@ fn build_client(
         .or_else(|| model_cfg.map(|cfg| cfg.api_key.clone()).filter(|key| !key.is_empty()))
         .unwrap_or_default();
 
-    let replay_reasoning = model_cfg
-        .and_then(|cfg| cfg.replay_reasoning)
-        .unwrap_or_else(|| LlmProviderConfig::is_deepseek_model(&model));
     let config = LlmProviderConfig::new(kind, base_url, api_key, model)
-        .with_thinking_budget(defaults.thinking_budget_tokens)
-        .with_prompt_cache(defaults.prompt_cache)
-        .with_reasoning_replay(replay_reasoning);
+        .with_model_settings(defaults, model_cfg);
     ctx.llm_factory.create(&config).map_err(|e| DaemonError::Llm(e.to_string()))
 }
 
