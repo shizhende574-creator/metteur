@@ -1500,6 +1500,25 @@ async fn addon_rpc_discovery_and_management_keep_two_workspace_owners_separate()
     assert!(client.list_tools(proto::RegistryRequest {workspace_path:bp}).await.unwrap().into_inner().tools.iter().any(|t|t.name=="ComTestScopedShout"));
 }
 
+#[tokio::test]
+async fn addon_cli_install_requires_explicit_grants_instead_of_manifest_authority() {
+    use metteur_cli::commands::{parse,dispatch,SessionState};
+    let (mut client,root)=start_server(Default::default()).await;
+    let source=root.join("addon-cli");build_addon_package(&source,"com.test.cli","Shout","run");
+    let mut state=SessionState::default();
+    let command=format!("install {} global",source.display());
+    let denied=dispatch(&mut client,&mut state,parse(&command).unwrap()).await;
+    assert!(denied.is_err(),"CLI install implicitly granted manifest permissions");
+    assert!(!client.list_tools(proto::RegistryRequest::default()).await.unwrap().into_inner().tools.iter().any(|t|t.name=="ComTestCliShout"));
+    dispatch(&mut client,&mut state,parse(&format!("{command} --grant tools")).unwrap()).await.unwrap();
+    let info=client.list_addons(proto::ListAddonsRequest::default()).await.unwrap().into_inner();
+    assert_eq!(info.addons[0].granted_permissions,vec!["tools"]);
+    let manifest=std::fs::read_to_string(source.join("manifest.toml")).unwrap().replace("required = [\"tools\"]","required = [\"tools\", \"fs:read\"]");
+    std::fs::write(source.join("manifest.toml"),manifest).unwrap();
+    assert!(dispatch(&mut client,&mut state,parse(&format!("{command} --grant tools")).unwrap()).await.is_err());
+    dispatch(&mut client,&mut state,parse(&format!("{command} --grant tools --grant fs:read")).unwrap()).await.unwrap();
+}
+
 /// Builds a minimal addon package (manifest + WAT plugin) in `dir`.
 fn build_addon_package(dir: &Path, id: &str, tool_name: &str, function: &str) {
     std::fs::create_dir_all(dir).unwrap();

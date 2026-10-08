@@ -111,6 +111,7 @@ pub enum Command {
     InstallAddon {
         path: String,
         workspace: Option<String>,
+        granted: Vec<String>,
     },
     UninstallAddon {
         id: String,
@@ -325,7 +326,8 @@ Metteur REPL commands:
   usage <run_id>                        Token/cost usage for a run.
   mcp                                   List MCP servers.
   addons                                List installed addons.
-  install <path.zip|dir> [ws|global]    Install an addon package.
+  install <path.zip|dir> [ws|global] [--grant <capability>]...
+                                        Install with only explicitly selected grants.
   uninstall <id> [ws|global]            Remove an addon.
   addon <id> on|off                     Enable/disable an addon.
   func save <name> <file.json> [ws|global]
@@ -457,13 +459,23 @@ pub fn parse(line: &str) -> Result<Command, String> {
         "mcp" => exact(args, "mcp").map(|()| Command::Mcp),
         "addons" => exact(args, "addons").map(|()| Command::Addons),
         "install" => {
-            if args.is_empty() || args.len() > 2 {
-                return Err("install <path.zip|dir> [ws|global]".to_string());
+            const USAGE:&str="install <path.zip|dir> [ws|global] [--grant <capability>]...";
+            let Some(path)=args.first().filter(|path|!path.starts_with('-')) else { return Err(USAGE.into()); };
+            let mut index=1;
+            let workspace=if args.get(index).is_some_and(|arg|!arg.starts_with('-')) {
+                index+=1; addon_scope(args.get(index-1).copied())?
+            }else{None};
+            let mut granted=Vec::new();
+            while index<args.len() {
+                if args[index]!="--grant" {return Err(USAGE.into());}
+                let Some(permission)=args.get(index+1).filter(|value|!value.starts_with('-')&&!value.is_empty()) else {return Err(USAGE.into());};
+                if !granted.iter().any(|entry|entry==permission) { granted.push((*permission).to_string()); }
+                index+=2;
             }
-            let workspace = addon_scope(args.get(1).copied())?;
             Ok(Command::InstallAddon {
-                path: args[0].to_string(),
+                path: (*path).to_string(),
                 workspace,
+                granted,
             })
         }
         "uninstall" => {
@@ -732,7 +744,8 @@ pub async fn dispatch(
         Command::InstallAddon {
             path,
             workspace,
-        } => addon::handle_install_addon(client, state, path, workspace).await,
+            granted,
+        } => addon::handle_install_addon(client, state, path, workspace, granted).await,
         Command::UninstallAddon {
             id,
             workspace,

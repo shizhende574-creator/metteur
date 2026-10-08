@@ -76,10 +76,10 @@ impl Package {
         })
     }
     pub fn permissions(&self, granted: &[String]) -> DaemonResult<HashSet<Permission>> {
-        if !self.manifest.missing_permissions(granted).is_empty() {
+        let missing=self.manifest.missing_permissions(granted);
+        if !missing.is_empty() {
             return Err(DaemonError::PermissionDenied(
-                "addon required capabilities have not been granted for this package fingerprint"
-                    .into(),
+                format!("addon requires explicit grants for this package fingerprint: {}; use --grant for each selected capability",missing.join(", ")),
             ));
         }
         granted
