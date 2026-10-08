@@ -245,6 +245,7 @@ pub(crate) async fn handle_bp_compile(
     client: &mut DaemonClient<Channel>,
     state: &SessionState,
     file: String,
+    save: bool,
     save_to: Option<String>,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
@@ -257,8 +258,12 @@ pub(crate) async fn handle_bp_compile(
         .await
         .map_err(status)?
         .into_inner();
-    if let Some(id) = save_to {
-        let blueprint = with_id(blueprint, &id)?;
+    if save {
+        let blueprint = match save_to {
+            Some(id) => with_id(blueprint, &id)?,
+            None => blueprint,
+        };
+        let id = blueprint.id.clone();
         client
             .save_blueprint(SaveBlueprintRequest {
                 workspace_path: ws,

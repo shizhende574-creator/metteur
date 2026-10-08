@@ -139,6 +139,7 @@ pub enum Command {
     },
     BpCompile {
         file: String,
+        save: bool,
         save_to: Option<String>,
     },
     BpDecompile {
@@ -204,12 +205,19 @@ fn parse_func(args: &[&str]) -> Result<Command, String> {
 /// Parses the `bp` command family: DSL compile/decompile.
 fn parse_bp(args: &[&str]) -> Result<Command, String> {
     match args {
-        ["compile", file] | ["compile", file, "save"] => Ok(Command::BpCompile {
+        ["compile", file] => Ok(Command::BpCompile {
             file: (*file).to_string(),
+            save: false,
+            save_to: None,
+        }),
+        ["compile", file, "save"] => Ok(Command::BpCompile {
+            file: (*file).to_string(),
+            save: true,
             save_to: None,
         }),
         ["compile", file, "save", "as", id] => Ok(Command::BpCompile {
             file: (*file).to_string(),
+            save: true,
             save_to: Some((*id).to_string()),
         }),
         ["decompile", id] => Ok(Command::BpDecompile {
@@ -326,6 +334,8 @@ Metteur REPL commands:
   func load <name> [ws|global]          Print a function body as JSON.
   func rm <name> [ws|global]            Delete a function.
   bp compile <file.mbp> [save [as <id>]]
+    Without save, print JSON only. Save writes FILE.blueprint through Version Flow;
+    save uses the compiled ID, while save as explicitly selects an ID.
                                         Compile DSL to JSON (and save).
   bp decompile <blueprint_id>          Render a stored blueprint as DSL.
   chat send <text...> [session <id>]    Send a chat message (streams reply).
@@ -750,8 +760,9 @@ pub async fn dispatch(
         } => assets::handle_func_rm(client, state, name, workspace).await,
         Command::BpCompile {
             file,
+            save,
             save_to,
-        } => blueprint::handle_bp_compile(client, state, file, save_to).await,
+        } => blueprint::handle_bp_compile(client, state, file, save, save_to).await,
         Command::BpDecompile {
             id,
         } => blueprint::handle_bp_decompile(client, state, id).await,
