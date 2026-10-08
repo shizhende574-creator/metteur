@@ -53,7 +53,7 @@ pub fn cost(
     usage: &metteur_shared::Usage,
 ) -> Option<Cost> {
     let p = pricing?;
-    if !usage.tokens_reported {
+    if !usage.tokens_reported || p.validate().is_err() {
         return None;
     }
     let uncached = usage.uncached_input_tokens();
@@ -79,21 +79,25 @@ pub fn cost(
 
 /// Best-effort price table for a model, honouring its pricing `kind`.
 ///
-/// `default` → flat `prices`; `tiered` → the first tier's prices; `peak` →
+/// `default` → flat `prices`; `tiered` → the first inclusive input bound; `peak` →
 /// the first active window's prices, or `default_prices` outside all windows.
 /// Windows are evaluated in `timezone` (defaults to UTC on unknown names).
-pub fn effective_pricing(model: &LlmModelConfig) -> Option<ModelPricing> {
-    effective_pricing_at(model, "", chrono::Utc::now())
+pub fn effective_pricing(model: &LlmModelConfig, input_tokens: u64) -> Option<ModelPricing> {
+    effective_pricing_at(model, input_tokens, "", chrono::Utc::now())
 }
 
 /// Time-aware variant of [`effective_pricing`].
 pub fn effective_pricing_at(
     model: &LlmModelConfig,
+    input_tokens: u64,
     timezone: &str,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Option<ModelPricing> {
+    model.pricing.validate().ok()?;
     match model.pricing.kind.as_str() {
-        "tiered" => model.pricing.tiers.first().map(|t| t.prices.clone()),
+        "tiered" => model.pricing.tiers.iter()
+            .find(|tier| tier.max_input_tokens.is_none_or(|bound| input_tokens <= bound))
+            .map(|tier| tier.prices.clone()),
         "peak" => peak_pricing(model, timezone, now),
         _ => model.pricing.prices.clone().or_else(|| model.pricing.default_prices.clone()),
     }
@@ -322,16 +326,16 @@ mod tests {
     fn peak_window_selects_window_prices() {
         let model = peak_model();
         // Window 22:00-04:00 UTC.
-        let night = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
+        let night = effective_pricing_at(&model, 100, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
         assert_eq!(night.input_per_mtok, 0.5);
-        let day = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 12, 0)).unwrap();
+        let day = effective_pricing_at(&model, 100, "UTC", utc(2026, 9, 9, 12, 0)).unwrap();
         assert_eq!(day.input_per_mtok, 1.0);
     }
 
     #[test]
     fn unknown_timezone_falls_back_to_utc() {
         let model = peak_model();
-        let night = effective_pricing_at(&model, "Not/AZone", utc(2026, 9, 9, 23, 30)).unwrap();
+        let night = effective_pricing_at(&model, 100, "Not/AZone", utc(2026, 9, 9, 23, 30)).unwrap();
         assert_eq!(night.input_per_mtok, 0.5);
     }
 
@@ -346,7 +350,7 @@ mod tests {
                 prices: pricing(9.0, 9.0),
             },
         );
-        let night = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
+        let night = effective_pricing_at(&model, 100, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
         assert_eq!(night.input_per_mtok, 0.5);
     }
 
@@ -354,12 +358,12 @@ mod tests {
     fn peak_without_windows_uses_default_prices() {
         let mut model = peak_model();
         model.pricing.windows.clear();
-        let night = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
+        let night = effective_pricing_at(&model, 100, "UTC", utc(2026, 9, 9, 23, 30)).unwrap();
         assert_eq!(night.input_per_mtok, 1.0);
     }
 
     #[test]
-    fn tiered_still_uses_first_tier() {
+    fn tiered_resolves_the_covering_tier() {
         let model = LlmModelConfig {
             pricing: ModelPricingStrategy {
                 kind: "tiered".to_string(),
@@ -372,7 +376,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let resolved = effective_pricing_at(&model, "UTC", utc(2026, 9, 9, 12, 0)).unwrap();
+        let resolved = effective_pricing_at(&model, 100, "UTC", utc(2026, 9, 9, 12, 0)).unwrap();
         assert_eq!(resolved.input_per_mtok, 2.0);
     }
     #[test]

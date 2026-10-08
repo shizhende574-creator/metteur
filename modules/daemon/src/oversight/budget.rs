@@ -142,7 +142,7 @@ pub fn settle(
             call.accounting_version = 1;
             call.state = "reported".into();
             let pricing = config.llm.models.get(model_key).and_then(|m| {
-                billing::effective_pricing_at(m, &config.billing.timezone, chrono::Utc::now())
+                billing::effective_pricing_at(m, u.input_tokens, &config.billing.timezone, chrono::Utc::now())
             });
             if let Some(cost) = billing::cost(pricing.as_ref(), &config.billing.currency, &u) {
                 call.cost_micros = Some(cost.micros);

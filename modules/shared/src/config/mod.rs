@@ -2,6 +2,7 @@
 
 pub mod acl;
 pub mod oversight;
+mod pricing;
 mod layer;
 pub use layer::ConfigLayer;
 

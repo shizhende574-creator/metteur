@@ -149,5 +149,8 @@ fn merge_presence(base: &mut Value, overrides: &Value) {
 
 fn validate(config: Config) -> Result<Config, serde_json::Error> {
     super::oversight::OversightConfig::from_config(&config)?;
+    for model in config.llm.models.values() {
+        model.pricing.validate().map_err(<serde_json::Error as serde::de::Error>::custom)?;
+    }
     Ok(config)
 }

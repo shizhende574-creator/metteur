@@ -1563,7 +1563,7 @@ async fn record_usage(
     if let Some((currency, timezone, models)) = billing.as_ref()
         && let Some(model_cfg) = models.get(client.model())
         && let Some(cost) = crate::llm::billing::cost(
-            crate::llm::billing::effective_pricing_at(model_cfg, timezone, chrono::Utc::now())
+            crate::llm::billing::effective_pricing_at(model_cfg, usage.input_tokens, timezone, chrono::Utc::now())
                 .as_ref(),
             currency,
             usage,
