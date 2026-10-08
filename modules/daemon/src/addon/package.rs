@@ -34,13 +34,18 @@ pub(crate) struct Package {
     pub path: PathBuf,
     pub wasm: Arc<Vec<u8>>,
     pub fragments: Vec<metteur_shared::SystemFragment>,
+    pub files: Arc<std::collections::BTreeMap<String, Vec<u8>>>,
 }
 impl Package {
     pub fn load(path: &Path, scope: &str, policy: &Policy) -> DaemonResult<Self> {
         let snapshot = Snapshot::read(path)?;
         snapshot.verify(&policy.trusted_keys, policy.require_signature)?;
         let manifest = Manifest::from_files(&snapshot.files)?;
-        let wasm = Arc::new(package_file(&snapshot.files, &manifest.addon.entry)?.to_vec());
+        let wasm = Arc::new(if manifest.addon.entry.is_empty() {
+            vec![]
+        } else {
+            package_file(&snapshot.files, &manifest.addon.entry)?.to_vec()
+        });
         let fragments = manifest
             .fragments
             .iter()
@@ -59,6 +64,12 @@ impl Package {
             .iter()
             .map(|tool| format!("tool:{}{}", super::pascal(&manifest.id), tool.name))
             .chain(manifest.fragments.iter().map(|fragment| format!("fragment:{}", fragment.name)))
+            .chain(
+                manifest
+                    .mcp
+                    .iter()
+                    .map(|entry| format!("mcp:{}{}", super::pascal(&manifest.id), entry.name)),
+            )
             .collect();
         let identity = Identity {
             id: manifest.id.clone(),
@@ -73,14 +84,16 @@ impl Package {
             path: path.into(),
             wasm,
             fragments,
+            files: Arc::new(snapshot.files),
         })
     }
     pub fn permissions(&self, granted: &[String]) -> DaemonResult<HashSet<Permission>> {
-        let missing=self.manifest.missing_permissions(granted);
+        let missing = self.manifest.missing_permissions(granted);
         if !missing.is_empty() {
-            return Err(DaemonError::PermissionDenied(
-                format!("addon requires explicit grants for this package fingerprint: {}; use --grant for each selected capability",missing.join(", ")),
-            ));
+            return Err(DaemonError::PermissionDenied(format!(
+                "addon requires explicit grants for this package fingerprint: {}; use --grant for each selected capability",
+                missing.join(", ")
+            )));
         }
         granted
             .iter()

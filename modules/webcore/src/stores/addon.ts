@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { gateway } from '@/core'
-import type { AddonInfo, UsageSummary } from '@/core'
+import type { AddonInfo, McpServerInfo, UsageSummary } from '@/core'
 import { useWorkspaceStore } from './workspace'
 
 /**
@@ -15,13 +15,18 @@ export const useAddonStore = defineStore('addon', () => {
   const addons = ref<AddonInfo[]>([])
   const usage = ref<UsageSummary | null>(null)
   const error = ref('')
+  const mcpServers = ref<McpServerInfo[]>([])
+  const mcpError = ref('')
   let generation = 0
 
   async function refresh() {
     const request = ++generation
-    const [a, runs] = await Promise.all([gateway.listAddons(), loadRuns()])
+    const scope = workspace.active?.path
+    const [a, runs, mcp] = await Promise.all([gateway.listAddons(), loadRuns(), gateway.listMcpServers(scope)])
     if (request !== generation) return
     if (a.ok) addons.value = a.data
+    mcpServers.value = mcp.ok ? mcp.data : []
+    mcpError.value = mcp.ok ? '' : mcp.error
     usage.value = runs
   }
 
@@ -47,5 +52,11 @@ export const useAddonStore = defineStore('addon', () => {
     return ''
   }
 
-  return { addons, usage, error, refresh, setEnabled }
+  watch(() => workspace.active?.path, () => {
+    mcpServers.value = []
+    mcpError.value = ''
+    void refresh()
+  })
+
+  return { addons, usage, error, mcpServers, mcpError, refresh, setEnabled }
 })

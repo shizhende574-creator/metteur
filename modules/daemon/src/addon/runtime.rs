@@ -21,6 +21,8 @@ pub enum Permission {
     Network,
     Llm,
     Tools,
+    Process,
+    Environment,
 }
 
 impl Permission {
@@ -32,6 +34,8 @@ impl Permission {
             "network" => Some(Self::Network),
             "llm" => Some(Self::Llm),
             "tools" => Some(Self::Tools),
+            "process" => Some(Self::Process),
+            "environment" => Some(Self::Environment),
             _ => None,
         }
     }
@@ -357,6 +361,7 @@ fn bounded_manifest(wasm: &[u8], timeout: u64) -> ExtismManifest {
 /// Compile and link every declared export before registering any contribution.
 /// Admission exposes inert host functions; package startup cannot gain effects.
 pub(crate) fn validate(wasm: &[u8], manifest: &Manifest) -> DaemonResult<()> {
+    if wasm.is_empty() && manifest.tools.is_empty() {return Ok(());}
     let mut builder = PluginBuilder::new(bounded_manifest(wasm, 1000)).with_wasi(true);
     for (name, arguments, results) in [
         ("log", 2, 0),

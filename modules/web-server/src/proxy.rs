@@ -263,7 +263,7 @@ impl Daemon for ForwardService {
     // MCP.
     async fn list_mcp_servers(
         &self,
-        request: Request<Empty>,
+        request: Request<metteur_proto::proto::RegistryRequest>,
     ) -> Result<Response<McpServerList>, Status> {
         self.client.clone().list_mcp_servers(request).await
     }
@@ -714,7 +714,7 @@ mod tests {
         }
         async fn list_mcp_servers(
             &self,
-            _: Request<Empty>,
+            _: Request<metteur_proto::proto::RegistryRequest>,
         ) -> Result<Response<McpServerList>, Status> {
             Err(Status::unimplemented("list_mcp_servers"))
         }

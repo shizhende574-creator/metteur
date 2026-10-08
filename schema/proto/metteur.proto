@@ -56,7 +56,7 @@ service Daemon {
   rpc ListNodeKinds(Empty) returns (NodeKindList);
 
   // MCP host.
-  rpc ListMcpServers(Empty) returns (McpServerList);
+  rpc ListMcpServers(RegistryRequest) returns (McpServerList);
 
   // Addon management.
   rpc InstallAddon(InstallAddonRequest) returns (AddonInfo);
@@ -369,6 +369,8 @@ message NodeKindInfo {
 }
 
 message McpServerInfo {
+  string owner = 5;
+  string scope_root = 6;
   string name = 1;
   string status = 2; // Connected | Failed | Disabled
   uint32 tool_count = 3;

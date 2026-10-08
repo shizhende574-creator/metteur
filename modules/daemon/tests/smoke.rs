@@ -1520,6 +1520,50 @@ async fn addon_cli_install_requires_explicit_grants_instead_of_manifest_authorit
 }
 
 /// Builds a minimal addon package (manifest + WAT plugin) in `dir`.
+#[cfg(unix)]
+#[tokio::test]
+async fn addon_mcp_cli_scoped_install_discovery_execution_and_cleanup() {
+    use metteur_cli::commands::{parse,dispatch,SessionState,Outcome};
+    let (mut client,root)=start_server(Default::default()).await;
+    let ws=root.to_string_lossy().into_owned();
+    client.open_workspace(OpenWorkspaceRequest {path:ws.clone()}).await.unwrap();
+    let source=root.join("mcp-cli-source");std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("server.py"),include_str!("../src/addon/test_mcp_server.py")).unwrap();
+    std::fs::write(source.join("manifest.toml"),format!(r#"id="com.test.cli"
+version="1.0.0"
+name="MCP CLI"
+[permissions]
+required=["process"]
+[[mcp]]
+name="Local"
+[mcp.server]
+transport="stdio"
+command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
+"#,serde_json::to_string(&root.join("mcp.pid").to_string_lossy()).unwrap())).unwrap();
+    let mut state=SessionState {current_ws:Some(ws.clone()),..Default::default()};
+    let install=format!("install {} ws",source.display());
+    assert!(dispatch(&mut client,&mut state,parse(&install).unwrap()).await.is_err());
+    dispatch(&mut client,&mut state,parse(&format!("{install} --grant process")).unwrap()).await.unwrap();
+    let Outcome::Printed(status)=dispatch(&mut client,&mut state,parse("mcp").unwrap()).await.unwrap() else {panic!("MCP output missing")};
+    assert!(status.contains("ComTestCliLocal  Connected"));assert!(status.contains("addon=com.test.cli"));assert!(status.contains(&ws));
+    assert!(client.list_tools(proto::RegistryRequest::default()).await.unwrap().into_inner().tools.iter().all(|t|t.name!="ComTestCliLocalReadValue"));
+    let start=uuid::Uuid::new_v4().to_string();let node=uuid::Uuid::new_v4().to_string();let out=uuid::Uuid::new_v4().to_string();let input=uuid::Uuid::new_v4().to_string();
+    let blueprint=proto::Blueprint {id:uuid::Uuid::new_v4().to_string(),name:"MCP invocation".into(),entry_node_id:start.clone(),nodes:vec![
+        proto::Node {id:start.clone(),node_type:"Event".into(),kind:"Start".into(),pins:vec![proto::Pin {id:out.clone(),name:"Exec".into(),pin_type:"ExecOutput".into(),data_type:"Void".into(),..Default::default()}],..Default::default()},
+        proto::Node {id:node.clone(),node_type:"Function".into(),kind:"Tool".into(),data_json:r#"{"tool_name":"ComTestCliLocalReadValue"}"#.into(),pins:vec![proto::Pin {id:input.clone(),name:"Exec".into(),pin_type:"ExecInput".into(),data_type:"Void".into(),..Default::default()},proto::Pin {id:uuid::Uuid::new_v4().to_string(),name:"Result".into(),pin_type:"DataOutput".into(),data_type:"String".into(),..Default::default()}],..Default::default()},
+    ],edges:vec![proto::Edge {id:uuid::Uuid::new_v4().to_string(),source_node:start,source_pin:out,target_node:node,target_pin:input}]};
+    client.save_blueprint(SaveBlueprintRequest {workspace_path:ws.clone(),blueprint:Some(blueprint.clone()),file_path:"blueprints/mcp.blueprint".into(),file_json:String::new()}).await.unwrap();
+    let mut stream=client.execute_blueprint(ExecuteBlueprintRequest {workspace_path:ws.clone(),blueprint_id:blueprint.id,blueprint_json:String::new()}).await.unwrap().into_inner();
+    while let Some(event)=stream.message().await.unwrap() {assert_ne!(event.kind,"error","{}",event.message);}
+    let runs=client.list_executions(ListExecutionsRequest {workspace_path:ws.clone()}).await.unwrap().into_inner();assert_eq!(runs.executions[0].status,"Completed");assert!(runs.executions[0].data_json.contains("cli:absent:False"));
+    dispatch(&mut client,&mut state,parse("addon com.test.cli off ws").unwrap()).await.unwrap();
+    assert!(!client.list_tools(proto::RegistryRequest {workspace_path:ws.clone()}).await.unwrap().into_inner().tools.iter().any(|t|t.name=="ComTestCliLocalReadValue"));
+    dispatch(&mut client,&mut state,parse("addon com.test.cli on ws").unwrap()).await.unwrap();
+    dispatch(&mut client,&mut state,parse("uninstall com.test.cli ws").unwrap()).await.unwrap();
+    assert!(client.list_mcp_servers(proto::RegistryRequest {workspace_path:ws}).await.unwrap().into_inner().servers.is_empty());
+}
+
+/// Builds a minimal addon package (manifest + WAT plugin) in `dir`.
 fn build_addon_package(dir: &Path, id: &str, tool_name: &str, function: &str) {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(

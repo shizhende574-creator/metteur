@@ -316,7 +316,7 @@ impl Daemon for DaemonService {
 
     async fn list_mcp_servers(
         &self,
-        request: Request<Empty>,
+        request: Request<metteur_proto::proto::RegistryRequest>,
     ) -> Result<Response<McpServerList>, Status> {
         self.list_mcp_servers(request).await
     }

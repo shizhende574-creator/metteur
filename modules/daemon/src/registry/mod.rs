@@ -29,7 +29,7 @@ pub struct Registry {
     pub(crate) addon_packages: std::collections::BTreeMap<String, crate::addon::package::Identity>,
     pub(crate) addon_fragments:
         std::collections::BTreeMap<String, Vec<metteur_shared::SystemFragment>>,
-    pub(crate) addon_lease: Option<Arc<tokio::sync::OwnedRwLockReadGuard<()>>>,
+    pub(crate) addon_lease: Option<Arc<crate::addon::services::Lease>>,
 }
 
 #[derive(Default, Clone)]

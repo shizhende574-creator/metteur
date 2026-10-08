@@ -20,6 +20,7 @@ impl DaemonService {
         let req = request.into_inner();
         let _config_guard = self.state.config_gate.lock().await;
         let ws = self.state.workspaces.open(&PathBuf::from(req.path)).await.map_err(to_status)?;
+        if let Some(host)=&self.state.addon_host {host.opened_workspace(ws.root()).await;}
         // Register this workspace's function library into the shared registry,
         // remembering the names so only this workspace's set is retired later.
         match self.state.registry.load_functions(&ws.db, FunctionSource::Workspace) {
@@ -66,7 +67,9 @@ impl DaemonService {
             .await
             .map(|ws| ws.root().to_path_buf())
             .ok_or_else(|| Status::not_found("workspace is not open"))?;
-        self.state.workspaces.close(&PathBuf::from(&req.path)).await.map_err(to_status)?;
+        if self.state.running.read().await.contains_key(&root) || self.state.chats.read().await.contains_key(&root) {return Err(Status::failed_precondition("Workspace has an active execution or chat turn"));}
+        if let Some(host)=&self.state.addon_host {host.close_workspace(&root,&self.state.workspaces).await.map_err(to_status)?;}
+        else {self.state.workspaces.close(&root).await.map_err(to_status)?;}
         // Retire exactly this workspace's functions. A name another open
         // workspace also defines is restored from that workspace's database;
         // otherwise the global definition (if any) takes over, so closing one

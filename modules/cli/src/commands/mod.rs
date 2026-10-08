@@ -329,7 +329,7 @@ Metteur REPL commands:
   install <path.zip|dir> [ws|global] [--grant <capability>]...
                                         Install with only explicitly selected grants.
   uninstall <id> [ws|global]            Remove an addon.
-  addon <id> on|off                     Enable/disable an addon.
+  addon <id> on|off [ws|global]         Enable/disable an addon in its scope.
   func save <name> <file.json> [ws|global]
                                         Save a blueprint function.
   func list [ws|global]                 List registered functions.
@@ -479,7 +479,7 @@ pub fn parse(line: &str) -> Result<Command, String> {
             })
         }
         "uninstall" => {
-            if args.len() != 2 {
+            if args.is_empty() || args.len() > 2 {
                 return Err("uninstall <id> [ws|global]".to_string());
             }
             let workspace = addon_scope(args.get(1).copied())?;
@@ -489,18 +489,17 @@ pub fn parse(line: &str) -> Result<Command, String> {
             })
         }
         "addon" => {
-            let [id, onoff] = args else {
-                return Err("addon <id> on|off".to_string());
-            };
+            if args.len()<2 || args.len()>3 {return Err("addon <id> on|off [ws|global]".into());}
+            let (id,onoff)=(args[0],args[1]);
             let on = match onoff.to_ascii_lowercase().as_str() {
                 "on" | "enable" => true,
                 "off" | "disable" => false,
                 _ => return Err("addon <id> on|off".to_string()),
             };
             Ok(Command::SetAddonEnabled {
-                id: (*id).to_string(),
+                id: id.to_string(),
                 on,
-                workspace: None,
+                workspace: addon_scope(args.get(2).copied())?,
             })
         }
         "func" => parse_func(args),
@@ -739,7 +738,7 @@ pub async fn dispatch(
         Command::Usage {
             run_id,
         } => blueprint::handle_usage(client, state, run_id).await,
-        Command::Mcp => mcp::handle_mcp(client).await,
+        Command::Mcp => mcp::handle_mcp(client, state).await,
         Command::Addons => addon::handle_addons(client).await,
         Command::InstallAddon {
             path,

@@ -1158,7 +1158,7 @@ export class MockGateway implements DaemonGateway {
     return ok(undefined)
   }
 
-  async listMcpServers(): Promise<Result<McpServerInfo[]>> {
+  async listMcpServers(_workspacePath?: string): Promise<Result<McpServerInfo[]>> {
     await delay(80)
     return ok(DEMO_MCP)
   }

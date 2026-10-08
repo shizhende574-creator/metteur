@@ -44,7 +44,23 @@ pub struct FragmentEntry {
 #[serde(deny_unknown_fields)]
 pub struct McpEntry {
     pub name: String,
-    pub server: toml::Table,
+    pub server: McpDeclaration,
+}
+/// Declared endpoints/argv and named environment references are fingerprinted;
+/// credentials themselves never belong in the package.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpDeclaration {
+    pub transport: String,
+    #[serde(default)]
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub env_refs: BTreeMap<String, String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Environment reference holding the bearer token, without the scheme.
+    #[serde(default)]
+    pub auth_env: Option<String>,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -185,10 +201,12 @@ impl Manifest {
                 )));
             }
         }
-        if self.addon.entry.is_empty() {
+        if self.addon.entry.is_empty() && (!self.tools.is_empty() || self.mcp.is_empty()) {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
         }
-        package_file(files, &self.addon.entry)?;
+        if !self.addon.entry.is_empty() {
+            package_file(files, &self.addon.entry)?;
+        }
         let mut names = HashSet::new();
         for tool in &self.tools {
             if !is_valid_tool_name(&tool.name) {
@@ -219,8 +237,17 @@ impl Manifest {
                 return Err(DaemonError::Addon("unknown required addon permission".into()));
             }
         }
-        if !self.mcp.is_empty()
-            || !self.lsp.is_empty()
+        names.clear();
+        for contribution in &self.mcp {
+            if !is_valid_tool_name(&contribution.name) || !names.insert(contribution.name.as_str())
+            {
+                return Err(DaemonError::Addon(
+                    "MCP contribution names must be unique PascalCase names".into(),
+                ));
+            }
+            contribution.server.validate(files, &self.permissions.required)?;
+        }
+        if !self.lsp.is_empty()
             || !self.hooks.is_empty()
             || !self.nodes.is_empty()
             || !self.functions.is_empty()
@@ -289,6 +316,77 @@ pub(crate) fn validate_package_path(name: &str) -> DaemonResult<()> {
         ));
     }
     Ok(())
+}
+
+impl McpDeclaration {
+    fn validate(&self, files: &BTreeMap<String, Vec<u8>>, required: &[String]) -> DaemonResult<()> {
+        let invalid =
+            || DaemonError::Addon("Invalid MCP declaration or missing declared capability".into());
+        let declares = |name: &str| required.iter().any(|permission| permission == name);
+        let env_name = |name: &str| {
+            !name.is_empty()
+                && name.len() <= 128
+                && name.bytes().enumerate().all(|(i, c)| {
+                    c == b'_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit())
+                })
+        };
+        if (!self.env_refs.is_empty() || self.auth_env.is_some()) && !declares("environment") {
+            return Err(invalid());
+        }
+        if self.env_refs.iter().any(|(name, reference)| !env_name(name) || !env_name(reference))
+            || self.auth_env.as_ref().is_some_and(|name| !env_name(name))
+        {
+            return Err(invalid());
+        }
+        match self.transport.as_str() {
+            "stdio" => {
+                if !declares("process")
+                    || self.command.is_empty()
+                    || self.command.len() > 64
+                    || self.url.is_some()
+                    || self.auth_env.is_some()
+                {
+                    return Err(invalid());
+                }
+                for arg in &self.command {
+                    if arg.len() > 4096 || arg.contains('\0') {
+                        return Err(invalid());
+                    }
+                    if let Some(relative) = arg.strip_prefix("${package}/") {
+                        package_file(files, relative)?;
+                    } else if arg.contains("${") {
+                        return Err(invalid());
+                    }
+                }
+                if !self.command[0].starts_with("${package}/")
+                    && !Path::new(&self.command[0]).is_absolute()
+                {
+                    return Err(DaemonError::Addon(
+                        "MCP executable must be absolute or package-relative via ${package}/"
+                            .into(),
+                    ));
+                }
+            }
+            "http" => {
+                if !declares("network") || !self.command.is_empty() || !self.env_refs.is_empty() {
+                    return Err(invalid());
+                }
+                let url = reqwest::Url::parse(self.url.as_deref().ok_or_else(invalid)?)
+                    .map_err(|_| invalid())?;
+                if !matches!(url.scheme(), "http" | "https")
+                    || url.host_str().is_none()
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                    || url.query().is_some()
+                    || url.fragment().is_some()
+                {
+                    return Err(invalid());
+                }
+            }
+            _ => return Err(invalid()),
+        }
+        Ok(())
+    }
 }
 
 /// Default plugin-call timeout when neither config nor manifest set one.

@@ -875,6 +875,18 @@ const modelsText = computed(() => {
 
     <!-- MCP -->
     <section v-else-if="settings.active === 'mcp'" class="max-w-2xl space-y-4 p-5">
+      <div class="panel divide-y divide-divider" data-testid="mcp-status">
+        <div class="flex items-center justify-between px-4 py-3">
+          <h3 class="text-[13px] font-medium">Live connections</h3>
+          <button class="btn btn-outline" type="button" @click="addons.refresh()">Refresh status</button>
+        </div>
+        <div v-for="server in addons.mcpServers" :key="`${server.scopeRoot}:${server.owner}:${server.name}`" class="space-y-1 px-4 py-3">
+          <p class="text-[13px] font-medium">{{ server.name }} · {{ server.status }}</p>
+          <p class="break-all text-[12px] text-muted-foreground">{{ server.owner ? `Addon ${server.owner}` : 'User configuration' }} · {{ server.scopeRoot || 'Global' }} · {{ server.toolCount }} tools</p>
+          <p v-if="server.error" role="alert" class="text-[12px] text-destructive">{{ server.error }}</p>
+        </div>
+        <p v-if="addons.mcpError" role="alert" class="px-4 py-3 text-[12px] text-destructive">{{ addons.mcpError }}</p>
+      </div>
       <div class="panel divide-y divide-divider">
         <SettingRow
           v-for="def in GROUPS.mcp"

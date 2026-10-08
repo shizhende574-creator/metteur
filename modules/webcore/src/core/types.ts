@@ -403,6 +403,8 @@ export interface ExecutionInfo {
 
 /** A registered MCP server surfaced by the daemon. */
 export interface McpServerInfo {
+  owner?: string
+  scopeRoot?: string
   name: string
   /** Connected | Failed | Disabled */
   status: string

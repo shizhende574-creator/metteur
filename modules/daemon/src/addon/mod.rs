@@ -16,10 +16,13 @@ use crate::error::{DaemonError, DaemonResult};
 use crate::registry::Tool;
 
 mod host;
+pub(crate) mod services;
 pub use host::{AddonHost, AddonInfoData};
 
 #[cfg(test)]
 mod lifecycle_tests;
+#[cfg(test)]
+mod mcp_tests;
 
 /// A tool owns verified immutable code and the grants for that exact package.
 struct AddonTool {

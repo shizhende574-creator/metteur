@@ -307,6 +307,7 @@ pub fn mcp_servers(list: &McpServerList) -> String {
     let mut out = String::new();
     for server in &list.servers {
         out.push_str(&format!("{}  {}  tools={}", server.name, server.status, server.tool_count));
+        if !server.owner.is_empty() {out.push_str(&format!("  addon={}  scope={}",server.owner,if server.scope_root.is_empty(){"global"}else{&server.scope_root}));}
         if !server.error.is_empty() {
             out.push_str(&format!("  error: {}", server.error));
         }

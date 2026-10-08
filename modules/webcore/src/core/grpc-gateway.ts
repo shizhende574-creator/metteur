@@ -1233,10 +1233,10 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async listMcpServers(): Promise<Result<McpServerInfo[]>> {
+  async listMcpServers(workspacePath?: string): Promise<Result<McpServerInfo[]>> {
     try {
-      const list = await this.client.listMcpServers({})
-      return ok(list.servers.map((s) => ({ name: s.name, status: s.status, toolCount: s.toolCount, error: s.error })))
+      const list = await this.client.listMcpServers({ workspacePath: workspacePath ?? '' })
+      return ok(list.servers.map((s) => ({ owner: s.owner, scopeRoot: s.scopeRoot, name: s.name, status: s.status, toolCount: s.toolCount, error: s.error })))
     } catch (e) {
       return toErr(e)
     }

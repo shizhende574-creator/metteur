@@ -200,7 +200,7 @@ export interface DaemonGateway {
   /** Toggle an addon. `workspacePath` selects the workspace scope; empty means
    *  the global scope. */
   setAddonEnabled(id: string, enabled: boolean, workspacePath?: string): Promise<Result<void>>
-  listMcpServers(): Promise<Result<McpServerInfo[]>>
+  listMcpServers(workspacePath?: string): Promise<Result<McpServerInfo[]>>
   getBlackboard(workspacePath: string, runId: string, query?: BoardQuery): Promise<Result<Blackboard>>
   listOversightReports(workspacePath: string, runId: string): Promise<Result<OversightReports>>
   getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>>

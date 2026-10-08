@@ -74,13 +74,17 @@ impl DaemonService {
 
     pub(crate) async fn list_mcp_servers(
         &self,
-        _request: Request<Empty>,
+        request: Request<super::super::proto::RegistryRequest>,
     ) -> Result<Response<McpServerList>, Status> {
-        let servers = match &self.state.mcp_host {
+        let workspace=optional_workspace(&request.into_inner().workspace_path)?;
+        self.state.registry_for(workspace.as_deref(),false).await?;
+        let mut servers:Vec<_> = match &self.state.mcp_host {
             Some(host) => host
                 .statuses()
                 .into_iter()
                 .map(|status| McpServerInfo {
+                    owner:String::new(),
+                    scope_root:String::new(),
                     name: status.alias,
                     status: match status.state {
                         crate::integration::mcp::StatusKind::Connected => "Connected".to_string(),
@@ -93,6 +97,7 @@ impl DaemonService {
                 .collect(),
             None => Vec::new(),
         };
+        if let Some(host)=&self.state.addon_host {servers.extend(host.mcp_statuses(workspace.as_deref()).await);}
         Ok(Response::new(McpServerList {
             servers,
         }))
@@ -107,6 +112,7 @@ impl DaemonService {
         };
         let req = request.into_inner();
         let workspace = optional_workspace(&req.workspace_path)?;
+        if let Some(root)=&workspace && self.state.workspaces.get(root).await.is_none() {return Err(Status::not_found("workspace not open"));}
         let info = host
             .install(
                 std::path::Path::new(&req.package_path),
@@ -115,6 +121,9 @@ impl DaemonService {
             )
             .await
             .map_err(to_status)?;
+        self.state.registry_for(workspace.as_deref(),false).await?;
+        let roots:Vec<_>=workspace.into_iter().collect();
+        let info=host.list(&roots).await.into_iter().find(|item|item.id==info.id && item.scope_root==info.scope_root).unwrap_or(info);
         Ok(Response::new(addon_info_to_proto(info)))
     }
 
@@ -133,6 +142,8 @@ impl DaemonService {
                 .ok_or_else(||Status::not_found("workspace not open"))?;
             vec![ws.root().to_path_buf()]
         };
+        self.state.registry_for(None,false).await?;
+        for root in &roots {self.state.registry_for(Some(root),false).await?;}
         let addons = host.list(&roots).await.into_iter().map(addon_info_to_proto).collect();
         Ok(Response::new(AddonList {
             addons,
@@ -161,7 +172,9 @@ impl DaemonService {
         };
         let req = request.into_inner();
         let workspace = optional_workspace(&req.workspace_path)?;
+        if req.enabled && let Some(root)=&workspace && self.state.workspaces.get(root).await.is_none() {return Err(Status::not_found("workspace not open"));}
         host.set_enabled(&req.id, req.enabled, workspace.as_deref()).await.map_err(to_status)?;
+        if req.enabled {self.state.registry_for(workspace.as_deref(),false).await?;}
         Ok(Response::new(Empty {}))
     }
 }

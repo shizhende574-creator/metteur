@@ -30,8 +30,8 @@ pub(crate) async fn handle_install_addon(
     };
     let info = client.install_addon(request).await.map_err(status)?.into_inner();
     Ok(Outcome::Printed(format!(
-        "installed {} v{} ({} tool(s), {} fragment(s))",
-        info.id, info.version, info.tool_count, info.fragment_count
+        "installed {} v{} ({} tool(s), {} fragment(s)); status={}{}",
+        info.id, info.version, info.tool_count, info.fragment_count,info.status,if info.error.is_empty(){String::new()}else{format!("; {}",info.error)}
     )))
 }
 

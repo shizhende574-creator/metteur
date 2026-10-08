@@ -95,7 +95,15 @@ pub struct AppState {
 impl AppState {
     pub(crate) async fn registry_for(&self, root: Option<&std::path::Path>, execution: bool) -> Result<Arc<Registry>, Status> {
         match &self.addon_host {
-            Some(host)=>host.registry_for(root,execution).await.map_err(to_status),
+            Some(host)=>{
+                let mut context=crate::addon::services::ServiceContext {config:self.global_config.read().await.mcp.clone(),global_db:self.global_db.clone(),metrics:self.metrics.clone(),..Default::default()};
+                if let Some(root)=root {
+                    let ws=self.workspaces.get(root).await.ok_or_else(||Status::not_found("workspace not open"))?;
+                    context.workspace_db=Some(ws.db.clone());
+                    context.config=crate::integration::mcp::merge_servers(&context.config,&[crate::config::load_workspace_config(ws.root()).map_err(to_status)?.mcp]);
+                }
+                host.registry_for_context(root,execution,&context).await.map_err(to_status)
+            },
             None=>Ok(Arc::new(self.registry.snapshot())),
         }
     }
@@ -192,26 +200,24 @@ impl AppState {
     /// incremental (unchanged servers keep their connection, vanished ones are
     /// shut down), so this stays cheap when nothing relevant changed.
     pub async fn resync_mcp(&self) -> crate::error::DaemonResult<()> {
-        let _guard = self.mcp_sync_gate.lock().await;
-        let config = self.merged_mcp_config().await?;
-        let Some(host) = &self.mcp_host else {
-            if config.servers.values().any(|s| s.enabled) {
-                return Err(DaemonError::Mcp("MCP host is unavailable; restart the daemon".into()));
-            }
-            return Ok(());
-        };
-        host.sync(&config).await;
-        let failures: Vec<_> = host
-            .statuses()
-            .into_iter()
-            .filter(|s| s.state == crate::integration::mcp::StatusKind::Failed)
-            .map(|s| format!("{}: {}", s.alias, s.error))
-            .collect();
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(DaemonError::Mcp(failures.join("; ")))
+        let _guard=self.mcp_sync_gate.lock().await;
+        let config=self.merged_mcp_config().await?;
+        let mut failures=vec![];
+        if let Some(host)=&self.mcp_host {
+            host.sync(&config).await;
+            failures.extend(host.statuses().into_iter().filter(|s|s.state==crate::integration::mcp::StatusKind::Failed).map(|s|format!("{}: {}",s.alias,s.error)));
+        } else if config.servers.values().any(|s|s.enabled) {
+            failures.push("MCP host is unavailable; restart the daemon".into());
         }
+        self.registry_for(None,false).await.map_err(|_|DaemonError::Mcp("Addon MCP reconciliation failed".into()))?;
+        let roots:Vec<_>=self.workspaces.list().await.into_iter().map(|ws|ws.root().to_path_buf()).collect();
+        for root in &roots {self.registry_for(Some(root),false).await.map_err(|_|DaemonError::Mcp("Workspace addon MCP reconciliation failed".into()))?;}
+        if let Some(host)=&self.addon_host {
+            for root in std::iter::once(None).chain(roots.iter().map(|root|Some(root.as_path()))) {
+                failures.extend(host.mcp_statuses(root).await.into_iter().filter(|s|s.status=="Failed").map(|s|format!("{}: {}",s.name,s.error)));
+            }
+        }
+        if failures.is_empty() {Ok(())} else {Err(DaemonError::Mcp(failures.join("; ")))}
     }
 
     /// Attaches the addon host and loads the global addon directory.
