@@ -1,5 +1,6 @@
 //! Addon manifest parsing and validation.
 
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -39,6 +40,41 @@ pub struct FragmentEntry {
     pub file: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpEntry {
+    pub name: String,
+    pub server: toml::Table,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LspEntry {
+    pub name: String,
+    pub language: toml::Table,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HookEntry {
+    pub name: String,
+    pub event: String,
+    pub function: String,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeEntry {
+    pub name: String,
+    pub signature: metteur_shared::node_catalog::NodeSignature,
+    pub function: String,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FunctionEntry {
+    pub name: String,
+    pub file: String,
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+}
+
 /// The parsed and validated `manifest.toml`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -66,9 +102,20 @@ pub struct Manifest {
     pub tools: Vec<ToolEntry>,
     #[serde(default)]
     pub fragments: Vec<FragmentEntry>,
+    #[serde(default)]
+    pub mcp: Vec<McpEntry>,
+    #[serde(default)]
+    pub lsp: Vec<LspEntry>,
+    #[serde(default)]
+    pub hooks: Vec<HookEntry>,
+    #[serde(default)]
+    pub nodes: Vec<NodeEntry>,
+    #[serde(default)]
+    pub functions: Vec<FunctionEntry>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PermissionsSection {
     #[serde(default)]
     pub required: Vec<String>,
@@ -91,17 +138,22 @@ impl Manifest {
     /// Validation covers required fields, id format, tool naming, entry
     /// existence, fragment file existence and the metteur version range.
     pub fn load(package_dir: &Path) -> DaemonResult<(Self, PathBuf)> {
-        let manifest_path = package_dir.join("manifest.toml");
-        let text = std::fs::read_to_string(&manifest_path).map_err(|err| {
-            DaemonError::Addon(format!("cannot read {}: {err}", manifest_path.display()))
-        })?;
-        let manifest: Manifest =
-            toml::from_str(&text).map_err(|err| DaemonError::Addon(err.to_string()))?;
-        manifest.validate(package_dir)?;
-        Ok((manifest, package_dir.to_path_buf()))
+        let snapshot = super::signature::Snapshot::read(package_dir)?;
+        Ok((Self::from_files(&snapshot.files)?, package_dir.to_path_buf()))
     }
 
-    fn validate(&self, package_dir: &Path) -> DaemonResult<()> {
+    pub(crate) fn from_files(files: &BTreeMap<String, Vec<u8>>) -> DaemonResult<Self> {
+        let text = files
+            .get("manifest.toml")
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())
+            .ok_or_else(|| DaemonError::Addon("manifest.toml must be a UTF-8 file".into()))?;
+        let manifest: Manifest = toml::from_str(text)
+            .map_err(|_| DaemonError::Addon("invalid addon manifest schema".into()))?;
+        manifest.validate(files)?;
+        Ok(manifest)
+    }
+
+    fn validate(&self, files: &BTreeMap<String, Vec<u8>>) -> DaemonResult<()> {
         if self.id.is_empty() || self.version.is_empty() || self.name.is_empty() {
             return Err(DaemonError::Addon("id, version and name are required".to_string()));
         }
@@ -136,13 +188,8 @@ impl Manifest {
         if self.addon.entry.is_empty() {
             return Err(DaemonError::Addon("[addon] entry is required".to_string()));
         }
-        let entry_path = package_dir.join(&self.addon.entry);
-        if !entry_path.is_file() {
-            return Err(DaemonError::Addon(format!(
-                "wasm entry not found: {}",
-                entry_path.display()
-            )));
-        }
+        package_file(files, &self.addon.entry)?;
+        let mut names = HashSet::new();
         for tool in &self.tools {
             if !is_valid_tool_name(&tool.name) {
                 return Err(DaemonError::Addon(format!(
@@ -153,15 +200,34 @@ impl Manifest {
             if tool.function.is_empty() {
                 return Err(DaemonError::Addon(format!("tool '{}' has no function", tool.name)));
             }
-        }
-        for fragment in &self.fragments {
-            let path = package_dir.join(&fragment.file);
-            if !path.is_file() {
-                return Err(DaemonError::Addon(format!(
-                    "fragment file not found: {}",
-                    path.display()
-                )));
+            if !names.insert(tool.name.as_str()) {
+                return Err(DaemonError::Addon("duplicate tool contribution".into()));
             }
+        }
+        names.clear();
+        for fragment in &self.fragments {
+            if fragment.name.is_empty() || !names.insert(fragment.name.as_str()) {
+                return Err(DaemonError::Addon("empty or duplicate fragment contribution".into()));
+            }
+            let bytes = package_file(files, &fragment.file)?;
+            if bytes.len() > 65536 || std::str::from_utf8(bytes).is_err() {
+                return Err(DaemonError::Addon("fragment must be UTF-8 and at most 64 KiB".into()));
+            }
+        }
+        for permission in &self.permissions.required {
+            if super::runtime::Permission::parse(permission).is_none() {
+                return Err(DaemonError::Addon("unknown required addon permission".into()));
+            }
+        }
+        if !self.mcp.is_empty()
+            || !self.lsp.is_empty()
+            || !self.hooks.is_empty()
+            || !self.nodes.is_empty()
+            || !self.functions.is_empty()
+        {
+            return Err(DaemonError::Addon(
+                "this daemon does not yet support the declared addon contribution category".into(),
+            ));
         }
         Ok(())
     }
@@ -200,6 +266,29 @@ impl Manifest {
             })
             .collect()
     }
+}
+
+pub(crate) fn package_file<'a>(
+    files: &'a BTreeMap<String, Vec<u8>>,
+    name: &str,
+) -> DaemonResult<&'a [u8]> {
+    validate_package_path(name)?;
+    files
+        .get(name)
+        .map(Vec::as_slice)
+        .ok_or_else(|| DaemonError::Addon(format!("package file unavailable: {name}")))
+}
+
+pub(crate) fn validate_package_path(name: &str) -> DaemonResult<()> {
+    if name.is_empty()
+        || name.contains(['\\', ':'])
+        || name.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(DaemonError::Addon(
+            "addon paths must be package-relative without traversal".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Default plugin-call timeout when neither config nor manifest set one.

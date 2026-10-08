@@ -14,12 +14,12 @@ use super::*;
 impl DaemonService {
     pub(crate) async fn list_tools(
         &self,
-        _request: Request<Empty>,
+        request: Request<super::super::proto::RegistryRequest>,
     ) -> Result<Response<ToolList>, Status> {
-        let tools = self
-            .state
-            .registry
-            .tools()
+        let req=request.into_inner();
+        let workspace=optional_workspace(&req.workspace_path)?;
+        let registry=self.state.registry_for(workspace.as_deref(),false).await?;
+        let tools=registry.tools()
             .into_iter()
             .map(|t| ToolInfo {
                 name: t.name().to_string(),
@@ -120,13 +120,19 @@ impl DaemonService {
 
     pub(crate) async fn list_addons(
         &self,
-        _request: Request<ListAddonsRequest>,
+        request: Request<ListAddonsRequest>,
     ) -> Result<Response<AddonList>, Status> {
         let Some(host) = &self.state.addon_host else {
             return Err(Status::unimplemented("addon host is not attached"));
         };
-        let roots: Vec<PathBuf> =
-            self.state.workspaces.list().await.iter().map(|ws| ws.root().to_path_buf()).collect();
+        let requested=request.into_inner().workspace_path;
+        let roots: Vec<PathBuf> = if requested.is_empty() {
+            self.state.workspaces.list().await.iter().map(|ws| ws.root().to_path_buf()).collect()
+        } else {
+            let ws=self.state.workspaces.get(&PathBuf::from(requested)).await
+                .ok_or_else(||Status::not_found("workspace not open"))?;
+            vec![ws.root().to_path_buf()]
+        };
         let addons = host.list(&roots).await.into_iter().map(addon_info_to_proto).collect();
         Ok(Response::new(AddonList {
             addons,

@@ -151,7 +151,7 @@ impl Daemon for ForwardService {
     }
 
     // Registry.
-    async fn list_tools(&self, request: Request<Empty>) -> Result<Response<ToolList>, Status> {
+    async fn list_tools(&self, request: Request<metteur_proto::proto::RegistryRequest>) -> Result<Response<ToolList>, Status> {
         self.client.clone().list_tools(request).await
     }
 
@@ -621,7 +621,7 @@ mod tests {
         ) -> Result<Response<Empty>, Status> {
             Err(Status::unimplemented("send_interrupt"))
         }
-        async fn list_tools(&self, _: Request<Empty>) -> Result<Response<ToolList>, Status> {
+        async fn list_tools(&self, _: Request<metteur_proto::proto::RegistryRequest>) -> Result<Response<ToolList>, Status> {
             Err(Status::unimplemented("list_tools"))
         }
         async fn get_config(

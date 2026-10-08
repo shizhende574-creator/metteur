@@ -1477,6 +1477,29 @@ async fn smoke_abstract_node_expands_and_runs() {
     assert_eq!(written, "nested-ok");
 }
 
+#[tokio::test]
+async fn addon_rpc_discovery_and_management_keep_two_workspace_owners_separate() {
+    let (mut client,a)=start_server(Default::default()).await;
+    let b=a.join("second");std::fs::create_dir(&b).unwrap();
+    let ap=a.to_string_lossy().into_owned();let bp=b.to_string_lossy().into_owned();
+    for path in [&ap,&bp] {client.open_workspace(OpenWorkspaceRequest{path:path.clone()}).await.unwrap();}
+    let source=a.join("pkg");build_addon_package(&source,"com.test.scoped","Shout","run");
+    for workspace in [&ap,&bp] {
+        let info=client.install_addon(proto::InstallAddonRequest {package_path:source.to_string_lossy().into_owned(),workspace_path:workspace.clone(),granted_permissions:vec!["tools".into()]}).await.unwrap().into_inner();
+        assert_eq!(info.status,"Loaded");assert!(!info.scope_root.is_empty());assert!(!info.fingerprint.is_empty());
+    }
+    assert!(!client.list_tools(proto::RegistryRequest::default()).await.unwrap().into_inner().tools.iter().any(|t|t.name=="ComTestScopedShout"));
+    client.set_addon_enabled(proto::SetAddonEnabledRequest {id:"com.test.scoped".into(),workspace_path:ap.clone(),enabled:false}).await.unwrap();
+    for (workspace,present) in [(&ap,false),(&bp,true)] {
+        let tools=client.list_tools(proto::RegistryRequest {workspace_path:workspace.clone()}).await.unwrap().into_inner();
+        assert_eq!(tools.tools.iter().any(|t|t.name=="ComTestScopedShout"),present);
+        let infos=client.list_addons(proto::ListAddonsRequest {workspace_path:workspace.clone()}).await.unwrap().into_inner();
+        assert_eq!(infos.addons.len(),1);assert_eq!(infos.addons[0].enabled,present);
+    }
+    client.uninstall_addon(proto::UninstallAddonRequest{id:"com.test.scoped".into(),workspace_path:ap}).await.unwrap();
+    assert!(client.list_tools(proto::RegistryRequest {workspace_path:bp}).await.unwrap().into_inner().tools.iter().any(|t|t.name=="ComTestScopedShout"));
+}
+
 /// Builds a minimal addon package (manifest + WAT plugin) in `dir`.
 fn build_addon_package(dir: &Path, id: &str, tool_name: &str, function: &str) {
     std::fs::create_dir_all(dir).unwrap();
@@ -1504,13 +1527,15 @@ type = \"object\"
         ),
     )
     .unwrap();
-    let wat = format!(
-        r#"(module
-            (import "extism:host/user" "log" (func $log (param i64 i64)))
-            (func (export "{function}") (param i64) (result i64)
-                local.get 0))
-        "#
-    );
+    let output = br#""MAKE ME LOUD""#;
+    let stores=output.iter().enumerate().map(|(i,b)|format!("local.get $ptr i64.const {i} i64.add i32.const {b} call $store")).collect::<Vec<_>>().join("\n");
+    let wat = format!(r#"(module
+        (import "extism:host/env" "alloc" (func $alloc (param i64) (result i64)))
+        (import "extism:host/env" "store_u8" (func $store (param i64 i32)))
+        (import "extism:host/env" "output_set" (func $output (param i64 i64)))
+        (func (export "{function}") (result i32) (local $ptr i64)
+            i64.const {} call $alloc local.set $ptr {stores}
+            local.get $ptr i64.const {} call $output i32.const 0))"#,output.len(),output.len());
     let wasm = wat::parse_str(&wat).unwrap();
     std::fs::write(dir.join("main.wasm"), wasm).unwrap();
 }
@@ -1558,7 +1583,7 @@ async fn smoke_addon_install_call_uninstall() {
     assert_eq!(info.tool_count, 1);
 
     // The addon tool is registered under AddonIdPascal+ToolPascal.
-    let tools = client.list_tools(proto::Empty {}).await.unwrap().into_inner();
+    let tools = client.list_tools(proto::RegistryRequest::default()).await.unwrap().into_inner();
     assert!(tools.tools.iter().any(|t| t.name == "ComSmokeAddonShout"));
 
     // Call it through a blueprint Tool node.
@@ -1663,7 +1688,11 @@ async fn smoke_addon_install_call_uninstall() {
         .await
         .unwrap()
         .into_inner();
-    while stream.message().await.transpose().is_some() {}
+    while let Some(event)=stream.message().await.unwrap() { assert_ne!(event.kind,"error","{}",event.message); }
+    let runs=client.list_executions(ListExecutionsRequest {workspace_path:ws_path.clone()}).await.unwrap().into_inner();
+    assert_eq!(runs.executions[0].status,"Completed","{}",runs.executions[0].data_json);
+    assert!(runs.executions[0].data_json.contains("MAKE ME LOUD"));
+
 
     // Uninstall removes the tool from the registry.
     client
@@ -1673,7 +1702,7 @@ async fn smoke_addon_install_call_uninstall() {
         })
         .await
         .unwrap();
-    let tools = client.list_tools(proto::Empty {}).await.unwrap().into_inner();
+    let tools = client.list_tools(proto::RegistryRequest::default()).await.unwrap().into_inner();
     assert!(!tools.tools.iter().any(|t| t.name == "ComSmokeAddonShout"));
 }
 

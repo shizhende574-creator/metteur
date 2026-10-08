@@ -23,18 +23,27 @@ pub use tool::Tool;
 /// them at runtime.
 #[derive(Default)]
 pub struct Registry {
-    tools: RwLock<HashMap<String, Arc<dyn Tool>>>,
-    nodes: NodeRegistry,
+    tools: RwLock<Tools>,
+    nodes: Arc<NodeRegistry>,
     functions: RwLock<HashMap<String, FunctionEntry>>,
+    pub(crate) addon_packages: std::collections::BTreeMap<String, crate::addon::package::Identity>,
+    pub(crate) addon_fragments:
+        std::collections::BTreeMap<String, Vec<metteur_shared::SystemFragment>>,
+    pub(crate) addon_lease: Option<Arc<tokio::sync::OwnedRwLockReadGuard<()>>>,
+}
+
+#[derive(Default, Clone)]
+struct Tools {
+    values: HashMap<String, Arc<dyn Tool>>,
+    owners: HashMap<String, String>,
 }
 
 impl Registry {
     /// Creates a registry pre-populated with built-in resources.
     pub fn with_builtins() -> Self {
         let registry = Self {
-            tools: RwLock::new(HashMap::new()),
-            nodes: NodeRegistry::with_builtins(),
-            functions: RwLock::new(HashMap::new()),
+            nodes: Arc::new(NodeRegistry::with_builtins()),
+            ..Default::default()
         };
         for tool in [
             Arc::new(tools::fs_tools::ReadFile) as Arc<dyn Tool>,
@@ -78,7 +87,11 @@ impl Registry {
                 "tool name '{name}' must be PascalCase imperative"
             )));
         }
-        self.tools.write().insert(name, tool);
+        let mut tools = self.tools.write();
+        if tools.owners.contains_key(&name) {
+            return Err(DaemonError::Addon(format!("tool '{name}' is owned by an addon")));
+        }
+        tools.values.insert(name, tool);
         Ok(())
     }
 
@@ -92,12 +105,16 @@ impl Registry {
 
     /// Removes a tool by name, returning it when it was registered.
     pub fn unregister_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.write().remove(name)
+        let mut tools = self.tools.write();
+        if tools.owners.contains_key(name) {
+            return None;
+        }
+        tools.values.remove(name)
     }
 
     /// Returns a tool by name, if registered.
     pub fn tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.read().get(name).cloned()
+        self.tools.read().values.get(name).cloned()
     }
 
     /// Returns all registered tools, sorted by name.
@@ -106,16 +123,73 @@ impl Registry {
     /// unordered iteration would reshuffle the tool array and defeat the
     /// provider's prefix cache.
     pub fn tools(&self) -> Vec<Arc<dyn Tool>> {
-        let mut tools: Vec<Arc<dyn Tool>> = self.tools.read().values().cloned().collect();
+        let mut tools: Vec<Arc<dyn Tool>> = self.tools.read().values.values().cloned().collect();
         tools.sort_by(|a, b| a.name().cmp(b.name()));
         tools
     }
 
     /// Returns all registered tool names, sorted.
     pub fn tool_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.tools.read().keys().cloned().collect();
+        let mut names: Vec<String> = self.tools.read().values.keys().cloned().collect();
         names.sort();
         names
+    }
+
+    /// Copy a stable registry for a workspace or execution. Later registrations
+    /// in another workspace cannot silently change the captured tool handles.
+    pub(crate) fn snapshot(&self) -> Self {
+        Self {
+            tools: RwLock::new(self.tools.read().clone()),
+            nodes: self.nodes.clone(),
+            functions: RwLock::new(self.functions.read().clone()),
+            addon_packages: self.addon_packages.clone(),
+            addon_fragments: self.addon_fragments.clone(),
+            addon_lease: self.addon_lease.clone(),
+        }
+    }
+
+    pub(crate) fn replace_owned_tools(
+        &self,
+        owner: &str,
+        additions: Vec<Arc<dyn Tool>>,
+    ) -> DaemonResult<()> {
+        let mut names = std::collections::HashSet::new();
+        let mut tools = self.tools.write();
+        for tool in &additions {
+            let name = tool.name();
+            if !tool::is_valid_tool_name(name)
+                || !names.insert(name.to_string())
+                || self.nodes.get(name).is_some()
+                || self.functions.read().contains_key(name)
+                || (tools.values.contains_key(name)
+                    && tools.owners.get(name).map(String::as_str) != Some(owner))
+            {
+                return Err(DaemonError::Addon(format!(
+                    "addon tool registration conflicts: {name}"
+                )));
+            }
+        }
+        Self::remove_owned_locked(&mut tools, owner);
+        for tool in additions {
+            tools.owners.insert(tool.name().into(), owner.into());
+            tools.values.insert(tool.name().into(), tool);
+        }
+        Ok(())
+    }
+    fn remove_owned_locked(tools: &mut Tools, owner: &str) {
+        let names: Vec<_> = tools
+            .owners
+            .iter()
+            .filter(|(_, value)| *value == owner)
+            .map(|(name, _)| name.clone())
+            .collect();
+        for name in names {
+            tools.owners.remove(&name);
+            tools.values.remove(&name);
+        }
+    }
+    pub(crate) fn remove_owned_tools(&self, owner: &str) {
+        Self::remove_owned_locked(&mut self.tools.write(), owner);
     }
 
     /// Registers a function, replacing any existing one with the same name.

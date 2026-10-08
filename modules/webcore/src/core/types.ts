@@ -351,6 +351,12 @@ export interface AddonInfo {
   scope: string
   toolCount: number
   fragmentCount: number
+  scopeRoot?: string
+  fingerprint?: string
+  status?: string
+  error?: string
+  requiredPermissions?: string[]
+  grantedPermissions?: string[]
 }
 
 /** Aggregated token/cost usage for an execution scope. Missing completeness fields are unknown. */

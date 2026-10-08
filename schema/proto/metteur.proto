@@ -24,7 +24,7 @@ service Daemon {
   rpc SendInterrupt(InterruptRequest) returns (Empty);
 
   // Registry.
-  rpc ListTools(Empty) returns (ToolList);
+  rpc ListTools(RegistryRequest) returns (ToolList);
 
   // Configuration.
   rpc GetConfig(GetConfigRequest) returns (Config);
@@ -387,6 +387,8 @@ message InstallAddonRequest {
   repeated string granted_permissions = 3;
 }
 
+message RegistryRequest { string workspace_path = 1; }
+
 message AddonInfo {
   string id = 1;
   string version = 2;
@@ -398,6 +400,10 @@ message AddonInfo {
   repeated string granted_permissions = 8;
   uint32 tool_count = 9;
   uint32 fragment_count = 10;
+  string scope_root = 11;
+  string fingerprint = 12;
+  string status = 13;
+  string error = 14;
 }
 
 message ListAddonsRequest {

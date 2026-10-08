@@ -1207,6 +1207,12 @@ export class GrpcGateway implements DaemonGateway {
           scope: a.scope,
           toolCount: a.toolCount,
           fragmentCount: a.fragmentCount,
+          scopeRoot: a.scopeRoot,
+          fingerprint: a.fingerprint,
+          status: a.status,
+          error: a.error,
+          requiredPermissions: a.requiredPermissions,
+          grantedPermissions: a.grantedPermissions,
         })),
       )
     } catch (e) {

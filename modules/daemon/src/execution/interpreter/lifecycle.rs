@@ -90,6 +90,7 @@ impl Interpreter {
             .as_ref()
             .filter(|_| self.owns_approvals)
             .map(|broker| broker.close_on_drop());
+        resume.ensure_addons(&self.registry)?;
         if !resume.status.resumable() {
             return Err(DaemonError::Interrupted(format!(
                 "run {} is not resumable",

@@ -65,6 +65,8 @@ impl Interpreter {
         let mut checkpoint = ExecutionCheckpoint {
             view: self.view.clone(),
             transition_version: CHECKPOINT_TRANSITION_VERSION,
+            addon_identity_version: 1,
+            addon_packages: ctx.registry.addon_packages.clone(),
             in_flight: self.in_flight,
             run_id: sink.run_id(),
             blueprint_id: self.blueprint_id,

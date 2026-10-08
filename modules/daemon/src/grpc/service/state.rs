@@ -93,6 +93,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub(crate) async fn registry_for(&self, root: Option<&std::path::Path>, execution: bool) -> Result<Arc<Registry>, Status> {
+        match &self.addon_host {
+            Some(host)=>host.registry_for(root,execution).await.map_err(to_status),
+            None=>Ok(Arc::new(self.registry.snapshot())),
+        }
+    }
+
     /// Creates a new application state sharing the given registry.
     pub fn new(
         workspaces: WorkspaceManager,
@@ -657,6 +664,7 @@ pub(crate) fn addon_info_to_proto(info: crate::addon::AddonInfoData) -> AddonInf
         description: info.description,
         enabled: info.enabled,
         scope: info.scope,
+        scope_root: info.scope_root, fingerprint: info.fingerprint, status: info.status, error: info.error,
         required_permissions: info.required_permissions,
         granted_permissions: info.granted_permissions,
         tool_count: info.tool_count,

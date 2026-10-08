@@ -698,7 +698,7 @@ pub async fn dispatch(
             decision,
         } => approve::handle_approve(client, state, request_id, decision).await,
         Command::ApproveAuto(on) => approve::handle_approve_auto(state, on).await,
-        Command::Tools => assets::handle_tools(client).await,
+        Command::Tools => assets::handle_tools(client, state).await,
         Command::Nodes => assets::handle_nodes(client).await,
         Command::Snap {
             description,

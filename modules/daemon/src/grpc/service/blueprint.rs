@@ -50,7 +50,8 @@ impl DaemonService {
         let proto_blueprint =
             req.blueprint.ok_or_else(|| Status::invalid_argument("blueprint is required"))?;
         let blueprint = proto_to_blueprint(&proto_blueprint).map_err(to_status)?;
-        ensure_valid(&blueprint, &self.state.registry)?;
+        let registry=self.state.registry_for(Some(ws.root()),false).await?;
+        ensure_valid(&blueprint, &registry)?;
         let _admission = ws.activity_gate.lock().await;
         self.ensure_blueprint_idle(&ws.root, blueprint.id).await?;
         crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
@@ -98,7 +99,8 @@ impl DaemonService {
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
         let blueprint = crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
             .map_err(to_status)?;
-        ensure_valid(&blueprint, &self.state.registry)?;
+        let registry=self.state.registry_for(Some(ws.root()),false).await?;
+        ensure_valid(&blueprint, &registry)?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
 
@@ -125,13 +127,14 @@ impl DaemonService {
                 "workspace already has an active execution or chat",
             ));
         }
+        let registry=self.state.registry_for(Some(ws.root()),true).await?;
         // Inline content is a consistency assertion, never a hidden persistence path.
         let inline = if req.blueprint_json.trim().is_empty() {
             None
         } else {
             let parsed = crate::storage::blueprint_files::decode(req.blueprint_json.as_bytes())
                 .map_err(|e| Status::invalid_argument(format!("invalid blueprint: {e}")))?;
-            ensure_valid(&parsed, &self.state.registry)?;
+            ensure_valid(&parsed, &registry)?;
             Some(parsed)
         };
         let id = if req.blueprint_id.is_empty() {
@@ -161,17 +164,14 @@ impl DaemonService {
         // A blueprint saved before validation existed, or edited directly in
         // the database, is re-checked here so execution never runs a graph that
         // would fail halfway through.
-        ensure_valid(&blueprint, &self.state.registry)?;
+        ensure_valid(&blueprint, &registry)?;
         let run_id = uuid::Uuid::new_v4();
         let ws_key = ws.root().to_path_buf();
 
         let interrupt_bus = InterruptBus::new();
         let pause_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let addon_fragments = match &self.state.addon_host {
-            Some(host) => host.fragments_for(ws.root()).await,
-            None => Vec::new(),
-        };
+        let addon_fragments = registry.addon_fragments.values().flatten().cloned().collect();
 
         let stream = spawn_execution(
             &self.state,
@@ -179,7 +179,7 @@ impl DaemonService {
             ws.db.clone(),
             ws.config.clone(),
             ws.root().to_path_buf(),
-            self.state.registry.clone(),
+            registry,
             self.state.llm_factory.clone(),
             AuditWriter::new(ws.db.clone()),
             subject,

@@ -132,8 +132,8 @@ pub(crate) async fn handle_func_rm(
 }
 
 /// Handles `tools`: lists registered tools.
-pub(crate) async fn handle_tools(client: &mut DaemonClient<Channel>) -> anyhow::Result<Outcome> {
-    let list = client.list_tools(Empty {}).await.map_err(status)?.into_inner();
+pub(crate) async fn handle_tools(client: &mut DaemonClient<Channel>, state: &SessionState) -> anyhow::Result<Outcome> {
+    let list = client.list_tools(metteur_proto::proto::RegistryRequest { workspace_path: state.current_ws.clone().unwrap_or_default() }).await.map_err(status)?.into_inner();
     Ok(Outcome::Printed(print::tools(&list)))
 }
 

@@ -173,7 +173,7 @@ impl Daemon for DaemonService {
         self.send_interrupt(request).await
     }
 
-    async fn list_tools(&self, request: Request<Empty>) -> Result<Response<ToolList>, Status> {
+    async fn list_tools(&self, request: Request<metteur_proto::proto::RegistryRequest>) -> Result<Response<ToolList>, Status> {
         self.list_tools(request).await
     }
 

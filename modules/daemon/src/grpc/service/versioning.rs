@@ -258,10 +258,9 @@ impl DaemonService {
         let interrupt_bus = InterruptBus::new();
         let pause_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let addon_fragments = match &self.state.addon_host {
-            Some(host) => host.fragments_for(ws.root()).await,
-            None => Vec::new(),
-        };
+        let registry=self.state.registry_for(Some(ws.root()),true).await?;
+        checkpoint.ensure_addons(&registry).map_err(to_status)?;
+        let addon_fragments = registry.addon_fragments.values().flatten().cloned().collect();
 
         let stream = spawn_execution(
             &self.state,
@@ -269,7 +268,7 @@ impl DaemonService {
             ws.db.clone(),
             ws.config.clone(),
             ws.root().to_path_buf(),
-            self.state.registry.clone(),
+            registry,
             self.state.llm_factory.clone(),
             AuditWriter::new(ws.db.clone()),
             subject,

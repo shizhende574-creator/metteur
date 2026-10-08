@@ -362,8 +362,14 @@ pub fn addons(list: &metteur_proto::proto::AddonList) -> String {
             addon.fragment_count
         ));
         if !addon.required_permissions.is_empty() {
-            out.push_str(&format!("  perms={}", addon.required_permissions.join(",")));
+            out.push_str(&format!("  required={}", addon.required_permissions.join(",")));
         }
+        out.push_str(&format!("  granted={}  status={}",
+            if addon.granted_permissions.is_empty() { "none".into() } else { addon.granted_permissions.join(",") },
+            if addon.status.is_empty() { "Unknown" } else { &addon.status }));
+        if !addon.scope_root.is_empty() { out.push_str(&format!("  workspace={}",addon.scope_root)); }
+        if !addon.fingerprint.is_empty() { out.push_str(&format!("  fingerprint={}",addon.fingerprint)); }
+        if !addon.error.is_empty() { out.push_str(&format!("  error={}",addon.error)); }
         out.push('\n');
     }
     out.trim_end().to_string()
@@ -538,5 +544,18 @@ mod tests {
                 .unwrap(),
             "1970-01-01 00:00:00"
         );
+    }
+
+    #[test]
+    fn addon_listing_distinguishes_owners_grants_and_failed_admission() {
+        let entries=[("/a","Loaded",true),("/b","Failed",false)].map(|(root,status,enabled)|metteur_proto::proto::AddonInfo {
+            id:"com.test.same".into(),scope:"workspace".into(),scope_root:root.into(),status:status.into(),enabled,
+            required_permissions:vec!["fs:read".into()],granted_permissions:if enabled {vec!["fs:read".into()]}else{vec![]},
+            error:if enabled {String::new()}else{"Package fingerprint changed".into()},..Default::default()
+        });
+        let text=addons(&metteur_proto::proto::AddonList {addons:entries.into()});
+        assert!(text.contains("workspace=/a") && text.contains("workspace=/b"));
+        assert!(text.contains("granted=none  status=Failed"));
+        assert!(text.contains("required=fs:read") && text.contains("Package fingerprint changed"));
     }
 }

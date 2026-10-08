@@ -986,7 +986,7 @@ const modelsText = computed(() => {
     <!-- Addons (live daemon data) -->
     <section v-else-if="settings.active === 'addons'" class="max-w-2xl space-y-4 p-5">
       <div class="panel divide-y divide-divider">
-        <div v-for="a in addons.addons" :key="a.id" class="flex items-center gap-3 px-4 py-3">
+        <div v-for="a in addons.addons" :key="`${a.scopeRoot ?? a.scope}:${a.id}`" class="flex items-center gap-3 px-4 py-3">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="text-[13px] font-medium">{{ a.name }}</span>
@@ -995,12 +995,15 @@ const modelsText = computed(() => {
               <span class="chip">{{ a.toolCount }} tool{{ a.toolCount === 1 ? '' : 's' }}</span>
             </div>
             <p class="mt-0.5 text-[12px] text-muted-foreground">{{ a.description || 'No description' }}</p>
+            <p class="break-all text-[12px] text-muted-foreground">{{ a.scopeRoot || 'Global' }} · {{ a.status || 'Status unavailable' }}</p>
+            <p v-if="a.error" class="break-words text-[12px] text-destructive">{{ a.error }}</p>
+            <p class="text-[12px] text-muted-foreground">Granted: {{ a.grantedPermissions?.join(', ') || 'None' }}</p>
           </div>
           <button
             class="btn"
             :class="a.enabled ? 'btn-primary' : 'btn-outline'"
             type="button"
-            @click="addons.setEnabled(a.id, !a.enabled)"
+            @click="addons.setEnabled(a, !a.enabled)"
           >
             <Check v-if="a.enabled" class="h-4 w-4" />
             {{ a.enabled ? 'Enabled' : 'Disabled' }}
@@ -1010,6 +1013,7 @@ const modelsText = computed(() => {
           No addons installed.
         </p>
       </div>
+      <p v-if="addons.error" role="alert" class="text-[12px] text-destructive">{{ addons.error }}</p>
     </section>
 
     <!-- Versioning -->

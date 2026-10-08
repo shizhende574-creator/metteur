@@ -57,6 +57,12 @@ pub struct ExecutionCheckpoint {
     /// safely be resumed automatically.
     #[serde(default)]
     pub transition_version: u32,
+    /// Legacy records have no evidence about their admitted package set. They
+    /// remain readable, but cannot prove that resuming will keep the same code.
+    #[serde(default)]
+    pub addon_identity_version: u32,
+    #[serde(default)]
+    pub addon_packages: std::collections::BTreeMap<String, crate::addon::package::Identity>,
     #[serde(default)]
     pub view: super::view::ExecutionView,
     /// An executor may have started, but its outcome is not committed. Never
@@ -129,10 +135,22 @@ pub struct ExecutionCheckpoint {
 }
 
 impl ExecutionCheckpoint {
+    pub(crate) fn ensure_addons(&self, registry: &crate::registry::Registry) -> DaemonResult<()> {
+        if self.addon_identity_version != 1 {
+            return Err(DaemonError::Addon("Checkpoint has no verifiable addon identity record; start a new run explicitly".into()));
+        }
+        if self.addon_packages != registry.addon_packages {
+            return Err(DaemonError::Addon("Addon identity, version, scope or content differs from checkpoint; start a new run explicitly".into()));
+        }
+        Ok(())
+    }
+
     /// Builds an initial resumable checkpoint for a fresh run.
     pub fn running(run_id: uuid::Uuid, blueprint_id: uuid::Uuid, started_at: u64) -> Self {
         Self {
             transition_version: CHECKPOINT_TRANSITION_VERSION,
+            addon_identity_version: 1,
+            addon_packages: Default::default(),
             view: Default::default(),
             in_flight: None,
             run_id,
