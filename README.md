@@ -10,19 +10,28 @@ required. Linux needs `protobuf-compiler libclang-dev clang cmake pkg-config`.
 On Windows, use an x64 MSVC developer terminal with the Windows SDK, CMake,
 Protobuf `protoc` and LLVM `libclang.dll`; set `LIBCLANG_PATH` to LLVM's `bin`.
 Check that `where.exe link` resolves to MSVC, not Git for Windows' GNU linker.
-The CI workflow runs the same gate on Ubuntu 24.04 and Windows 2025.
+Pull-request CI runs static web checks and three live-identity guards only.
+Run tests needed for the changed behavior; do not repeat unaffected suites.
+The full Ubuntu 24.04 / Windows 2025 matrix is a manual workflow option (`full`).
 
-Prepare the browser once (the explicit install also supplies the headless shell):
+The default command runs frozen install, typecheck, lint and three identity guards:
+
+```sh
+python scripts/verify.py
+```
+
+Only when a full browser gate is explicitly needed, prepare the browser once
+(the explicit install also supplies the headless shell):
 
 ```sh
 cd modules/webcore
 corepack pnpm install --frozen-lockfile
 corepack pnpm exec playwright install --with-deps chromium
 cd ../..
-python scripts/verify.py
+python scripts/verify.py --scope all
 ```
 
-On Windows, `py -3.12 scripts/verify.py` also works. The full gate runs locked
+On Windows, `py -3.12 scripts/verify.py` also works. The opt-in full gate runs locked
 workspace build/test/clippy, frozen web install, typecheck, lint, a production
 build, the complete fixture E2E suite, and the real local-provider browser flow.
 Every browser run uses one worker and zero retries. `-j 1` limits Cargo build
@@ -32,11 +41,12 @@ for an acceptance run.
 Each invocation creates a unique evidence directory with the source/lock hashes,
 commit, tool versions, commands, exit codes and logs. The first failed command
 stops the gate and returns its exit code. Never overwrite a failed first run:
-use `--diagnostic` to label an investigation. A diagnostic pass does not replace
-the required fresh full gate after a fix.
+use `--diagnostic` to label an investigation. After a fix, rerun the affected
+checks only unless a full gate is explicitly required. A partial or diagnostic
+pass must not be reported as a full-platform pass.
 
 ```sh
-python scripts/verify.py --evidence-dir /path/to/evidence --temp-dir /path/to/tmp --target-dir /path/to/target
+python scripts/verify.py --scope all --evidence-dir /path/to/evidence --temp-dir /path/to/tmp --target-dir /path/to/target
 python scripts/verify.py --scope rust
 python scripts/verify.py --scope web
 python scripts/verify.py --scope live

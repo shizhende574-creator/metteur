@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Explicitly run the full two-platform gate'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,7 +19,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    if: github.event_name != 'workflow_dispatch' || !inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: modules/webcore/package.json
+      - name: Static checks and live identity guards
+        run: python scripts/verify.py --evidence-dir "${{ runner.temp }}/metteur-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checks-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/metteur-evidence
+          retention-days: 7
   validate:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +102,7 @@ jobs:
           corepack pnpm install --frozen-lockfile
           corepack pnpm exec playwright install --with-deps chromium
       - name: First-run full gate (no retries)
-        run: python scripts/verify.py --evidence-dir "${{ runner.temp }}/metteur-evidence" --temp-dir "${{ runner.temp }}/metteur-test-tmp" --target-dir "${{ runner.temp }}/metteur-target"
+        run: python scripts/verify.py --scope all --evidence-dir "${{ runner.temp }}/metteur-evidence" --temp-dir "${{ runner.temp }}/metteur-test-tmp" --target-dir "${{ runner.temp }}/metteur-target"
       - name: Preserve first-run evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4

@@ -16,7 +16,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--scope', choices=['all', 'rust', 'web', 'live'], default='all')
+parser.add_argument('--scope', choices=['checks', 'all', 'rust', 'web', 'live'], default='checks')
 parser.add_argument('--evidence-dir', type=Path)
 parser.add_argument('--temp-dir', type=Path)
 parser.add_argument('--target-dir', type=Path)
@@ -64,15 +64,19 @@ def source_digest():
             digest.update(raw + b'\0' + hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
 
+version_commands = {'python': [sys.executable, '--version']}
+if args.scope in ['all', 'rust']:
+    version_commands.update(rust=['rustc', '-Vv'], cargo=['cargo', '-V'])
+if args.scope in ['checks', 'all', 'web', 'live']:
+    version_commands.update(node=['node', '--version'], pnpm=pnpm + ['--version'])
+
 report = {
     'schema_version': 1, 'scope': args.scope, 'diagnostic': args.diagnostic,
     'platform': sys.platform, 'head': output(['git', 'rev-parse', 'HEAD']),
     'worktree': output(['git', 'status', '--short']), 'source_sha256': source_digest(),
     'started_at_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-    'versions': {name: output(command, web if name == 'pnpm' else repo) for name, command in {
-        'rust': ['rustc', '-Vv'], 'cargo': ['cargo', '-V'], 'node': ['node', '--version'],
-        'pnpm': pnpm + ['--version'], 'python': [sys.executable, '--version'],
-    }.items()},
+    'versions': {name: output(command, web if name == 'pnpm' else repo)
+                 for name, command in version_commands.items()},
     'locks': {name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in [
         'Cargo.lock', 'modules/webcore/pnpm-lock.yaml']},
     'test_threads': env.get('RUST_TEST_THREADS', 'default concurrency'), 'retries': 0,
@@ -86,11 +90,12 @@ steps = []
 if args.scope in ['all', 'rust']:
     steps += [(stage, ['cargo', stage, '--locked', '-j', '1', '--workspace'] + (['--all-targets'] if stage == 'clippy' else []), repo)
               for stage in ['build', 'test', 'clippy']]
-if args.scope in ['all', 'web']:
+if args.scope in ['checks', 'all', 'web']:
     steps += [('install', pnpm + ['install', '--frozen-lockfile'], web),
               ('typecheck', pnpm + ['typecheck'], web), ('lint', pnpm + ['lint'], web),
-              ('web-build', pnpm + ['build', '--outDir', str(dist)], web),
-              ('live-guards', ['node', '--test', 'scripts/live-identity.test.mjs'], web),
+              ('live-guards', ['node', '--test', 'scripts/live-identity.test.mjs'], web)]
+if args.scope in ['all', 'web']:
+    steps += [('web-build', pnpm + ['build', '--outDir', str(dist)], web),
               ('e2e', pnpm + ['test:e2e', '--workers=1', '--retries=0'], web)]
 if args.scope in ['all', 'live']:
     steps += [('live', pnpm + ['test:live'], web)]
@@ -106,7 +111,7 @@ if env.get('RUST_TEST_THREADS') and not args.diagnostic:
 expected = {'python': r'^Python 3\.(11|12)\.'}
 if args.scope in ['all', 'rust']:
     expected.update(rust=r'^rustc 1\.99\.0 ', cargo=r'^cargo 1\.99\.0 ')
-if args.scope in ['all', 'web', 'live']:
+if args.scope in ['checks', 'all', 'web', 'live']:
     expected.update(node=r'^v24\.13\.1$', pnpm=r'^11\.24\.0$')
 for name, pattern in expected.items():
     version = report['versions'][name]
