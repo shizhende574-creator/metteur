@@ -26,7 +26,6 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      CARGO_TARGET_DIR: ${{ runner.temp }}/metteur-target
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       CI: '1'
     steps:
@@ -72,7 +71,7 @@ jobs:
           corepack pnpm install --frozen-lockfile
           corepack pnpm exec playwright install --with-deps chromium
       - name: First-run full gate (no retries)
-        run: python scripts/verify.py --evidence-dir "${{ runner.temp }}/metteur-evidence" --temp-dir "${{ runner.temp }}/metteur-test-tmp"
+        run: python scripts/verify.py --evidence-dir "${{ runner.temp }}/metteur-evidence" --temp-dir "${{ runner.temp }}/metteur-test-tmp" --target-dir "${{ runner.temp }}/metteur-target"
       - name: Preserve first-run evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4
