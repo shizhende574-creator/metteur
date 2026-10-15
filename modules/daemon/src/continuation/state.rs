@@ -612,4 +612,24 @@ mod tests {
         assert_eq!(recovered.task.generation, r.task.generation);
         assert_eq!(recovered.task.sources["child"].terminal, Some(Terminal::Indeterminate));
     }
+    #[test]
+    fn nx_m6_bounded_duplicate_burst_and_repeated_recovery() {
+        let start = std::time::Instant::now();
+        let mut t = task();
+        for i in 0..64 { t.register_source(source(&t, &format!("job-{i}"))).unwrap(); }
+        assert!(t.register_source(source(&t, "overflow")).is_err());
+        for i in 0..64 { t.finish_source(&format!("job-{i}"), Terminal::Succeeded, serde_json::json!({"summary":"done"}), 10).unwrap(); }
+        let before = serde_json::to_value(&t.events).unwrap();
+        for i in 0..4096 { t.finish_source(&format!("job-{}", i%64), Terminal::Succeeded, serde_json::json!({"summary":"done"}), 11).unwrap(); }
+        assert_eq!(t.events.len(),64);
+        assert_eq!(serde_json::to_value(&t.events).unwrap(),before);
+        t.stop();
+        let generation = t.generation;
+        for _ in 0..8 { t.recover(); }
+        assert_eq!(t.state,TaskState::Stopped);
+        assert_eq!(t.generation,generation);
+        assert_eq!(t.events.len(),64);
+        eprintln!("NX-M6 bounded probe: 64 sources, 4096 duplicate notifications, 8 recoveries; elapsed_us={}",start.elapsed().as_micros());
+    }
+
 }

@@ -84,7 +84,7 @@ async function showSource() {
         <aside aria-label="Memory entries" class="pv-list">
           <p class="pv-eyebrow">{{ rows.length }} ENTRIES</p>
           <button v-for="row in rows" :key="row.id" class="pv-row" :class="{ selected: entry?.id === row.id }" @click="selected = row.id; editing = false; notice = ''"><span class="pv-muted">{{ row.kind }} · r{{ row.revision }}</span><strong>{{ row.title }}</strong><span :class="row.validity === 'Needs review' ? 'pv-warn' : 'pv-muted'">{{ row.origin }} · {{ row.validity }}</span></button>
-          <p v-if="!rows.length" class="pv-empty">No matching entries.<br />Try another filter or add a project note.</p>
+          <p v-if="!rows.length" class="pv-empty">No matching entries.<br />Try another filter. Notes saved from chat will appear here.</p>
         </aside>
         <article v-if="entry" class="pv-detail">
           <div class="pv-between"><span class="pv-badge">{{ entry.origin }}</span><span class="pv-muted">Revision {{ entry.revision }}</span></div>
