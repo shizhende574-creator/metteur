@@ -7,7 +7,7 @@ All 45 task IDs are accounted for. Statuses deliberately distinguish implementat
 | NX-00 | NX-M0 | 冻结真实起点与基线 | DONE_TARGETED (historical) | Original M0 handoff evidence | Not re-counted as M6 testing |
 | NX-01 | NX-M0 | 修复 Addon 权限测试的假绿与过紧预算 | DONE_TARGETED (historical) | Original M0 handoff evidence | Not re-counted as M6 testing |
 | NX-02 | NX-M0 | 修复缓存请求的断点与排序 | DONE_TARGETED (historical) | Original M0 handoff evidence | Not re-counted as M6 testing |
-| NX-03 | NX-M0 | 建立可复现验证门槛 | PARTIAL_PLATFORM | Original baseline and lightweight CI | Windows/native full gates unavailable; full matrix not authorized |
+| NX-03 | NX-M0 | 建立可复现验证门槛 | PARTIAL_PLATFORM | Original baseline and lightweight CI | Native Windows targeted script prepared; user execution pending; full matrix not run |
 | NX-04 | NX-M1 | 冻结共同身份、权限与数据契约 | IMPLEMENTED_TARGETED | Original M1 handoff; nx_storage / nx_prompt_snapshots | Final human visual acceptance remains separate |
 | NX-05 | NX-M1 | 建立隔离前端预览工作流 | IMPLEMENTED_TARGETED | Original M1 handoff; nx_storage / nx_prompt_snapshots | Final human visual acceptance remains separate |
 | NX-06 | NX-M1 | 增加版本化持久记录与迁移 | IMPLEMENTED_TARGETED | Original M1 handoff; nx_storage / nx_prompt_snapshots | Final human visual acceptance remains separate |
@@ -42,10 +42,10 @@ All 45 task IDs are accounted for. Statuses deliberately distinguish implementat
 | NX-35 | NX-M4 | 共享底座与模型/角色适配 | PARTIAL_DEFERRED | docs/nx-m4 shared runtime contract | Actual-model-specific adaptation deferred |
 | NX-36 | NX-M4 | 必要工具增量与权限目录收口 | IMPLEMENTED_TARGETED | M4 role matrix and bounded tools | No claim of real-model performance improvement |
 | NX-37 | NX-M4 | 真实模型匹配对照验收 | DEFERRED_NOT_RUN | User 2026-10-15 11:30 deferral | Actual two-model selection/comparison not complete |
-| NX-38 | NX-M5 | Addon 生产取消与审批等待语义 | IMPLEMENTED_TARGETED | M5 real Wasm cancellation/approval tests | Synchronous I/O not forcibly interrupted; slow-I/O injection not run |
+| NX-38 | NX-M5 | Addon 生产取消与审批等待语义 | IMPLEMENTED_TARGETED | M5 real Wasm cancellation/approval tests | Slow HTTP Stop/timeout verified in completion; arbitrary filesystem kernel stalls not forcibly interrupted |
 | NX-39 | NX-M5 | 页面 manifest、隔离 Bridge 与生命周期 | IMPLEMENTED_TARGETED | M5 signed page/schema/revocation and CSP checks | Not a full attack or cross-browser matrix |
 | NX-40 | NX-M5 | 批准后接入 Addon 页面宿主 UI | INTEGRATED_PROVISIONAL | PV approval registry; M5 actual browser evidence | User final whole-page sign-off pending |
-| NX-41 | NX-M5 | 预览检查样例与独立成果验收 | SOURCE_DIAGNOSTIC_VARIANT | M5 actual selection/check/report/review loop | Screenshot/console/rendered layout/model opinion not implemented by this sample |
+| NX-41 | NX-M5 | 预览检查样例与独立成果验收 | OFFLINE_RENDERER_VERIFIED | M5 source loop + M6 completion real isolated screenshot/console/digest-bound report | Offline rendered evidence implemented; real model opinion remains deferred; arbitrary remote apps excluded |
 | NX-42 | NX-M6 | 冻结候选并执行全链路验收 | LOCAL_SCOPE_VERIFIED_GLOBAL_PENDING | Frozen RC1 + five M6 targeted cases | NX37 remains deferred; no claim of complete all-provider acceptance |
-| NX-43 | NX-M6 | 规模、平台与迁移回退演练 | PARTIAL_LINUX_ONLY | Migration backup/rollback, 64-source duplicate burst, snapshot restore | Windows, 1k-node/10k-log baseline and long soak not run |
+| NX-43 | NX-M6 | 规模、平台与迁移回退演练 | PARTIAL_LINUX_ONLY | Migration/rollback; 64-source burst; 1k graph/10k records; 12 DB reopens; kernel lock/crash recovery | Native Windows and wall-clock long soak not run; bounded scale evidence in completion report |
 | NX-44 | NX-M6 | 最终交付与状态审计 | LOCAL_DELIVERY_READY | This matrix, user guide, recovery guide, recoverable archive | Remote publication and final human acceptance pending |
