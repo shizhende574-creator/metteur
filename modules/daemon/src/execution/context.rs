@@ -318,6 +318,11 @@ pub struct ExecutionContext {
     /// The caller's conversation, present only while a tool that declares
     /// interest in it (`SpawnSubAgent`) is running.
     pub parent_context: Option<metteur_shared::llm::ContextManager>,
+    /// Host enables this only for a durable, user-authorized continuation task.
+    pub allow_deferred_wait: bool,
+    pub continuation: Option<crate::continuation::store::TaskHandle>,
+    /// Applied only after all tool results in the current batch are recorded.
+    pub deferred_wait: Option<crate::chat::wait::WaitIntent>,
     /// Paths mutated by tools since the last drain; the ReAct loop drains them
     /// to invalidate earlier reads of the same files.
     pub mutated_paths: Vec<std::path::PathBuf>,
@@ -409,6 +414,9 @@ impl ExecutionContext {
             progress: None,
             in_react_loop: false,
             parent_context: None,
+            allow_deferred_wait: false,
+            continuation: None,
+            deferred_wait: None,
             mutated_paths: Vec::new(),
             todos: Vec::new(),
         }
@@ -489,6 +497,7 @@ impl ExecutionContext {
         let mut child =
             Self::new(self.registry.clone(), self.llm_factory.clone(), self.workspace_root.clone());
         child.config = self.config.clone();
+        child.continuation = self.continuation.clone();
         child.interrupts = self.interrupts.clone();
         child.approvals = self.approvals.clone();
         child.events = self.events.clone();

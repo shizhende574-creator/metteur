@@ -61,6 +61,9 @@ fn pump_stream<T: Send + 'static>(
 #[tonic::async_trait]
 impl Daemon for ForwardService {
     async fn select_prompt_resource(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().select_prompt_resource(request).await }
+    async fn write_schedule(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().write_schedule(request).await }
+    async fn query_continuations(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().query_continuations(request).await }
+    async fn control_continuation(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().control_continuation(request).await }
     async fn query_prompt_resources(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().query_prompt_resources(request).await }
     async fn write_prompt_resource(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().write_prompt_resource(request).await }
     async fn delete_prompt_resource(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().delete_prompt_resource(request).await }

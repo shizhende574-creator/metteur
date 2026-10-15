@@ -42,6 +42,7 @@ pub(crate) struct RunningExecution {
 /// The control state of a running chat session.
 #[derive(Clone)]
 pub(crate) struct ChatRun {
+    pub(crate) approval_details: Arc<parking_lot::Mutex<HashMap<String,String>>>,
     /// Bus for injecting interrupts into the ReAct loop.
     pub(crate) interrupt_bus: Option<InterruptBus>,
     /// Set when an abort has been requested (shared with the chat task).
@@ -85,6 +86,7 @@ pub struct AppState {
     pub(crate) running: RwLock<HashMap<PathBuf, RunningExecution>>,
     /// Workspaces with a currently running chat session.
     pub(crate) chats: RwLock<HashMap<PathBuf, ChatRun>>,
+    pub(crate) continuation_workers: tokio::sync::Mutex<HashMap<PathBuf, Uuid>>,
     /// Workspace-scoped blueprint function names per workspace root, so only
     /// the closing workspace's functions are retired from the shared registry.
     pub(crate) ws_functions: RwLock<HashMap<PathBuf, Vec<String>>>,
@@ -190,6 +192,7 @@ impl AppState {
             acl_store,
             running: RwLock::new(HashMap::new()),
             chats: RwLock::new(HashMap::new()),
+            continuation_workers: tokio::sync::Mutex::new(HashMap::new()),
             ws_functions: RwLock::new(HashMap::new()),
             config_tx,
         }

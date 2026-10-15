@@ -18,6 +18,9 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  rpc WriteSchedule(ResourceRequest) returns (ResourceResponse);
+  rpc QueryContinuations(ResourceRequest) returns (ResourceResponse);
+  rpc ControlContinuation(ResourceRequest) returns (ResourceResponse);
   rpc SelectPromptResource(ResourceRequest) returns (ResourceResponse);
   rpc QueryPromptResources(ResourceRequest) returns (ResourceResponse);
   rpc WritePromptResource(ResourceRequest) returns (ResourceResponse);

@@ -581,6 +581,7 @@ mod tests {
     /// An assistant turn that carries a reasoning block and its answer.
     fn thinking_message() -> Message {
         Message {
+            origin: Default::default(),
             role: Role::Assistant,
             content: vec![
                 ContentBlock::Thinking {

@@ -192,6 +192,8 @@ pub enum ReactEvent {
 /// The result of a completed ReAct run.
 #[derive(Debug, Clone)]
 pub struct ReactOutcome {
+    /// Host must durably commit this intent before announcing Waiting.
+    pub waiting: Option<crate::chat::wait::WaitIntent>,
     /// The final assistant text (still anonymized).
     pub text: String,
     /// The mutated conversation context after the run.
@@ -263,7 +265,8 @@ async fn react_loop_inner(
         Err(err) => return Err((err, context)),
     };
     let params = build_params(opts, &llm_defaults);
-    let tools = tool_definitions(&ctx.registry, opts.allowed_tools.as_ref());
+    let mut tools = tool_definitions(&ctx.registry, opts.allowed_tools.as_ref());
+    if !ctx.allow_deferred_wait { tools.retain(|tool| !matches!(tool.name.as_str(), "AwaitEvents" | "StartSubAgent" | "ReadTaskSource")); }
     let anonymizer = build_anonymizer(ctx).await;
     let billing = billing_config(ctx).await;
     let policy = crate::llm::RetryPolicy::from_config(&llm_defaults);
@@ -330,8 +333,9 @@ async fn react_loop_inner(
         };
 
         // Compress long contexts before issuing the next request.
-        compress_if_needed(ctx, &client, &mut context, &params, opts, &billing, &mut total_usage)
-            .await;
+        if ctx.continuation.is_none() {
+            compress_if_needed(ctx, &client, &mut context, &params, opts, &billing, &mut total_usage).await;
+        }
 
         // Race the LLM call against an emergency interrupt so that an
         // emergency message can abort an in-flight request. The streamed
@@ -373,7 +377,7 @@ async fn react_loop_inner(
             // The model wants to finish. If it still has background jobs, park
             // here and let the engine wake it when one completes — that is what
             // removes the "sleep a little and check again" pattern.
-            if auto_wake {
+            if auto_wake && !ctx.allow_deferred_wait {
                 let finished = match collect_finished_job(ctx, &mut announced).await {
                     Ok(finished) => finished,
                     Err(err) => return Err((err, context)),
@@ -421,6 +425,7 @@ async fn react_loop_inner(
         // contract (every tool result must directly follow the call that
         // requested it), and the next request would be rejected.
         context.push_message(Message {
+            origin: Default::default(),
             role: Role::Assistant,
             content: thinking_blocks(&response),
             tool_calls: response.tool_calls.clone(),
@@ -461,9 +466,8 @@ async fn react_loop_inner(
         let outcomes =
             execute_tool_calls(ctx, &response.tool_calls, opts, &anonymizer, &mut on_event).await;
         ctx.parent_context = None;
-        if let Err(error) = ctx.transaction_log.ensure_healthy() {
-            return Err((error, context));
-        }
+        let mut batch_abort = ctx.transaction_log.ensure_healthy().err();
+        if !ctx.allow_deferred_wait { if let Some(error)=batch_abort.take(){return Err((error,context));} }
 
         // Context operations requested by the calls above apply to the results
         // already in the context, never to the batch that requested them.
@@ -477,7 +481,7 @@ async fn react_loop_inner(
                 elapsed_ms,
             } = outcome;
             let outcome = match outcome {
-                Err(error @ DaemonError::Persistence(_)) => return Err((error, context)),
+                Err(error @ DaemonError::Persistence(_)) if !ctx.allow_deferred_wait => return Err((error, context)),
                 other => other,
             };
             // A complete read replaces an earlier complete read of the same
@@ -503,14 +507,8 @@ async fn react_loop_inner(
                         serde_json::json!({ "name": call.name, "error": err.to_string() }),
                     );
                     if opts.tool_error_limit > 0 && consecutive_errors >= opts.tool_error_limit {
-                        return Err((
-                            DaemonError::Execution(format!(
-                                "{consecutive_errors} consecutive tool failures; last error from \
-                                 '{}': {err}",
-                                call.name
-                            )),
-                            context,
-                        ));
+                        let error=DaemonError::Execution(format!("{consecutive_errors} consecutive tool failures; last error from '{}': {err}",call.name));
+                        if ctx.allow_deferred_wait {batch_abort=Some(error);} else {return Err((error,context));}
                     }
                     (message, false)
                 }
@@ -523,13 +521,8 @@ async fn react_loop_inner(
             *repeats += 1;
             let repeat_note = if *repeats > 1 {
                 if opts.repeat_call_limit > 0 && *repeats > opts.repeat_call_limit {
-                    return Err((
-                        DaemonError::Execution(format!(
-                            "tool '{}' called {} times with identical arguments",
-                            call.name, repeats
-                        )),
-                        context,
-                    ));
+                    let error=DaemonError::Execution(format!("tool '{}' called {} times with identical arguments",call.name,repeats));
+                    if ctx.allow_deferred_wait {batch_abort=Some(error);} else {return Err((error,context));}
                 }
                 format!(
                     "\n[note: identical {} call #{}; re-read the result or change the approach]",
@@ -565,6 +558,19 @@ async fn react_loop_inner(
             });
         }
 
+        if let Some(error)=batch_abort {ctx.deferred_wait=None;return Err((error,context));}
+
+        // Yield at the protocol-safe boundary, after every result was recorded.
+        if let Some(waiting) = ctx.deferred_wait.take() {
+            if !ctx.allow_deferred_wait {
+                return Err((DaemonError::Execution("Deferred wait is not enabled for this turn".into()), context));
+            }
+            if let Err(error) = waiting.validate(now_millis()) {
+                return Err((DaemonError::Execution(error.into()), context));
+            }
+            return Ok(ReactOutcome { waiting: Some(waiting), text: String::new(), context, usage: total_usage });
+        }
+
         // Expire reads of files mutated by the calls above (see
         // `ContextManager::invalidate_paths`), then bound the retained results.
         let mutated = drain_mutated_paths(ctx);
@@ -592,6 +598,7 @@ async fn react_loop_inner(
         ));
     }
     Ok(ReactOutcome {
+        waiting: None,
         text: final_text,
         context,
         usage: total_usage,
@@ -831,6 +838,15 @@ async fn request_with_retry(
     }
     loop {
         ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": client.model()}));
+        let call_id = uuid::Uuid::new_v4().to_string();
+        let reserved = if let Some(handle) = &ctx.continuation {
+            // UTF-8 bytes conservatively bound text tokenization; output is capped.
+            let bytes = serde_json::to_vec(context).map_err(|e| DaemonError::Serialization(e.to_string()))?.len()
+                + serde_json::to_vec(tools).map_err(|e| DaemonError::Serialization(e.to_string()))?.len();
+            let reserve = bytes as u64 + u64::from(params.max_tokens.unwrap_or(4096));
+            handle.reserve_call(reserve)?;
+            reserve
+        } else { 0 };
         let mut emitted = false;
         let result = match delta.as_deref_mut() {
             Some(cb) => {
@@ -850,6 +866,13 @@ async fn request_with_retry(
             }
             None => race_call(client.as_ref(), context, params, tools, &ctx.interrupts, None).await,
         };
+        if let Some(handle) = &ctx.continuation {
+            let actual = match &result {
+                Ok(LlmRace::Response(response)) if response.usage.tokens_reported => Some(response.usage.total_tokens),
+                _ => None,
+            };
+            handle.settle_call(&call_id, reserved, actual)?;
+        }
         match result {
             Ok(race) => {
                 if matches!(race, LlmRace::Emergency(_)) { record_unavailable_usage(ctx, client.as_ref()); }

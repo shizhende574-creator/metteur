@@ -812,6 +812,7 @@ mod tests {
     #[test]
     fn thinking_blocks_are_replayed_before_tool_use() {
         let msg = Message {
+            origin: Default::default(),
             role: Role::Assistant,
             content: vec![
                 ContentBlock::Thinking {

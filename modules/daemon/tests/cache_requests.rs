@@ -130,6 +130,7 @@ async fn final_http_requests_share_one_breakpoint_budget_and_canonical_prefix() 
                     ));
                 }
                 context.messages.push(Message {
+                    origin: Default::default(),
                     role: Role::Assistant,
                     content: vec![
                         ContentBlock::Thinking {
@@ -148,6 +149,7 @@ async fn final_http_requests_share_one_breakpoint_budget_and_canonical_prefix() 
                     tool_call_id: None,
                 });
                 context.messages.push(Message {
+                    origin: Default::default(),
                     role: Role::Tool,
                     content: vec![ContentBlock::Text("actual local result".into())],
                     tool_calls: vec![],
@@ -285,6 +287,7 @@ async fn empty_system_and_thinking_only_tail_do_not_get_invalid_markers() {
         "",
     );
     context.messages = vec![Message {
+        origin: Default::default(),
         role: Role::Assistant,
         content: vec![ContentBlock::Thinking {
             text: "reasoning".into(),
