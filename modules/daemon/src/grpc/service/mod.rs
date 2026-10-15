@@ -7,6 +7,7 @@
 //! always reach the real handler (never recurse).
 
 mod reports;
+mod resources;
 mod blackboard;
 mod blueprint;
 mod chat;
@@ -79,6 +80,10 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn query_project_memory(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_project_memory(request).await }
+    async fn write_project_note(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.write_project_note(request).await }
+    async fn promote_project_convention(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.promote_project_convention(request).await }
+    async fn update_project_memory_status(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.update_project_memory_status(request).await }
     async fn list_oversight_reports(&self, request: Request<super::proto::OversightReportsRequest>) -> Result<Response<super::proto::OversightReports>, Status> { self.list_oversight_reports(request).await }
 
     type SendConciergeMessageStream = tokio_stream::wrappers::ReceiverStream<Result<super::proto::ConciergeEvent, Status>>;

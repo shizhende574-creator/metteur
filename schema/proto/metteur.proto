@@ -18,6 +18,10 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  rpc QueryProjectMemory(ResourceRequest) returns (ResourceResponse);
+  rpc WriteProjectNote(ResourceRequest) returns (ResourceResponse);
+  rpc PromoteProjectConvention(ResourceRequest) returns (ResourceResponse);
+  rpc UpdateProjectMemoryStatus(ResourceRequest) returns (ResourceResponse);
   rpc ListOversightReports(OversightReportsRequest) returns (OversightReports);
   rpc GetConciergeState(ConciergeStateRequest) returns (ConciergeState);
   rpc SendConciergeMessage(SendConciergeMessageRequest) returns (stream ConciergeEvent);
