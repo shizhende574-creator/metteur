@@ -9,6 +9,10 @@ import {
   Loader2,
   Terminal,
   History,
+  CalendarClock,
+  ListTodo,
+  BookOpen,
+  FileText,
   MessageSquare,
   Moon,
   Settings,
@@ -61,14 +65,16 @@ const { openSurface } = useSurfaceNavigation()
 /* Activity rail                                                        */
 
 interface Activity {
-  key: 'explorer' | 'chat' | 'version' | 'execution' | 'execution-preview' | 'memory' | 'prompts'
+  key: 'explorer' | 'chat' | 'version' | 'execution' | 'execution-preview' | 'memory' | 'prompts' | 'tasks' | 'schedules'
   label: string
   icon: Component
 }
 
 const activities: Activity[] = [
-  { key: 'prompts', label: 'Prompt resources', icon: Files },
-  { key: 'memory', label: 'Project memory', icon: Files },
+  {key:'tasks',label:'Task continuation',icon:ListTodo},
+  {key:'schedules',label:'Schedules',icon:CalendarClock},
+  { key: 'prompts', label: 'Prompt resources', icon: FileText },
+  { key: 'memory', label: 'Project memory', icon: BookOpen },
   { key: 'explorer', label: 'Explorer', icon: Files },
   { key: 'execution', label: 'Execution', icon: Workflow },
   ...(import.meta.env.DEV && import.meta.env.VITE_MOCK === '1'
@@ -80,6 +86,8 @@ const activities: Activity[] = [
 /** Route → which activity it belongs to (drives rail highlight when no panel
  *  owns the sidebar). `route.name` may be undefined before mount. */
 function routeActivity(name: string | symbol | null | undefined): Activity['key'] | null {
+  if (name === 'tasks') return 'tasks'
+  if (name === 'schedules') return 'schedules'
   if (name === 'prompts') return 'prompts'
   if (name === 'memory') return 'memory'
   if (name === 'execution') return 'execution'
@@ -101,7 +109,7 @@ function toggleExplorer() {
  *  asserted centrally in {@link openSurface} (lib/surface), mirrored by the
  *  tab bar, so both entry points restore the correct rail. */
 function openActivity(a: Activity['key']) {
-  if (a === 'prompts' || a === 'memory' || a === 'execution-preview' || a === 'execution') {
+  if (a === 'tasks' || a === 'schedules' || a === 'prompts' || a === 'memory' || a === 'execution-preview' || a === 'execution') {
     openSurface(a)
     return
   }
@@ -121,7 +129,7 @@ function openSettings() {
  *  otherwise an open panel wins, falling back to the route. */
 const activeKey = computed<Activity['key'] | null>(() => {
   const r = routeActivity(route.name)
-  if (r === 'chat' || r === 'execution-preview' || r === 'execution') return r
+  if (r === 'chat' || r === 'execution-preview' || r === 'execution' || r === 'tasks' || r === 'schedules' || r === 'prompts' || r === 'memory') return r
   const owner = panel.open ? panel.owner : null
   return owner === 'explorer' || owner === 'version' ? owner : r
 })
@@ -133,7 +141,7 @@ const settingsActive = computed(() => route.name === 'settings')
 watch(
   () => workspace.hasActive,
   (on) => {
-    if (on && !panel.open) panel.show('explorer', FileTree, 'Explorer')
+    if (on && !panel.open && !['tasks','schedules','prompts','memory'].includes(String(route.name))) panel.show('explorer', FileTree, 'Explorer')
   },
   { immediate: true },
 )

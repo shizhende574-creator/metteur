@@ -32,28 +32,46 @@
     },
     {
       "id": "PV-03",
-      "revision": 0,
+      "revision": 2,
       "title": "Task continuation",
-      "state": "NOT_PRESENTED",
+      "state": "APPROVED_PROVISIONAL",
       "coverage": [
         "waiting",
         "paused",
         "stopped",
         "source",
-        "budget"
-      ]
+        "budget",
+        "explicit bounded new-task confirmation in a dedicated session"
+      ],
+      "fixtureVersion": "nx-m2-fixture-1",
+      "previous_revision_approval": {
+        "message": "Sentinel_6854677f3c588191b3eb4c75269067a7",
+        "feedback": "暂时允许,不过再最后加上一个新页面全量复核的环节,一一微调,现在先继续推进",
+        "finalVisualReviewRequired": true
+      },
+      "approval": {
+        "message": "Sentinel_83b8735a74a881919e3bc006977a82ab",
+        "feedback": "仍然是暂时允许,继续推进",
+        "finalVisualReviewRequired": true
+      }
     },
     {
       "id": "PV-04",
-      "revision": 0,
+      "revision": 1,
       "title": "Schedules",
-      "state": "NOT_PRESENTED",
+      "state": "APPROVED_PROVISIONAL",
       "coverage": [
         "timezone",
         "missed triggers",
         "consent",
         "stop"
-      ]
+      ],
+      "fixtureVersion": "nx-m2-fixture-1",
+      "approval": {
+        "message": "Sentinel_6854677f3c588191b3eb4c75269067a7",
+        "feedback": "暂时允许,不过再最后加上一个新页面全量复核的环节,一一微调,现在先继续推进",
+        "finalVisualReviewRequired": true
+      }
     },
     {
       "id": "PV-05",

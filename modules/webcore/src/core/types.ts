@@ -146,6 +146,7 @@ export interface ChatUsage {
 
 /** Sampling parameters for a ReAct chat turn, adjustable from the chat panel. */
 export interface ChatOptions {
+  continuation_policy?: {detached:boolean;max_turns:number;token_limit:number;expires_ms:number;purpose:string}
   prompt_snapshots?: string[]
   model?: string
   system?: string
