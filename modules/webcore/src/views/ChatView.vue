@@ -288,6 +288,7 @@ const starterPrompts = [
     <div class="chat-composer-dock shrink-0">
       <div class="chat-column chat-column-composer">
         <ChatStatusBar
+          :waiting-for-approval="!!chat.approval"
           :phase="chat.phase"
           :last-event-at="chat.lastEventAt"
           :usage="chat.lastUsage"

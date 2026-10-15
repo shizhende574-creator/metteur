@@ -24,7 +24,7 @@ const resourceRows=computed(()=>{
  const rows=[{name:props.payload.blueprint_name,scope:file?.blueprint_uri??'Saved blueprint',digest:file?.blob_hash??String(m.graph_digest??'')}]
  for(const item of props.payload.resource_versions??[]) rows.push({name:item.name,scope:'Prompt · revision '+item.reference.revision,digest:item.reference.content_digest})
  for(const [name,digest] of Object.entries((m.functions??{}) as Record<string,string>))rows.push({name,scope:'Function',digest})
- for(const [name,digest] of Object.entries((m.addons??{}) as Record<string,string>))rows.push({name,scope:'Addon',digest})
+ for(const [name,digest] of Object.entries((m.addons??{}) as Record<string,string>))rows.push({name:name.includes('::')?name.slice(name.lastIndexOf('::')+2):name,scope:name.startsWith('global::')?'Global addon':'Workspace addon',digest})
  rows.push({name:'Node catalog',scope:'Host catalog',digest:String(m.node_catalog_digest??'')},{name:'Tool catalog',scope:'Host catalog',digest:String(m.tool_catalog_digest??'')})
  return rows
 })
