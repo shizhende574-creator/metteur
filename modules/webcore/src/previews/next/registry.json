@@ -1,13 +1,94 @@
 {
   "fixtureVersion": "nx-m1-fixture-1",
   "previews": [
-    { "id": "PV-01", "revision": 1, "title": "Project memory", "state": "NOT_PRESENTED", "coverage": ["classification", "sources", "validity", "convention confirmation", "filters", "conflicts"] },
-    { "id": "PV-02", "revision": 1, "title": "Prompt resources", "state": "NOT_PRESENTED", "coverage": ["project and personal", "same name", "versions", "chat selection", "blueprint selection", "copy", "delete impact"] },
-    { "id": "PV-03", "revision": 0, "title": "Task continuation", "state": "NOT_PRESENTED", "coverage": ["waiting", "paused", "stopped", "source", "budget"] },
-    { "id": "PV-04", "revision": 0, "title": "Schedules", "state": "NOT_PRESENTED", "coverage": ["timezone", "missed triggers", "consent", "stop"] },
-    { "id": "PV-05", "revision": 0, "title": "Blueprint handoff", "state": "NOT_PRESENTED", "coverage": ["version manifest", "confirmation", "return"] },
-    { "id": "PV-06", "revision": 0, "title": "Addon pages", "state": "NOT_PRESENTED", "coverage": ["isolation", "capabilities", "revocation"] },
-    { "id": "PV-07", "revision": 0, "title": "Preview checks", "state": "NOT_PRESENTED", "coverage": ["target", "deterministic evidence", "model opinion", "acceptance"] }
+    {
+      "id": "PV-01",
+      "revision": 1,
+      "title": "Project memory",
+      "state": "USER_REVIEW",
+      "coverage": [
+        "classification",
+        "sources",
+        "validity",
+        "convention confirmation",
+        "filters",
+        "conflicts"
+      ]
+    },
+    {
+      "id": "PV-02",
+      "revision": 1,
+      "title": "Prompt resources",
+      "state": "USER_REVIEW",
+      "coverage": [
+        "project and personal",
+        "same name",
+        "versions",
+        "chat selection",
+        "blueprint selection",
+        "copy",
+        "delete impact"
+      ]
+    },
+    {
+      "id": "PV-03",
+      "revision": 0,
+      "title": "Task continuation",
+      "state": "NOT_PRESENTED",
+      "coverage": [
+        "waiting",
+        "paused",
+        "stopped",
+        "source",
+        "budget"
+      ]
+    },
+    {
+      "id": "PV-04",
+      "revision": 0,
+      "title": "Schedules",
+      "state": "NOT_PRESENTED",
+      "coverage": [
+        "timezone",
+        "missed triggers",
+        "consent",
+        "stop"
+      ]
+    },
+    {
+      "id": "PV-05",
+      "revision": 0,
+      "title": "Blueprint handoff",
+      "state": "NOT_PRESENTED",
+      "coverage": [
+        "version manifest",
+        "confirmation",
+        "return"
+      ]
+    },
+    {
+      "id": "PV-06",
+      "revision": 0,
+      "title": "Addon pages",
+      "state": "NOT_PRESENTED",
+      "coverage": [
+        "isolation",
+        "capabilities",
+        "revocation"
+      ]
+    },
+    {
+      "id": "PV-07",
+      "revision": 0,
+      "title": "Preview checks",
+      "state": "NOT_PRESENTED",
+      "coverage": [
+        "target",
+        "deterministic evidence",
+        "model opinion",
+        "acceptance"
+      ]
+    }
   ],
   "approval": null,
   "integrationScope": []
