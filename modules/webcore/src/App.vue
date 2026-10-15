@@ -146,6 +146,12 @@ watch(
   { immediate: true },
 )
 
+// Route restoration can finish after workspace activation. Assert the full-page
+// surface again so a reload cannot leave the default Explorer beside it.
+watch(() => route.name, name => {
+  if (['tasks', 'schedules', 'prompts', 'memory'].includes(String(name))) panel.clear()
+}, {immediate: true})
+
 /** Keep the fs-watch and job subscriptions tied to the open workspace. */
 watch(
   () => workspace.active?.path,
