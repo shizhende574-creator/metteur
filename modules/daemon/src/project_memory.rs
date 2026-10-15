@@ -155,7 +155,15 @@ impl ProjectMemory {
     }
     /// Explicit project instructions; conventions never change tool permissions.
     pub async fn confirmed_conventions(&self) -> Result<String> {
-        let page = self.query(MemoryQuery { origin: Some(Origin::UserConvention), validity: Some(Validity::Current), ..Default::default() })?;
-        Ok(page.entries.into_iter().filter(|entry| entry.content.confirmation.is_some()).map(|entry| format!("[Project convention {} r{}]\n{}", entry.reference.id.0, entry.reference.revision, entry.content.body)).collect::<Vec<_>>().join("\n\n"))
+        let mut after=None; let mut output=String::new();
+        loop {
+            let page=self.query(MemoryQuery {after,limit:50,origin:Some(Origin::UserConvention),validity:Some(Validity::Current),..Default::default()})?;
+            for entry in page.entries.into_iter().filter(|entry|entry.content.confirmation.is_some()) {
+                output.push_str(&format!("[Project convention {} r{}]\n{}\n\n",entry.reference.id.0,entry.reference.revision,entry.content.body));
+                if output.len()>MAX_QUERY_BYTES {return Err(fault("resource_limit","Confirmed conventions exceed context budget; archive unused conventions"));}
+            }
+            after=page.next; if after.is_none(){break;}
+        }
+        Ok(output)
     }
 }

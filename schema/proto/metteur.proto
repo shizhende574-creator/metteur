@@ -18,6 +18,11 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  rpc SelectPromptResource(ResourceRequest) returns (ResourceResponse);
+  rpc QueryPromptResources(ResourceRequest) returns (ResourceResponse);
+  rpc WritePromptResource(ResourceRequest) returns (ResourceResponse);
+  rpc DeletePromptResource(ResourceRequest) returns (ResourceResponse);
+  rpc CopyPromptToProject(ResourceRequest) returns (ResourceResponse);
   rpc QueryProjectMemory(ResourceRequest) returns (ResourceResponse);
   rpc WriteProjectNote(ResourceRequest) returns (ResourceResponse);
   rpc PromoteProjectConvention(ResourceRequest) returns (ResourceResponse);

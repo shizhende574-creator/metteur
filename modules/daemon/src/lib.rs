@@ -17,6 +17,7 @@ pub mod llm;
 pub mod observability;
 pub mod project_memory;
 pub mod prompt_resource;
+pub mod prompt_snapshots;
 pub mod oversight;
 pub mod registry;
 pub mod replan;

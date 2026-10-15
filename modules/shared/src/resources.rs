@@ -118,3 +118,23 @@ impl std::fmt::Display for ResourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.code, self.message) }
 }
 impl std::error::Error for ResourceError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag="kind", rename_all="snake_case", deny_unknown_fields)]
+pub enum PromptPurpose { Chat, Blueprint { blueprint_id: Uuid, node_id: Uuid } }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PromptSnapshot {
+    pub schema_version: u32,
+    pub id: Uuid,
+    pub reference: ResourceRef,
+    pub name: String,
+    pub source_raw_digest: String,
+    pub rendered_body_digest: String,
+    pub body: String,
+    pub selected_by: String,
+    pub selected_at: u64,
+    pub purpose: PromptPurpose,
+    pub origin: Origin,
+    pub parent_refs: Vec<ResourceRef>,
+}
