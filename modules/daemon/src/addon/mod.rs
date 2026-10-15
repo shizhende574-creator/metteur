@@ -7,6 +7,7 @@ pub mod signature;
 pub mod signer;
 pub(crate) mod ui;
 pub(crate) mod preview_targets;
+pub(crate) mod preview_renderer;
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -107,7 +108,7 @@ impl AddonTool {
                 parent_cancel,
                 permissions,
                 execution: parking_lot::Mutex::new(execution),
-                http: reqwest::blocking::Client::builder()
+                http: reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
                     .map_err(|_| {

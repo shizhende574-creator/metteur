@@ -48,7 +48,7 @@ pub struct InvocationContext {
     pub parent_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub permissions: HashSet<Permission>,
     pub execution: parking_lot::Mutex<crate::execution::context::ExecutionContext>,
-    pub http: reqwest::blocking::Client,
+    pub http: reqwest::Client,
 }
 
 // Keep host-owned reasons typed across Wasmtime's backtrace wrapper. Only
@@ -156,7 +156,8 @@ extism::host_fn!(hf_call_tool(user_data: Ctx; name: String, args_json: String) -
         _ => serde_json::Map::new(),
     };
     let path=object.get("path").and_then(Value::as_str).ok_or_else(||denied("explicit file path required"))?;
-    file_path(&exec_ctx,path)?;
+    let resolved = file_path(&exec_ctx,path)?;
+    if name != "ListDirectory" && resolved.exists() && !std::fs::metadata(&resolved).map_err(host_error)?.is_file() { return Err(denied("Addon file tools require regular files")); }
     let values = vec![metteur_shared::Value::Json(Value::Object(object))];
     let result = ctx.runtime.block_on(tool.call(&values, &mut exec_ctx));
     let result = result.map_err(host_error)?;
@@ -168,10 +169,12 @@ extism::host_fn!(hf_fs_read(user_data: Ctx; path: String) -> Vec<u8> {
     require(&ctx.permissions, Permission::FsRead, "fs:read")?;
     let mut execution=ctx.execution.lock();
     let resolved=file_path(&execution,&path)?;
+    if !std::fs::metadata(&resolved).map_err(host_error)?.is_file() { return Err(denied("Addon reads require regular files")); }
     let mut file=std::fs::File::open(&resolved).map_err(host_error)?;
     use std::io::Read;
     let mut bytes=vec![]; (&mut file).take(1024*1024+1).read_to_end(&mut bytes).map_err(host_error)?;
     if bytes.len()>1024*1024 { return Err(denied("file exceeds addon read limit")); }
+    if ctx.parent_cancel.load(std::sync::atomic::Ordering::SeqCst) || execution.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) { return Err(denied("addon invocation cancelled")); }
     execution.note_full_read([resolved]);
     Ok(bytes)
 });
@@ -182,6 +185,7 @@ extism::host_fn!(hf_fs_write(user_data: Ctx; path: String, data: Vec<u8>) -> () 
     if data.len()>1024*1024 { return Err(denied("file exceeds addon write limit")); }
     let mut execution=ctx.execution.lock();
     let resolved=file_path(&execution,&path)?;
+    if resolved.exists() && !std::fs::metadata(&resolved).map_err(host_error)?.is_file() { return Err(denied("Addon writes require regular files")); }
     if !ctx.runtime.block_on(crate::sandbox::authorize_write(&execution,&resolved,&path,"Addon file write")).map_err(host_error)? {
         return Err(denied("file write approval"));
     }
@@ -220,19 +224,29 @@ extism::host_fn!(hf_http_request(
     // Sending a request can have remote effects even when no response arrives.
     // Record uncertainty rather than making a retry-safe claim.
     ctx.execution.lock().audit("addon.http.started", serde_json::json!({"method":method,"external_effects":"unknown_until_reconciled"}));
-    let response = request.body(body).send().map_err(host_error)?;
-    ensure_running(&ctx)?;
-    let status = response.status().as_u16();
-    use std::io::Read;
-    let mut body_bytes=vec![];
-    response.take(1024*1024+1).read_to_end(&mut body_bytes).map_err(host_error)?;
-    ensure_running(&ctx)?;
-    if body_bytes.len()>1024*1024 { return Err(denied("HTTP response exceeds addon limit")); }
-    Ok(serde_json::json!({
-        "status": status,
-        "body_base64": base64_encode(&body_bytes),
+    // The Wasm host callback is synchronous, but network I/O runs on the host
+    // runtime and is raced against cancellation. Dropping the request stops local
+    // waiting; it does not retract an already-sent remote side effect.
+    ctx.runtime.block_on(async {
+        let transfer = async {
+            let mut response = request.body(body).send().await.map_err(host_error)?;
+            let status = response.status().as_u16();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.map_err(host_error)? {
+                if bytes.len() + chunk.len() > 1024 * 1024 { return Err(denied("HTTP response exceeds addon limit")); }
+                bytes.extend_from_slice(&chunk);
+            }
+            ensure_running(&ctx)?;
+            Ok(serde_json::json!({"status":status,"body_base64":base64_encode(&bytes)}).to_string())
+        };
+        let cancellation = async {
+            loop { if ensure_running(&ctx).is_err() { break; } tokio::time::sleep(std::time::Duration::from_millis(10)).await; }
+        };
+        tokio::select! { biased;
+            _ = cancellation => Err(denied("addon network request cancelled; external effects may have occurred")),
+            result = transfer => result,
+        }
     })
-    .to_string())
 });
 
 extism::host_fn!(hf_llm_complete(

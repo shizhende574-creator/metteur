@@ -931,7 +931,29 @@ fn write_receipt(path: &Path, receipt: &Receipt) -> DaemonResult<()> {
 }
 
 impl AddonHost {
-    pub(crate) async fn page_request(&self,root:&Path,subject:&str,request:super::ui::PageRequest)->DaemonResult<serde_json::Value>{
+    pub(crate) async fn page_request(&self, root: &Path, subject: &str, request: super::ui::PageRequest) -> DaemonResult<serde_json::Value> {
+        let inspection = match &request {
+            super::ui::PageRequest::Message { instance_id, nonce, message } if message.method == "inspect_selected" => Some((*instance_id, *nonce)),
+            _ => None,
+        };
+        let mut response = self.page_request_local(root, subject, request).await?;
+        if let Some((id, nonce)) = inspection {
+            let root = workspace_root(root)?;
+            let workspace = root.to_string_lossy().into_owned();
+            let report_id = response["result"]["id"].as_str().ok_or_else(||failure("Missing report identity"))?.to_owned();
+            let snapshot = self.pages.lock().inspection_snapshot(id, nonce, &workspace, subject, &report_id)?;
+            // Never hold lifecycle/page locks while launching the isolated browser.
+            let evidence = super::preview_renderer::render(&snapshot).await;
+            let _maintenance = self.maintenance.lock().await;
+            if self.closed_roots.read().contains(&root) { return Err(failure("Workspace closed during inspection")); }
+            let loaded = self.loaded.read();
+            let mut pages = self.pages.lock();
+            pages.prune(&loaded.iter().map(|(key,value)|(key.clone(),value.package.identity.fingerprint.clone())).collect());
+            response["result"] = pages.attach_evidence(id, nonce, &workspace, subject, &report_id, evidence, &self.state_dir.join("inspection-reports"))?;
+        }
+        Ok(response)
+    }
+    async fn page_request_local(&self,root:&Path,subject:&str,request:super::ui::PageRequest)->DaemonResult<serde_json::Value>{
         let root=workspace_root(root)?;
         let _maintenance=self.maintenance.lock().await;
         if self.closed_roots.read().contains(&root){return Err(failure("Workspace closed"));}

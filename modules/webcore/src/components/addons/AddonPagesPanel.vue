@@ -4,7 +4,7 @@ import {Puzzle,ShieldCheck,LockKeyhole,PanelTop,ArrowRight,RefreshCw} from '@luc
 import {gateway} from '@/core'
 import {useThemeStore} from '@/stores/theme'
 import {useWorkspaceStore} from '@/stores/workspace'
-const capabilityLabels:Record<string,string>={theme:'Match the application theme',resize:'Adjust the page height','selected-preview':'Read the preview you select','inspect-preview':'Run bounded source checks','own-reports':'Read this page’s inspection report'}
+const capabilityLabels:Record<string,string>={theme:'Match the application theme',resize:'Adjust the page height','selected-preview':'Read the preview you select','inspect-preview':'Inspect the selected offline preview','own-reports':'Read this page’s inspection report'}
 interface PackageIdentity{id:string;version:string;fingerprint:string;scope:string}
 interface PageEntry{package:PackageIdentity;page:{id:string;title:string;capabilities:string[]}}
 interface PageInstance{instance_id:string;nonce:string;page_id:string;package:PackageIdentity;title:string;html:string;csp:string;capabilities:string[];lease_seconds:number}

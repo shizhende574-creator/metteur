@@ -530,16 +530,64 @@ async fn nx41_selected_source_report_review_and_changed_revision() {
     host.page_request(&base,"alice",ui::PageRequest::SelectTarget{instance_id:id,nonce,target_id:"home".into()}).await.unwrap();
     let report=host.page_request(&base,"alice",ui::PageRequest::Message{instance_id:id,nonce,message:ui::BridgeMessage{bridge_version:1,request_id:uuid::Uuid::new_v4(),method:"inspect_selected".into(),params:serde_json::json!({})}}).await.unwrap()["result"].clone();
     assert_eq!(report["checks"].as_array().unwrap().len(),4);
-    assert_eq!(report["browser_checks"],"not_run");assert!(report["model_opinion"].is_null());
+    assert_eq!(report["browser_checks"],"not_configured");assert!(report["model_opinion"].is_null());
     let review=||ui::PageRequest::Review{instance_id:id,nonce,report_id:serde_json::from_value(report["id"].clone()).unwrap(),expected_digest:report["digest"].as_str().unwrap().into(),accepted:true};
     let accepted=host.page_request(&base,"alice",review()).await.unwrap();
     assert_eq!(accepted["human_acceptance"]["permission_grant"],false);
-    assert_eq!(std::fs::read_dir(base.join("data/addon-state/inspection-reports")).unwrap().count(),2);
+    assert_eq!(std::fs::read_dir(base.join("data/addon-state/inspection-reports")).unwrap().count(),3);
     std::fs::write(base.join("preview.html"),"changed").unwrap();
     assert!(host.page_request(&base,"alice",review()).await.is_err());
     // Optional artifact copy for the isolated native demonstration only.
     if let Ok(out)=std::env::var("NX_M5_FIXTURE_OUT") {
         let out=PathBuf::from(out);std::fs::create_dir_all(&out).unwrap();
         for name in ["manifest.toml","page.html","signature.toml"]{std::fs::copy(source.join(name),out.join(name)).unwrap();}
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nx38_slow_http_stop_and_timeout_do_not_run_following_mutation() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use std::sync::atomic::Ordering;
+    fn allocation(text: &str, local: &str) -> String {
+        let stores = text.bytes().enumerate().map(|(i,b)|format!("local.get ${local} i64.const {i} i64.add i32.const {b} call $store")).collect::<Vec<_>>().join(" ");
+        format!("i64.const {} call $alloc local.set ${local} {stores}", text.len())
+    }
+    for stop in [true, false] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/slow", listener.local_addr().unwrap());
+        let (sent, received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0;4096]; socket.read(&mut request).await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n").await.unwrap();
+            let _ = sent.send(());
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let _ = socket.write_all(b"slow").await;
+        });
+        let base=root(); let host=host(&base);
+        let source=package(&base,"com.test.slow","test",r#""network","fs:write""#);
+        let p=source.join("manifest.toml"); let text=std::fs::read_to_string(&p).unwrap().replace("[addon]",&format!("[addon]\ncall_timeout_ms = {}",if stop {30000}else{250}));std::fs::write(p,text).unwrap();
+        let wasm=wat::parse_str(format!(r#"(module
+          (import "extism:host/env" "alloc" (func $alloc (param i64) (result i64)))
+          (import "extism:host/env" "store_u8" (func $store (param i64 i32)))
+          (import "extism:host/user" "http_request" (func $http (param i64 i64 i64 i64) (result i64)))
+          (import "extism:host/user" "fs_write" (func $write (param i64 i64)))
+          (func (export "run") (result i32) (local $method i64)(local $url i64)(local $headers i64)(local $body i64)(local $path i64)
+          {} {} {} {} {}
+          local.get $method local.get $url local.get $headers local.get $body call $http drop
+          local.get $path local.get $body call $write i32.const 0))"#,
+          allocation("GET","method"),allocation(&url,"url"),allocation("{}","headers"),allocation("test","body"),allocation("must-not-exist.txt","path"))).unwrap();
+        std::fs::write(source.join("main.wasm"),wasm).unwrap();
+        host.install(&source,Some(&base),&["network".into(),"fs:write".into()]).await.unwrap();
+        let registry=host.registry_for(Some(&base),false).await.unwrap();let tool=registry.tool("ComTestSlowReadValue").unwrap();
+        let mut ctx=ExecutionContext::new(registry,LlmClientFactory::new(),base.clone());let cancel=ctx.cancel_requested.clone();
+        let job=tokio::spawn(async move { tool.call(&[],&mut ctx).await });
+        tokio::time::timeout(std::time::Duration::from_secs(5),received).await.unwrap().unwrap();
+        let start=std::time::Instant::now();if stop {cancel.store(true,Ordering::SeqCst);}
+        let result=tokio::time::timeout(std::time::Duration::from_secs(2),job).await.unwrap().unwrap();
+        assert!(result.is_err());assert!(!base.join("must-not-exist.txt").exists());
+        if !stop {assert!(!cancel.load(Ordering::SeqCst),"local timeout cannot cancel parent");}
+        eprintln!("slow_http mode={} return_ms={} subsequent_write=false",if stop {"stop"}else{"timeout"},start.elapsed().as_millis());
+        server.abort();
     }
 }

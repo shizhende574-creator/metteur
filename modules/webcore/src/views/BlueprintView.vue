@@ -1543,6 +1543,7 @@ function openVersionPanel() {
     <div ref="flowWrap" class="relative min-w-0 flex-1" @dragover.prevent @drop="dropPrompt">
       <VueFlow
         ref="flowRef"
+        :only-render-visible-elements="true"
         v-model:nodes="flowNodes"
         v-model:edges="canvasEdges"
         class="blueprint-flow"

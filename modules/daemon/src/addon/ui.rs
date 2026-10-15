@@ -237,6 +237,38 @@ impl PageStore {
         l.report = Some(next.clone());
         Ok(next)
     }
+    pub fn inspection_snapshot(&mut self, id: Uuid, nonce: Uuid, workspace: &str, subject: &str, report_id: &str) -> DaemonResult<super::preview_targets::Snapshot> {
+        let l = self.lease(id, nonce, workspace, subject)?;
+        if l.report.as_ref().and_then(|r|r["id"].as_str()) != Some(report_id) { return Err(fail("Inspection superseded")); }
+        let selected = l.selected.as_ref().ok_or_else(||fail("Target no longer selected"))?;
+        let current = super::preview_targets::snapshot(std::path::Path::new(workspace), &selected.target.id)?;
+        if current.digest != selected.digest || current.target.revision != selected.target.revision { return Err(fail("Preview changed during inspection")); }
+        Ok(current)
+    }
+    pub fn attach_evidence(&mut self, id: Uuid, nonce: Uuid, workspace: &str, subject: &str, report_id: &str, evidence: Value, reports: &std::path::Path) -> DaemonResult<Value> {
+        let snapshot = self.inspection_snapshot(id, nonce, workspace, subject, report_id)?;
+        if evidence["browser_checks"] == "completed" { super::preview_renderer::validate(&evidence, &snapshot.digest).map_err(|e|fail(&e))?; }
+        let l = self.lease(id, nonce, workspace, subject)?;
+        let mut report = l.report.clone().ok_or_else(||fail("Missing report"))?;
+        // Whitelist fields. Renderer cannot set human acceptance, source checks,
+        // target identity, model opinion, or permissions.
+        for key in ["browser_checks", "browser_error", "screenshot", "console", "metrics", "viewport", "engine", "blocked_requests"] {
+            if let Some(value) = evidence.get(key) { report[key] = value.clone(); }
+        }
+        if evidence["browser_checks"] == "completed" {
+            report["scope"] = evidence["scope"].clone();
+            if let Some(checks) = report["checks"].as_array_mut() {
+                let width = evidence["metrics"]["viewportWidth"].as_u64();
+                let scroll = evidence["metrics"]["scrollWidth"].as_u64();
+                checks.push(json!({"name":"No horizontal overflow at captured viewport","passed":width.zip(scroll).is_some_and(|(w,s)|s<=w),"kind":"isolated_browser"}));
+                checks.push(json!({"name":"Images declare an alt attribute","passed":evidence["metrics"]["imagesWithoutAlt"]==0,"kind":"isolated_browser"}));
+            }
+        }
+        report["human_acceptance"] = Value::Null;
+        super::preview_targets::save_report(reports, &report, subject, workspace, &l.identity)?;
+        l.report = Some(report.clone());
+        Ok(report)
+    }
     pub fn message(
         &mut self,
         id: Uuid,

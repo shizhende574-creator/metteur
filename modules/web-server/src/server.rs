@@ -30,7 +30,7 @@ use crate::{Cli, ForwardService, sse};
 /// stylesheet (e.g. after a rebuild) never surfaces as a `text/html` CSS.
 pub fn build_router(client: DaemonClient<Channel>, static_dir: PathBuf) -> Router {
     let grpc_web = tonic_web::GrpcWebLayer::new()
-        .layer(DaemonServer::new(ForwardService::new(client.clone())));
+        .layer(DaemonServer::new(ForwardService::new(client.clone())).max_decoding_message_size(metteur_proto::MAX_RPC_MESSAGE_BYTES).max_encoding_message_size(metteur_proto::MAX_RPC_MESSAGE_BYTES));
     let static_dir = Arc::new(static_dir);
     Router::new()
         .route_service(
