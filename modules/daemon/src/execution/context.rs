@@ -258,6 +258,8 @@ pub struct ExecutionContext {
     /// The workspace database (persistent sandbox grants).
     pub workspace_db: Option<Db>,
     /// Host-selected memory role; never deserialized from model arguments.
+    pub selected_prompts: Vec<metteur_shared::resources::PromptSnapshot>,
+    pub read_only_tools: bool,
     pub memory_role: metteur_shared::resources::ResourceRole,
     /// The global database (global grants).
     pub global_db: Option<Db>,
@@ -399,6 +401,8 @@ impl ExecutionContext {
             approvals: None,
             events: None,
             workspace_db: None,
+            selected_prompts: Vec::new(),
+            read_only_tools: false,
             memory_role: metteur_shared::resources::ResourceRole::MainAgent,
             global_db: None,
             depth: 0,
@@ -520,6 +524,7 @@ impl ExecutionContext {
         child.transaction_log = self.transaction_log.clone();
         child.file_attempt = self.file_attempt;
         child.workspace_db = self.workspace_db.clone();
+        child.read_only_tools=self.read_only_tools;
         child.memory_role = metteur_shared::resources::ResourceRole::ReadOnlyAgent;
         child.global_db = self.global_db.clone();
         child.metrics = self.metrics.clone();

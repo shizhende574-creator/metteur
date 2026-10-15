@@ -312,7 +312,11 @@ impl Session<'_> {
             let root_budget=self.actions.as_ref().and_then(|ctx|ctx.continuation.clone());
             let reserve=serde_json::to_vec(&context).map_err(|_|err("Invalid model context"))?.len() as u64 + tool_tokens + u64::from(self.settings.max_output_tokens);
             if let Some(root)=&root_budget {root.reserve_call(reserve)?;}
+            let observer=crate::observability::audit::AuditWriter::new(self.db.clone());
+            let started=std::time::Instant::now();
+            let _=observer.record("host","llm.observation.begin",json!({"call_id":id,"run_id":self.review.run_id,"role":"supervisor","provider":client.provider(),"model":client.model(),"request":client.diagnostics(&context,&params,&definitions,false)}));
             let response = client.complete(&context, &params, &definitions).await;
+            let _=observer.record("host","llm.observation.end",json!({"call_id":id,"run_id":self.review.run_id,"role":"supervisor","provider":client.provider(),"model":client.model(),"elapsed_ms":started.elapsed().as_millis() as u64,"ttft_ms":Value::Null,"cost":crate::llm::diagnostics::cost(self.config.llm.models.get(model_key),&self.config.billing.currency,&self.config.billing.timezone,response.as_ref().ok().map(|r|&r.usage)),"outcome":if response.is_ok(){"response"}else{"error"},"usage":response.as_ref().ok().map(|r|crate::llm::diagnostics::usage(client.provider(),&r.usage))}));
             if let Some(root)=&root_budget {root.settle_call(&format!("supervisor:{}:{}",self.review.run_id,id),reserve,response.as_ref().ok().filter(|r|r.usage.tokens_reported).map(|r|r.usage.total_tokens))?;}
 
             self.stage = Stage::Persistence;

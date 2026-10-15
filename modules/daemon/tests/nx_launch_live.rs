@@ -125,10 +125,11 @@ impl LlmClient for Model {
                             id: "read-result".into(),
                             name: "ReadTaskSource".into(),
                             arguments: serde_json::json!({"source_id":value["completion_source"]}),
-                        }],
+                        },ToolCall{id:"read-run-proof".into(),name:"ReadRunEvidence".into(),arguments:serde_json::json!({})}],
                     )
                 }
                 2 => {
+                    assert!(ctx.tool_results.iter().any(|r|r.tool_call_id=="read-run-proof"&&r.content.contains("host_checkpoint")&&r.content.contains("not_asserted")));
                     assert!(ctx.tool_results.iter().any(|r| r.content.contains(
                         if self.mode == Mode::Failure {
                             "failed"
@@ -337,4 +338,13 @@ async fn run_case(mode: Mode) {
             .any(|m| m.text_content() == "original conversation completed"),
         matches!(mode, Mode::Success)
     );
+    if mode==Mode::Success {
+        let rows=metteur_daemon::observability::audit::AuditWriter::new(ws.db.clone()).list().unwrap();
+        let observations:Vec<_>=rows.iter().filter(|r|r.operation.starts_with("llm.observation.")).collect();
+        assert_eq!(observations.iter().filter(|r|r.operation=="llm.observation.begin").count(),5);
+        assert_eq!(observations.iter().filter(|r|r.operation=="llm.observation.end").count(),5);
+        assert!(observations.iter().any(|r|r.detail["role"]=="blueprint_executor"));
+        assert!(!serde_json::to_string(&observations).unwrap().contains("Review local evidence"));
+    }
+
 }

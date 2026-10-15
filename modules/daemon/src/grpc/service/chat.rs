@@ -62,10 +62,11 @@ impl DaemonService {
         let selected_ids: Vec<uuid::Uuid> = serde_json::from_value(selected_ids).map_err(|_| Status::invalid_argument("invalid prompt snapshot selection"))?;
         if selected_ids.len() > 16 { return Err(Status::resource_exhausted("too many prompt selections")); }
         let mut selected_text = String::new();
+        let mut selected_prompts=Vec::new();
         for id in selected_ids {
             let snapshot = self.selected_prompt(&req.workspace_path, &subject, id).await.map_err(|error| Status::failed_precondition(error.to_string()))?;
             if snapshot.purpose != metteur_shared::resources::PromptPurpose::Chat { return Err(Status::permission_denied("selection is not for chat")); }
-            selected_text.push_str(&crate::prompt_snapshots::user_text(&snapshot)); selected_text.push_str("\n\n");
+            selected_text.push_str(&crate::prompt_snapshots::user_text(&snapshot)); selected_text.push_str("\n\n");selected_prompts.push(snapshot);
         }
         if selected_text.len() > 64 * 1024 { return Err(Status::resource_exhausted("selected prompt budget exceeded")); }
         let conventions = crate::project_memory::ProjectMemory::new(ws_db.clone(), ws.root()).map_err(|error| Status::internal(error.to_string()))?.confirmed_conventions().await.map_err(|error| Status::internal(error.to_string()))?;
@@ -253,6 +254,7 @@ impl DaemonService {
             ctx.approvals = Some(broker);
             ctx.workspace_db = Some(ws_db.clone());
             ctx.chat_session = Some(session_id);
+            ctx.selected_prompts=selected_prompts;
             ctx.chat_model_options = serde_json::from_str(&options_json).unwrap_or_default();
             ctx.continuation = task_handle.clone();
             ctx.allow_deferred_wait = task_handle.is_some();

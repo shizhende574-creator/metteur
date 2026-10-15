@@ -263,6 +263,7 @@ fn usage_cache_breakdown_is_consistent() {
         cache_read_reported: true,
         input_tokens: 1000,
         cached_input_tokens: 600,
+        cache_write_reported: false,
         cache_write_input_tokens: 100,
         ..Default::default()
     };

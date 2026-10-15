@@ -266,6 +266,7 @@ async fn react_loop_inner(
     };
     let params = build_params(opts, &llm_defaults);
     let mut tools = tool_definitions(&ctx.registry, opts.allowed_tools.as_ref());
+    tools.retain(|t|crate::registry::capabilities::allowed(ctx,&t.name));
     if ctx.chat_session.is_none() || ctx.depth != 0 {tools.retain(|t|t.name!="RequestBlueprintRun");}
     if ctx.handoff_ref.is_none(){tools.retain(|t|t.name!="ReadHandoff");}
     if !ctx.allow_deferred_wait { tools.retain(|tool| !matches!(tool.name.as_str(), "AwaitEvents" | "StartSubAgent" | "ReadTaskSource")); }
@@ -357,6 +358,7 @@ async fn react_loop_inner(
                 &params,
                 turn_tools,
                 &mut on_delta,
+                &billing,
             )
             .await
             {
@@ -830,6 +832,7 @@ async fn request_with_retry(
     params: &GenerationParams,
     tools: &[ToolDefinition],
     delta: &mut Option<&mut (dyn FnMut(StreamDelta) + Send)>,
+    billing: &Option<BillingCtx>,
 ) -> DaemonResult<LlmRace> {
     let mut attempts: u32 = 0;
     // Models already attempted for this request: a fallback chain must never
@@ -839,8 +842,8 @@ async fn request_with_retry(
         tried.push(key);
     }
     loop {
-        ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": client.model()}));
         let call_id = uuid::Uuid::new_v4().to_string();
+        let diagnostic=client.diagnostics(context,params,tools,delta.is_some());
         let reserved = if let Some(handle) = &ctx.continuation {
             // UTF-8 bytes conservatively bound text tokenization; output is capped.
             let bytes = serde_json::to_vec(context).map_err(|e| DaemonError::Serialization(e.to_string()))?.len()
@@ -849,11 +852,17 @@ async fn request_with_retry(
             handle.reserve_call(reserve)?;
             reserve
         } else { 0 };
+        ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": client.model()}));
+        ctx.audit("llm.observation.begin",serde_json::json!({"call_id":call_id,"run_id":ctx.run_id,"provider":client.provider(),"model":client.model(),"role":crate::registry::capabilities::role(ctx),"request":diagnostic}));
+        let started=std::time::Instant::now();
+        let mut first_delta_ms=None;let mut first_token_ms=None;
         let mut emitted = false;
         let result = match delta.as_deref_mut() {
             Some(cb) => {
                 let mut tracked = |d: StreamDelta| {
                     emitted = true;
+                    first_delta_ms.get_or_insert(started.elapsed().as_millis() as u64);
+                    if matches!(&d,StreamDelta::Text(s)|StreamDelta::Reasoning(s) if !s.is_empty()){first_token_ms.get_or_insert(started.elapsed().as_millis() as u64);}
                     cb(d);
                 };
                 race_call(
@@ -868,6 +877,10 @@ async fn request_with_retry(
             }
             None => race_call(client.as_ref(), context, params, tools, &ctx.interrupts, None).await,
         };
+        let response_usage=match &result{Ok(LlmRace::Response(r))=>Some(&r.usage),_=>None};
+        let cost=billing.as_ref().map(|(currency,tz,models)|crate::llm::diagnostics::cost(models.get(client.model()),currency,tz,response_usage)).unwrap_or(serde_json::Value::Null);
+        let observed_usage=match &result{Ok(LlmRace::Response(r))=>Some(crate::llm::diagnostics::usage(client.provider(),&r.usage)),_=>None};
+        ctx.audit("llm.observation.end",serde_json::json!({"call_id":call_id,"run_id":ctx.run_id,"provider":client.provider(),"model":client.model(),"role":crate::registry::capabilities::role(ctx),"elapsed_ms":started.elapsed().as_millis() as u64,"ttft_ms":first_token_ms,"first_delta_ms":first_delta_ms,"timing_source":"host_monotonic","cost":cost,"outcome":match &result{Ok(LlmRace::Response(_))=>"response",Ok(LlmRace::Emergency(_))=>"interrupted",Err(_)=>"error"},"usage":observed_usage}));
         if let Some(handle) = &ctx.continuation {
             let actual = match &result {
                 Ok(LlmRace::Response(response)) if response.usage.tokens_reported => Some(response.usage.total_tokens),
@@ -1086,7 +1099,7 @@ pub(crate) type BillingCtx = (String, String, HashMap<String, LlmModelConfig>);
 /// The table is indexed by config key *and* by `model_id`, because the client
 /// reports the provider id (`model_id`) while configuration is keyed by the
 /// user-facing model name.
-async fn billing_config(ctx: &ExecutionContext) -> Option<BillingCtx> {
+pub(crate) async fn billing_config(ctx: &ExecutionContext) -> Option<BillingCtx> {
     match &ctx.config {
         Some(config) => {
             let cfg = config.read().await;
@@ -1096,6 +1109,9 @@ async fn billing_config(ctx: &ExecutionContext) -> Option<BillingCtx> {
                     models.entry(model.model_id.clone()).or_insert_with(|| model.clone());
                 }
             }
+            let mut counts:HashMap<String,usize>=HashMap::new();
+            for model in cfg.llm.models.values(){if !model.model_id.is_empty(){*counts.entry(model.model_id.clone()).or_default()+=1;}}
+            for (id,count) in counts {if count>1{models.remove(&id);}}
             Some((cfg.billing.currency.clone(), cfg.billing.timezone.clone(), models))
         }
         None => None,
@@ -1459,6 +1475,7 @@ fn rejected_reason(
     call: &ToolCall,
     allowed: Option<&HashSet<String>>,
 ) -> Option<&'static str> {
+    if !crate::registry::capabilities::allowed(ctx,&call.name){return Some("not allowed for this host role");}
     if let Some(set) = allowed
         && !set.contains(&call.name)
     {
@@ -1549,7 +1566,7 @@ fn record_unavailable_usage(ctx: &ExecutionContext, client: &dyn LlmClient) {
 }
 
 /// Audits one completion's usage, extended with run id and estimated cost.
-async fn record_usage(
+pub(crate) async fn record_usage(
     ctx: &ExecutionContext,
     client: &dyn LlmClient,
     usage: &Usage,
@@ -1560,6 +1577,8 @@ async fn record_usage(
         "accounting_version": 1,
         "tokens_reported": usage.tokens_reported,
         "cache_read_reported": usage.cache_read_reported,
+        "cache_write_reported": usage.cache_write_reported,
+        "usage_sources":crate::llm::diagnostics::usage(client.provider(),usage),
         "provider": client.provider(),
         "model": model,
         "run_id": ctx.run_id.to_string(),
@@ -1792,10 +1811,13 @@ async fn summarize_and_compress(
     // housekeeping; failing to build it falls back to the active client.
     let summarizer = summarizer_client(ctx, opts).await.unwrap_or_else(|| Arc::clone(client));
     ctx.audit("llm.request", serde_json::json!({"run_id": ctx.run_id.to_string(), "model": summarizer.model()}));
-    let response = summarizer
-        .complete(&summarizer_context, params, &[])
-        .await
-        .map_err(|e| { record_unavailable_usage(ctx, summarizer.as_ref()); DaemonError::Llm(e.to_string()) })?;
+    let call_id=uuid::Uuid::new_v4();
+    let started=std::time::Instant::now();
+    ctx.audit("llm.observation.begin",serde_json::json!({"call_id":call_id,"run_id":ctx.run_id,"role":"context_compressor","provider":summarizer.provider(),"model":summarizer.model(),"request":summarizer.diagnostics(&summarizer_context,params,&[],false)}));
+    let result=summarizer.complete(&summarizer_context,params,&[]).await;
+    let cost=billing.as_ref().map(|(currency,tz,models)|crate::llm::diagnostics::cost(models.get(summarizer.model()),currency,tz,result.as_ref().ok().map(|r|&r.usage))).unwrap_or(serde_json::Value::Null);
+    ctx.audit("llm.observation.end",serde_json::json!({"call_id":call_id,"run_id":ctx.run_id,"role":"context_compressor","provider":summarizer.provider(),"model":summarizer.model(),"elapsed_ms":started.elapsed().as_millis() as u64,"ttft_ms":null,"cost":cost,"outcome":if result.is_ok(){"response"}else{"error"},"usage":result.as_ref().ok().map(|r|crate::llm::diagnostics::usage(summarizer.provider(),&r.usage))}));
+    let response=result.map_err(|e|{record_unavailable_usage(ctx,summarizer.as_ref());DaemonError::Llm(e.to_string())})?;
     record_usage(ctx, summarizer.as_ref(), &response.usage, billing).await;
     usage.add(&response.usage);
     if response.text.trim().is_empty() {

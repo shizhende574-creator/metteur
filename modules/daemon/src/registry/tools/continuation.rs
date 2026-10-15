@@ -114,6 +114,7 @@ impl Tool for StartSubAgent {
             .get(handle.id)?
             .ok_or_else(|| DaemonError::Execution("Task missing".into()))?;
         let mut child = ctx.child_nested();
+        child.read_only_tools=true;
         child.global_db = None;
         child.parent_context = None;
         child.addon_fragments.clear();

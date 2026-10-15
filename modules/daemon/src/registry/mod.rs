@@ -60,6 +60,9 @@ impl Registry {
             Arc::new(tools::search::Glob),
             Arc::new(tools::launch::RequestBlueprintRun),
             Arc::new(tools::launch::ReadHandoff),
+            Arc::new(tools::run_evidence::ReadRunEvidence),
+            Arc::new(tools::prompt_query::ListPromptResources),
+            Arc::new(tools::prompt_query::ReadSelectedPrompt),
             Arc::new(tools::continuation::AwaitEvents),
             Arc::new(tools::continuation::ReadTaskSource),
             Arc::new(tools::continuation::StartSubAgent),
@@ -518,3 +521,5 @@ mod tests {
         assert!(registry.tool("snake_case").is_none());
     }
 }
+
+pub mod capabilities;
