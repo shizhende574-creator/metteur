@@ -75,14 +75,21 @@
     },
     {
       "id": "PV-05",
-      "revision": 0,
+      "revision": 1,
       "title": "Blueprint handoff",
-      "state": "NOT_PRESENTED",
+      "state": "APPROVED_PROVISIONAL",
       "coverage": [
         "version manifest",
         "confirmation",
         "return"
-      ]
+      ],
+      "fixtureVersion": "nx-m3-fixture-1",
+      "presentedAt": "2026-10-15T09:43:35Z",
+      "approval": {
+        "message": "Sentinel_e787052f5454819199a5ccadfde963bf",
+        "feedback": "暂时允许,继续",
+        "finalVisualReviewRequired": true
+      }
     },
     {
       "id": "PV-06",

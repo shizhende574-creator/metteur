@@ -21,6 +21,7 @@ export interface Schedule {
   misfire: string
 }
 export interface TaskRecord {
+  launch_intent?: string | null;
   pending_approvals?: { request_id: string; detail: string }[]
   revision: number
   policy: { purpose: string; expires_ms: number } | null

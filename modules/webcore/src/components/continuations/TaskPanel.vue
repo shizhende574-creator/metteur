@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import {useExecutionStore} from '@/stores/execution'
 import TaskStartDialog from './TaskStartDialog.vue'
 import { useConfigStore } from '@/stores/config'
 import { Pause, Play, Square, Terminal, ArrowUpRight, RefreshCw, Plus } from '@lucide/vue'
@@ -20,6 +21,18 @@ const chat = useChatStore(),
   error = ref(''),
   confirm = ref(false),
   next = ref<string | null>(null)
+interface LaunchReceipt { id:string; state:string; blueprint_name:string; run_id:string|null; attention:string|null; resume_on_completion:boolean; result:unknown }
+const launchReceipt=ref<LaunchReceipt|null>(null),launchError=ref(''),execution=useExecutionStore()
+let launchQuery=0
+async function loadLaunch(){
+ const id=entry.value?.launch_intent,root=workspace.active?.path,ticket=++launchQuery
+ if(!id||!root){launchReceipt.value=null;launchError.value='';return}
+ const response=await gateway.resourceRequest('queryBlueprintLaunch',root,{id})
+ if(ticket!==launchQuery||entry.value?.launch_intent!==id||workspace.active?.path!==root)return
+ if(response.ok){launchReceipt.value=response.data as LaunchReceipt;launchError.value=''}else launchError.value=response.error
+}
+watch(()=>entry.value?.launch_intent,()=>{launchReceipt.value=null;void loadLaunch()})
+async function openRun(){if(!launchReceipt.value?.run_id)return;const target=launchReceipt.value.run_id;await execution.reconcile(target);if(execution.current?.runId===target)openSurface('execution');else launchError.value=execution.error||'The requested run is unavailable.'}
 const starting = ref(false),
   launching = ref(false),
   config = useConfigStore()
@@ -71,6 +84,7 @@ async function load(append = false) {
     }
     next.value = cursor
     error.value = ''
+    void loadLaunch()
   } finally {
     refreshing = false
   }
@@ -95,6 +109,7 @@ const timer = setInterval(() => {
 onUnmounted(() => {
   generation++
   clearInterval(timer)
+  launchQuery++
 })
 async function control(action: string) {
   const r = entry.value,
@@ -235,6 +250,14 @@ function reviewApproval(request: { request_id: string; detail: string }) {
           <button class="btn" @click="openSession">Open session <ArrowUpRight :size="14" /></button>
         </div>
         <span class="nx-live-badge">{{ stateLabel(entry.task.state) }}</span>
+        <p v-if="launchError" class="nx-live-alert" role="alert">{{launchError}}</p>
+        <section v-if="launchReceipt" class="nx-live-source" style="display:block">
+          <div class="nx-live-between"><strong>{{launchReceipt.blueprint_name}}</strong><span>{{stateLabel(launchReceipt.state)}}</span></div>
+          <p v-if="launchReceipt.attention" class="nx-live-alert">{{launchReceipt.attention}}</p>
+          <p class="text-muted" style="margin:12px 0">{{launchReceipt.resume_on_completion ? 'Completion returns to this conversation within its authorized limits.' : 'Result retained for review; no automatic conversation turn.'}}</p>
+          <button v-if="launchReceipt.run_id" class="btn" :disabled="!available" @click="openRun">Open execution <ArrowUpRight :size="14"/></button>
+          <details v-if="launchReceipt.result" class="nx-live-disclosure"><summary>Recorded run result</summary><pre>{{JSON.stringify(launchReceipt.result,null,2)}}</pre></details>
+        </section>
         <p v-if="entry.task.attention" class="nx-live-alert">{{ entry.task.attention }}</p>
         <div
           v-for="source in Object.values(entry.task.sources)"
