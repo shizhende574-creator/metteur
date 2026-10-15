@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MoreActions from './MoreActions.vue'
+import InlineHelp from '@/components/resources/InlineHelp.vue'
 import { computed, ref, watch } from 'vue'
 import { vDialogFocus } from './dialog-focus'
 import { gateway } from '@/core'
@@ -8,6 +10,7 @@ import './resources.css'
 const workspace = useWorkspaceStore()
 const search = ref(''), kind = ref('All entries'), selected = ref(''), notice = ref('')
 const dialog = ref(false), editing = ref(false), draft = ref(''), busy = ref(false), failed = ref(false)
+const mutating = ref(false), sourceEvidence = ref('')
 const raw = ref<MemoryEntry[]>([]), next = ref<string | null>(null)
 const evidence = ref<(MemoryEntry & { evidenceLabel: string })[]>([])
 let generation = 0
@@ -17,7 +20,7 @@ const entries = computed(() => [...raw.value, ...evidence.value].map(item => ({ 
 const rows = computed(() => entries.value.filter(e => (kind.value === 'All entries' || e.kind === kind.value) && `${e.title} ${e.body}`.toLowerCase().includes(search.value.toLowerCase())))
 const entry = computed(() => rows.value.find(e => e.id === selected.value) ?? rows.value[0])
 const scenario = computed(() => !gateway.connected.value ? 'Disconnected' : busy.value ? 'Loading' : failed.value ? 'Error' : 'Ready')
-const writable = computed(() => gateway.connected.value && !busy.value && !failed.value)
+const writable = computed(() => gateway.connected.value && !busy.value && !failed.value && !mutating.value)
 async function load(append = false) {
   const path = workspace.active?.path; if (!path) return
   const ticket = ++generation; busy.value = true
@@ -44,7 +47,9 @@ watch(() => workspace.active?.path, () => { generation++; raw.value = []; eviden
 async function mutate(method:'writeProjectNote'|'promoteProjectConvention'|'updateProjectMemoryStatus', payload:unknown) {
   const item = entry.value; const path = workspace.active?.path; if (!item || !path || !writable.value) return false
   const ticket = generation
-  const result = await gateway.resourceRequest(method, path, payload, item.revision)
+  mutating.value = true
+  let result
+  try { result = await gateway.resourceRequest(method, path, payload, item.revision) } finally { mutating.value = false }
   if (ticket !== generation || workspace.active?.path !== path) return false
   if (!result.ok) { notice.value = result.error; return false }
   const updated = result.data as MemoryEntry
@@ -66,37 +71,36 @@ async function showSource() {
   const ticket = generation
   if (source.startsWith('run:')) {
     const result = await gateway.resourceRequest('queryProjectMemory', path, { operation:'evidence', run_id:source.slice(4), entry_id:null })
-    if (ticket === generation) notice.value = result.ok ? JSON.stringify(result.data, null, 2) : 'Source run is unavailable in this workspace.'
+    if (ticket === generation) { if (result.ok) sourceEvidence.value = JSON.stringify(result.data, null, 2); else notice.value = 'Source run is unavailable in this workspace.' }
   } else { notice.value = `Source reference: ${source}. The original source retains its role and evidence classification.` }
 }
 </script>
 
 <template>
   <section aria-label="Project memory">
-    <header class="pv-heading"><div><p class="pv-eyebrow">PROJECT MEMORY</p><h1>Project memory</h1><p class="pv-muted">Notes, conventions and evidence — with their original source and version.</p></div><button class="btn" @click="load()">Reload</button></header>
-    <div class="pv-toolbar"><label class="pv-search">Search memory<input v-model="search" class="input" placeholder="Search notes and evidence" /></label><label>Type<select v-model="kind" class="input"><option>All entries</option><option>Project note</option><option>Convention</option><option>Evidence</option><option>Handoff</option></select></label></div>
+    <header class="pv-heading"><div><h1>Project memory <InlineHelp text="Notes, conventions and evidence, with their original source and version." /></h1></div><button class="btn" @click="load()">Reload</button></header>
+    <div class="pv-toolbar"><label class="pv-search"><span class="sr-only">Search memory</span><input v-model="search" class="input" placeholder="Search notes and evidence" /></label><label><span class="sr-only">Type</span><select v-model="kind" class="input"><option>All entries</option><option>Project note</option><option>Convention</option><option>Evidence</option><option>Handoff</option></select></label></div>
     <p v-if="scenario === 'Loading'" role="status" class="pv-callout">Loading project memory…</p>
     <p v-else-if="scenario === 'Error'" role="alert" class="pv-callout">Memory is unavailable. Your draft is preserved. <button class="btn" @click="load()">Retry</button></p>
     <template v-else>
       <p v-if="scenario === 'Disconnected'" class="pv-callout" role="status">Disconnected · Showing the last loaded snapshot. Editing and confirmation are disabled.</p>
-      <p v-if="scenario === 'Read only' || scenario === 'Permission denied'" class="pv-callout">{{ scenario }} · You can inspect source and validity. Changes are unavailable.</p>
       <div class="pv-split">
         <aside aria-label="Memory entries" class="pv-list">
-          <p class="pv-eyebrow">{{ rows.length }} ENTRIES</p>
-          <button v-for="row in rows" :key="row.id" class="pv-row" :class="{ selected: entry?.id === row.id }" @click="selected = row.id; editing = false; notice = ''"><span class="pv-muted">{{ row.kind }} · r{{ row.revision }}</span><strong>{{ row.title }}</strong><span :class="row.validity === 'Needs review' ? 'pv-warn' : 'pv-muted'">{{ row.origin }} · {{ row.validity }}</span></button>
-          <p v-if="!rows.length" class="pv-empty">No matching entries.<br />Try another filter. Notes saved from chat will appear here.</p>
+
+          <button v-for="row in rows" :key="row.id" class="pv-row" :class="{ selected: entry?.id === row.id }" @click="selected = row.id; editing = false; notice = ''; sourceEvidence = ''"><span class="pv-muted">{{ row.kind }} · r{{ row.revision }}</span><strong>{{ row.title }}</strong><span :class="row.validity === 'Needs review' ? 'pv-warn' : 'pv-muted'">{{ row.origin }} · {{ row.validity }}</span></button>
+          <p v-if="!rows.length" class="pv-empty">No matching entries.</p>
         </aside>
         <article v-if="entry" class="pv-detail">
           <div class="pv-between"><span class="pv-badge">{{ entry.origin }}</span><span class="pv-muted">Revision {{ entry.revision }}</span></div>
           <h2>{{ entry.title }}</h2><p class="pv-callout" v-if="entry.validity === 'Needs review'">Needs review · Applies to an earlier file version.</p>
           <label v-if="editing">Note body<textarea v-model="draft" class="input pv-editor" /></label><p v-else class="pv-body">{{ entry.body }}</p>
-          <dl class="pv-facts"><dt>Source</dt><dd><button class="pv-link" @click="showSource">{{ entry.source }} ↗</button></dd><dt>Content digest</dt><dd><code>{{ entry.digest }}</code></dd><template v-if="entry.file"><dt>File version</dt><dd>{{ entry.file }}</dd></template><dt>Trust</dt><dd>{{ entry.evidence ? 'Host-owned reference. Not editable as a note.' : 'Current does not mean verified. A convention grants no capabilities.' }}</dd></dl>
+          <details class="pv-disclosure"><summary>Source details</summary><dl class="pv-facts"><dt>Source</dt><dd><button class="pv-link" @click="showSource">{{ entry.source }} ↗</button></dd><dt>Content digest</dt><dd><code>{{ entry.digest }}</code></dd><template v-if="entry.file"><dt>File version</dt><dd>{{ entry.file }}</dd></template><dt>Trust</dt><dd>{{ entry.evidence ? 'Host-owned reference. Not editable as a note.' : 'Current does not mean verified. A convention grants no capabilities.' }}</dd></dl><pre v-if="sourceEvidence" class="pv-source-output">{{ sourceEvidence }}</pre></details>
           <div class="pv-actions" v-if="!entry.evidence">
-            <button class="btn" v-if="!editing" :disabled="!writable" @click="draft = entry.body; editing = true">Edit note</button>
+
             <button class="btn btn-primary" v-if="editing" :disabled="!writable" @click="save">Save new revision</button>
             <button class="btn" v-if="editing" @click="editing = false">Cancel edit</button>
             <button class="btn btn-primary" v-if="entry.kind !== 'Convention' && !editing" :disabled="!writable" @click="dialog = true">Pin as convention</button>
-            <button class="btn" :disabled="!writable" @click="archive">Archive</button>
+            <MoreActions v-if="!editing"><button :disabled="!writable" @click="draft = entry.body; editing = true">Edit note</button><button :disabled="!writable" @click="archive">Archive</button></MoreActions>
           </div>
         </article>
         <div v-else class="pv-empty">Select a memory entry to inspect its source.</div>

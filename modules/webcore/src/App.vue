@@ -16,7 +16,6 @@ import {
   FileText,
   MessageSquare,
   Moon,
-  Settings,
   Sun,
   WifiOff,
   Workflow,
@@ -26,7 +25,6 @@ import type { Component } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useConfigStore } from '@/stores/config'
 import { useThemeStore } from '@/stores/theme'
-import { useChatStore } from '@/stores/chat'
 import { usePanelStore } from '@/stores/panel'
 import { useRightPanelStore } from '@/stores/right-panel'
 import { useTabsStore } from '@/stores/tabs'
@@ -36,6 +34,7 @@ import { gateway } from '@/core'
 import { projectName } from '@/lib/path'
 import { rootRoute } from '@/lib/workspace-url'
 import { pendingRoute } from '@/router'
+import ActivityRail from '@/components/navigation/ActivityRail.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import EditorPane from '@/views/EditorPane.vue'
 import JobsPanel from '@/components/JobsPanel.vue'
@@ -54,7 +53,6 @@ const router = useRouter()
 const workspace = useWorkspaceStore()
 const configStore = useConfigStore()
 const theme = useThemeStore()
-const chat = useChatStore()
 const panel = usePanelStore()
 const rightPanel = useRightPanelStore()
 const tabs = useTabsStore()
@@ -72,17 +70,17 @@ interface Activity {
 }
 
 const activities: Activity[] = [
-  {key:'addon-pages',label:'Addon pages',icon:Puzzle},
-  {key:'tasks',label:'Task continuation',icon:ListTodo},
-  {key:'schedules',label:'Schedules',icon:CalendarClock},
-  { key: 'prompts', label: 'Prompt resources', icon: FileText },
-  { key: 'memory', label: 'Project memory', icon: BookOpen },
+  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'explorer', label: 'Explorer', icon: Files },
   { key: 'execution', label: 'Execution', icon: Workflow },
+  { key: 'tasks', label: 'Task continuation', icon: ListTodo },
+  { key: 'memory', label: 'Project memory', icon: BookOpen },
+  { key: 'prompts', label: 'Prompt resources', icon: FileText },
+  { key: 'schedules', label: 'Schedules', icon: CalendarClock },
+  { key: 'version', label: 'Version Flow', icon: History },
+  { key: 'addon-pages', label: 'Addon pages', icon: Puzzle },
   ...(import.meta.env.DEV && import.meta.env.VITE_MOCK === '1'
     ? [{ key: 'execution-preview' as const, label: 'Execution preview', icon: Workflow }] : []),
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
-  { key: 'version', label: 'Version Flow', icon: History },
 ]
 
 /** Route → which activity it belongs to (drives rail highlight when no panel
@@ -421,45 +419,8 @@ function onRightResizeStart(e: MouseEvent) {
       <div class="flex min-h-0 flex-1">
         <!-- Activity rail: workspace features on top, Settings pinned to the
              bottom of the same rail (item 14). -->
-        <nav class="flex w-12 shrink-0 flex-col items-center border-r border-divider bg-sidebar py-1.5">
-          <button
-            v-for="a in activities"
-            :key="a.key"
-            class="relative flex h-10 w-10 items-center justify-center rounded-lg p-0 text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground"
-            :class="activeKey === a.key ? 'bg-primary-soft! text-primary!' : ''"
-            type="button"
-            :title="a.label"
-            :aria-label="a.label"
-            @click="openActivity(a.key)"
-          >
-            <span
-              v-if="activeKey === a.key"
-              class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full"
-              style="background: var(--primary)"
-            />
-            <component :is="a.icon" class="h-4.5 w-4.5" />
-          </button>
-
-          <div class="min-h-2 flex-1" />
-
-          <div class="flex w-full flex-col items-center gap-1 border-t border-divider py-1.5">
-            <button
-              class="relative flex h-10 w-10 items-center justify-center rounded-lg p-0 text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground"
-              :class="settingsActive ? 'bg-primary-soft! text-primary!' : ''"
-              type="button"
-              title="Settings"
-              :aria-label="'Settings'"
-              @click="openSettings"
-            >
-              <span
-                v-if="settingsActive"
-                class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full"
-                style="background: var(--primary)"
-              />
-              <Settings class="h-4.5 w-4.5" />
-            </button>
-          </div>
-        </nav>
+        <ActivityRail :items="activities" :active="activeKey" :settings-active="settingsActive"
+          @select="key => openActivity(key as Activity['key'])" @settings="openSettings" />
         <aside
           v-if="panel.open"
           class="workspace-file-panel relative flex shrink-0 flex-col bg-sidebar"

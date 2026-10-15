@@ -146,12 +146,18 @@ export function installTooltips(): void {
   if (document.documentElement.dataset.tooltips === 'on') return
   document.documentElement.dataset.tooltips = 'on'
 
+  let dragging = false
+  document.addEventListener('dragstart', () => { dragging = true; hide() })
+  document.addEventListener('dragend', () => { dragging = false; hide() })
+  document.addEventListener('drop', () => { dragging = false; hide() })
+
   // `pointerover` alone decides whether a tooltip should be open: it fires for
   // every element the pointer enters, including the ones that have no tooltip,
   // which is exactly where the previous one must close. A `pointerout` handler
   // cannot do this, because the element it leaves no longer carries a `title`
   // (it was stashed while the tooltip was visible).
   document.addEventListener('pointerover', (event) => {
+    if (dragging) return
     const el = candidate(event.target)
     if (el === target) return
     hide()

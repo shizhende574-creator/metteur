@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InlineHelp from '@/components/resources/InlineHelp.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import {useExecutionStore} from '@/stores/execution'
 import TaskStartDialog from './TaskStartDialog.vue'
@@ -18,6 +19,7 @@ const chat = useChatStore(),
   rows = ref<TaskRecord[]>([]),
   selected = ref(''),
   busy = ref(false),
+  loading = ref(true),
   error = ref(''),
   confirm = ref(false),
   next = ref<string | null>(null)
@@ -47,6 +49,7 @@ async function load(append = false) {
   if (!root || refreshing) return
   const ticket = generation
   refreshing = true
+  if (!rows.value.length) loading.value = true
   try {
     const collected: TaskRecord[] = append ? [...rows.value] : []
     const target = append ? 50 : Math.max(rows.value.length, 50)
@@ -87,6 +90,7 @@ async function load(append = false) {
     void loadLaunch()
   } finally {
     refreshing = false
+    if (ticket === generation) loading.value = false
   }
 }
 watch(
@@ -208,8 +212,7 @@ function reviewApproval(request: { request_id: string; detail: string }) {
   <section class="nx-live">
     <header class="nx-live-heading">
       <div>
-        <h1>Task continuation</h1>
-        <p class="text-muted">Saved waits and bounded automatic turns</p>
+        <h1>Task continuation <InlineHelp text="Saved waits and bounded automatic turns. Current permissions are rechecked for every turn." /></h1>
       </div>
       <div class="nx-live-actions" style="margin: 0">
         <button
@@ -227,9 +230,9 @@ function reviewApproval(request: { request_id: string; detail: string }) {
       Disconnected. Showing last saved state; controls are unavailable.
     </p>
     <p v-if="error" role="alert" class="nx-live-alert">{{ error }}</p>
-    <div v-if="!entry" class="nx-live-empty">
-      No continuation tasks in this workspace. Tasks appear after an explicitly authorized
-      continuation is started.
+    <div v-if="loading" class="nx-live-empty" role="status">Loading tasks…</div>
+    <div v-else-if="!entry" class="nx-live-empty">
+      No tasks yet. Choose New task to begin.
     </div>
     <div v-else class="nx-live-layout">
       <aside>
@@ -301,13 +304,10 @@ function reviewApproval(request: { request_id: string; detail: string }) {
               · usage unknown, continuation blocked</span
             >
           </dd>
-          <dt>Permission scope</dt>
-          <dd>Current permissions are rechecked for each turn</dd>
-          <dt>Session / generation</dt>
-          <dd>{{ entry.task.session }} / {{ entry.task.generation }}</dd>
+
         </dl>
         <details class="nx-live-disclosure">
-          <summary>Frozen parameters and source results</summary>
+          <summary>Task details and source results</summary><p>Session {{ entry.task.session }} · generation {{ entry.task.generation }}</p>
           <pre>{{
             JSON.stringify(
               { params: entry.task.wait?.params, sources: entry.task.sources },

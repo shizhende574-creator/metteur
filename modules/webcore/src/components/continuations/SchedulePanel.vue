@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import InlineHelp from '@/components/resources/InlineHelp.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { CalendarClock, Plus, Pause, Play, Square, Pencil } from '@lucide/vue'
+import { useSurfaceNavigation } from '@/lib/surface'
 import { gateway } from '@/core'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { vDialogFocus } from '@/components/resources/dialog-focus'
 import type { TaskRecord, TaskPage, Schedule } from '@/core/continuations'
 import './continuations.css'
+const {openSurface}=useSurfaceNavigation()
 const workspace = useWorkspaceStore(),
   tasks = ref<TaskRecord[]>([]),
   error = ref(''),
@@ -30,10 +33,14 @@ const selected = computed(() => tasks.value.find((t) => t.task.id === taskId.val
 const rows = computed(() =>
   tasks.value.flatMap((t) => t.schedules.map((s) => ({ task: t, schedule: s }))),
 )
+const eligible = computed(() => tasks.value.some(t => ['waiting','paused','ready'].includes(t.task.state) && t.has_saved_context))
+let refreshing = false
 const available = computed(() => gateway.connected.value && !busy.value)
 async function load() {
   const root = workspace.active?.path
-  if (!root || busy.value) return
+  if (!root || busy.value || refreshing) return
+  refreshing = true
+  try {
   const ticket = generation
   const all: TaskRecord[] = []
   let after: string | null = null
@@ -52,6 +59,8 @@ async function load() {
     after = p.next
   } while (after)
   tasks.value = all
+  error.value = ''
+  } finally { refreshing = false }
 }
 watch(
   () => workspace.active?.path,
@@ -268,10 +277,9 @@ async function control(t: TaskRecord, action: string) {
   <section class="nx-live">
     <header class="nx-live-heading">
       <div>
-        <h1>Schedules</h1>
-        <p>Bounded continuations tied to an existing task and session</p>
+        <h1>Schedules <InlineHelp text="Schedule a bounded continuation of an existing saved task and session." /></h1>
       </div>
-      <button class="btn btn-primary" :disabled="!available" @click="open">
+      <button v-if="eligible" class="btn btn-primary" :disabled="!available" @click="open">
         <Plus :size="16" />New schedule
       </button>
     </header>
@@ -282,7 +290,7 @@ async function control(t: TaskRecord, action: string) {
     <div v-if="!rows.length" class="nx-live-empty">
       <CalendarClock :size="30" />
       <h2>No schedules</h2>
-      Save a waiting task before scheduling its continuation.
+      <p>Save a waiting task to schedule its next step.</p><button v-if="!eligible" class="btn" @click="openSurface('tasks')">Open tasks</button>
     </div>
     <article
       v-for="row in rows"
