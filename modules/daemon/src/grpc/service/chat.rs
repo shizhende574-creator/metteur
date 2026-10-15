@@ -252,6 +252,8 @@ impl DaemonService {
             ctx.cancel_requested = cancel_flag.clone();
             ctx.approvals = Some(broker);
             ctx.workspace_db = Some(ws_db.clone());
+            ctx.chat_session = Some(session_id);
+            ctx.chat_model_options = serde_json::from_str(&options_json).unwrap_or_default();
             ctx.continuation = task_handle.clone();
             ctx.allow_deferred_wait = task_handle.is_some();
             ctx.lsp_source = Some(lsp_source);
@@ -554,6 +556,7 @@ impl DaemonService {
                 stream_broker,
             ).await;
             drop(approval_lifetime);
+            let task_handle = ctx.continuation.clone().or(task_handle);
             // The task list lives on the execution context; carry it into the
             // persisted record so a resumed session remembers the plan.
             let todos = ctx.todos.clone();

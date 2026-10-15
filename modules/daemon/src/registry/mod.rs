@@ -58,6 +58,8 @@ impl Registry {
             Arc::new(tools::fs_tools::SearchFile),
             Arc::new(tools::search::Grep),
             Arc::new(tools::search::Glob),
+            Arc::new(tools::launch::RequestBlueprintRun),
+            Arc::new(tools::launch::ReadHandoff),
             Arc::new(tools::continuation::AwaitEvents),
             Arc::new(tools::continuation::ReadTaskSource),
             Arc::new(tools::continuation::StartSubAgent),

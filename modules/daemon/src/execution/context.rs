@@ -321,6 +321,11 @@ pub struct ExecutionContext {
     /// Host enables this only for a durable, user-authorized continuation task.
     pub allow_deferred_wait: bool,
     pub continuation: Option<crate::continuation::store::TaskHandle>,
+    /// Set only by the host chat/blueprint boundary, never by model arguments.
+    pub chat_session: Option<uuid::Uuid>,
+    pub chat_model_options: serde_json::Value,
+    pub handoff_ref: Option<uuid::Uuid>,
+    pub pending_launch: Option<uuid::Uuid>,
     /// Applied only after all tool results in the current batch are recorded.
     pub deferred_wait: Option<crate::chat::wait::WaitIntent>,
     /// Paths mutated by tools since the last drain; the ReAct loop drains them
@@ -416,6 +421,10 @@ impl ExecutionContext {
             parent_context: None,
             allow_deferred_wait: false,
             continuation: None,
+            chat_session: None,
+            chat_model_options: serde_json::Value::Null,
+            handoff_ref: None,
+            pending_launch: None,
             deferred_wait: None,
             mutated_paths: Vec::new(),
             todos: Vec::new(),

@@ -266,6 +266,8 @@ async fn react_loop_inner(
     };
     let params = build_params(opts, &llm_defaults);
     let mut tools = tool_definitions(&ctx.registry, opts.allowed_tools.as_ref());
+    if ctx.chat_session.is_none() || ctx.depth != 0 {tools.retain(|t|t.name!="RequestBlueprintRun");}
+    if ctx.handoff_ref.is_none(){tools.retain(|t|t.name!="ReadHandoff");}
     if !ctx.allow_deferred_wait { tools.retain(|tool| !matches!(tool.name.as_str(), "AwaitEvents" | "StartSubAgent" | "ReadTaskSource")); }
     let anonymizer = build_anonymizer(ctx).await;
     let billing = billing_config(ctx).await;
@@ -440,7 +442,7 @@ async fn react_loop_inner(
         //
         // The conversation is offered to tools that ask for it (SubAgent
         // inheritance); the clone happens only for those calls.
-        if response.tool_calls.iter().any(|call| call.name == "SpawnSubAgent") {
+        if response.tool_calls.iter().any(|call| matches!(call.name.as_str(), "SpawnSubAgent" | "RequestBlueprintRun")) {
             ctx.parent_context = Some(context.clone());
         }
         // Announce every call before running it: a slow command or a large edit

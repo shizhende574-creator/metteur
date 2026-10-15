@@ -30,6 +30,8 @@ pub struct TaskRecord {
     pub schedules: Vec<super::timer::Schedule>,
     #[serde(default)]
     pub binding_digest: Option<String>,
+    #[serde(default)]
+    pub launch_intent: Option<Uuid>,
 }
 #[derive(Clone)]
 pub struct ContinuationStore {
@@ -154,6 +156,9 @@ impl ContinuationStore {
             .resource_gate
             .lock()
             .map_err(|_| DaemonError::Persistence("Continuation store lock failed".into()))?;
+        let mut cursor=None;let mut active=0usize;
+        loop {let page=self.list(cursor)?;if page.is_empty(){break;}for r in page {cursor=Some(r.task.id);if !matches!(r.task.state,TaskState::Stopped|TaskState::Completed){active+=1;}}
+        if active>=64{return Err(DaemonError::Execution("Workspace continuation capacity reached".into()));}}
         if self.get(task.id)?.is_some() {
             return Err(DaemonError::Execution("Task already exists".into()));
         }
@@ -168,6 +173,7 @@ impl ContinuationStore {
             policy: None,
             schedules: vec![],
             binding_digest: None,
+            launch_intent: None,
         })
     }
     pub fn update(
@@ -398,6 +404,18 @@ impl TaskHandle {
             }
         }
         Err(DaemonError::Execution("Concurrent task update; retry explicitly".into()))
+    }
+    pub fn register_run_job(&self,id:&str,run:Uuid)->DaemonResult<()> {
+        let record=self.store.get(self.id)?.ok_or_else(||DaemonError::Execution("Task missing".into()))?;
+        let launches=super::launch::LaunchStore::new(self.store.db.clone(),std::path::Path::new(&record.workspace))?;
+        self.change(|r| {
+            let launch=r.launch_intent.ok_or_else(||DaemonError::PermissionDenied("No parent launch".into()))?;
+            let (_,intent)=launches.get(launch,&r.owner_subject)?;
+            if intent.run!=Some(run) || intent.state!=super::launch::LaunchState::Running || !r.task.policy_active || r.task.generation!=self.generation || !matches!(r.task.state,TaskState::Waiting|TaskState::Paused) || r.task.sources.len()>=64 || r.task.sources.contains_key(id) {
+                return Err(DaemonError::PermissionDenied("Run job is not owned by the active launch".into()));
+            }
+            r.task.sources.insert(id.into(),super::state::Source{id:id.into(),kind:"job".into(),task:r.task.id,generation:self.generation,may_write:true,terminal:None,result:serde_json::Value::Null});Ok(())
+        })?;Ok(())
     }
     pub fn register(&self, id: &str, kind: &str, may_write: bool) -> DaemonResult<()> {
         self.change(|r| {

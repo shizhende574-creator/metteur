@@ -107,7 +107,7 @@ async fn start_command(
     let handle = ctx.continuation.clone();
     let mut registered = None;
     let started = ctx.jobs.start_registered(command, cwd, ctx.run_id, output_cap, |id| {
-        if let Some(handle) = &handle { handle.register(id, "job", true)?; registered=Some(id.to_owned()); }
+        if let Some(handle) = &handle { if ctx.handoff_ref.is_some() && ctx.blueprint.is_some(){handle.register_run_job(id,ctx.run_id)?;}else{handle.register(id, "job", true)?;} registered=Some(id.to_owned()); }
         Ok(())
     });
     let job_id=match started {

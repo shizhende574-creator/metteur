@@ -47,7 +47,7 @@ fn decode<T: serde::de::DeserializeOwned>(req: &ResourceRequest) -> Result<T, St
         .map_err(|_| Status::invalid_argument("Invalid continuation fields"))
 }
 fn projection(r: &crate::continuation::store::TaskRecord) -> serde_json::Value {
-    serde_json::json!({"revision":r.revision,"task":r.task,"policy":r.policy,"schedules":r.schedules,"has_saved_context":r.saved_context.is_some()})
+    serde_json::json!({"revision":r.revision,"task":r.task,"policy":r.policy,"schedules":r.schedules,"has_saved_context":r.saved_context.is_some(),"launch_intent":r.launch_intent})
 }
 impl DaemonService {
     pub(crate) async fn query_continuations(
@@ -194,6 +194,13 @@ impl DaemonService {
             .map_err(to_status)?;
         if input.action == "stop" {
             ws.jobs.kill_task(input.id);
+            if let Some(run)=self.state.running.read().await.get(ws.root()) {
+                if run.continuation_task==Some(input.id) {
+                    run.cancel_requested.store(true,std::sync::atomic::Ordering::SeqCst);
+                    if let Some(broker)=&run.approvals {broker.close();}
+                }
+            }
+
             if let Some(chat) = self.state.chats.read().await.get(ws.root()) {
                 if chat.session_id == Some(r.task.session) {
                     chat.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -268,6 +275,7 @@ pub(super) async fn start_monitor(state: Arc<AppState>, root: PathBuf) {
                     ) {
                         continue;
                     }
+                    match super::launches::poll_launch(&state,&ws,&record).await {Ok(true)=>continue,Err(error)=>{tracing::warn!("Launch reconciliation failed: {error}");continue;},Ok(false)=>{}}
                     let result=store.update(record.task.id,record.revision,|r|{
       if r.task.budget.unknown_usage || r.task.budget.used_turns >= r.task.budget.max_turns || r.task.budget.consumed_tokens.saturating_add(r.task.budget.reserved_tokens) >= r.task.budget.token_limit {r.task.state=TaskState::NeedsAttention;r.task.attention=Some("Continuation budget exhausted or usage requires reconciliation".into());return Ok(());}
       if r.policy.as_ref().is_none_or(|p|p.expires_ms<=now_ms()) {r.task.state=TaskState::NeedsAttention;r.task.attention=Some("Continuation policy expired".into());return Ok(());}

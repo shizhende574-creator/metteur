@@ -7,6 +7,7 @@
 //! always reach the real handler (never recurse).
 
 mod continuations;
+mod launches;
 mod reports;
 mod resources;
 mod prompts;
@@ -84,6 +85,8 @@ impl DaemonService {
 impl Daemon for DaemonService {
     async fn select_prompt_resource(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.select_prompt_resource(request).await }
     async fn write_schedule(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.write_schedule(request).await }
+    async fn confirm_blueprint_launch(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.confirm_blueprint_launch(request).await }
+    async fn query_blueprint_launch(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_blueprint_launch(request).await }
     async fn query_continuations(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_continuations(request).await }
     async fn control_continuation(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.control_continuation(request).await }
     async fn query_prompt_resources(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_prompt_resources(request).await }
