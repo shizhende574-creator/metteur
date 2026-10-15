@@ -38,12 +38,14 @@ pub mod cf {
 pub struct Db {
     inner: Arc<DB>,
     pub(crate) resource_gate: Arc<std::sync::Mutex<()>>,
+    pub(crate) prompt_gate: Arc<std::sync::Mutex<()>>,
     /// Serializes independent oversight records across all clones of this database.
     pub(crate) oversight_gate: Arc<std::sync::Mutex<()>>,
     pub(crate) oversight_notify: Arc<tokio::sync::Notify>,
 }
 
 impl Db {
+    pub fn directory(&self) -> &Path { self.inner.path() }
     /// Publish a derived graph and its file identity together in the existing family.
     pub fn put_pair(&self, family: &str, key: &[u8], value: &[u8], second_key: &[u8], second_value: &[u8]) -> DaemonResult<()> {
         let handle = self.inner.cf_handle(family).ok_or_else(|| DaemonError::Internal("missing column family".into()))?;
@@ -116,6 +118,7 @@ impl Db {
         Ok(Self {
             inner: Arc::new(db),
             resource_gate: Arc::new(std::sync::Mutex::new(())),
+            prompt_gate: Arc::new(std::sync::Mutex::new(())),
             oversight_gate: Arc::new(std::sync::Mutex::new(())),
             oversight_notify: Arc::new(tokio::sync::Notify::new()),
         })
