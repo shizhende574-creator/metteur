@@ -20,7 +20,7 @@ import { wurl } from '@/lib/workspace-url'
  * reuses the returned `openSurface`.
  */
 
-type SurfaceKey = 'chat' | 'version' | 'settings' | 'execution' | 'execution-preview'
+type SurfaceKey = 'chat' | 'version' | 'settings' | 'execution' | 'execution-preview' | 'memory'
 type PanelSurface = Exclude<SurfaceKey, 'chat'>
 
 interface SurfacePanel {

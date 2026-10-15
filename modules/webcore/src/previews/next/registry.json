@@ -5,7 +5,7 @@
       "id": "PV-01",
       "revision": 1,
       "title": "Project memory",
-      "state": "USER_REVIEW",
+      "state": "APPROVED",
       "coverage": [
         "classification",
         "sources",
@@ -19,7 +19,7 @@
       "id": "PV-02",
       "revision": 1,
       "title": "Prompt resources",
-      "state": "USER_REVIEW",
+      "state": "APPROVED",
       "coverage": [
         "project and personal",
         "same name",
@@ -90,6 +90,16 @@
       ]
     }
   ],
-  "approval": null,
-  "integrationScope": []
+  "approval": {
+    "subject": "human user in this conversation",
+    "feedback": "两份 r1 都批准接入",
+    "recordedAt": "2026-10-15T06:00:39.9760595+00:00",
+    "sourceCommit": "38bead4c631bdaf5a08f301c85f2568b520fd839",
+    "entrySha256": "477f4efa020f428c48a198ddbea4271d1d32ac63e67052128c888a4f582e74ce",
+    "fixtureVersion": "nx-m1-fixture-1"
+  },
+  "integrationScope": [
+    "PV-01/r1 displayed memory interactions",
+    "PV-02/r1 displayed dual-scope prompt interactions"
+  ]
 }
