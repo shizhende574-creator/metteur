@@ -18,6 +18,7 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  rpc AddonPages(ResourceRequest) returns (ResourceResponse);
   rpc WriteSchedule(ResourceRequest) returns (ResourceResponse);
   rpc ConfirmBlueprintLaunch(ResourceRequest) returns (ResourceResponse);
   rpc QueryBlueprintLaunch(ResourceRequest) returns (ResourceResponse);

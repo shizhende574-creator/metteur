@@ -10,6 +10,7 @@ import {
   Terminal,
   History,
   CalendarClock,
+  Puzzle,
   ListTodo,
   BookOpen,
   FileText,
@@ -65,12 +66,13 @@ const { openSurface } = useSurfaceNavigation()
 /* Activity rail                                                        */
 
 interface Activity {
-  key: 'explorer' | 'chat' | 'version' | 'execution' | 'execution-preview' | 'memory' | 'prompts' | 'tasks' | 'schedules'
+  key: 'addon-pages' | 'explorer' | 'chat' | 'version' | 'execution' | 'execution-preview' | 'memory' | 'prompts' | 'tasks' | 'schedules'
   label: string
   icon: Component
 }
 
 const activities: Activity[] = [
+  {key:'addon-pages',label:'Addon pages',icon:Puzzle},
   {key:'tasks',label:'Task continuation',icon:ListTodo},
   {key:'schedules',label:'Schedules',icon:CalendarClock},
   { key: 'prompts', label: 'Prompt resources', icon: FileText },
@@ -86,6 +88,7 @@ const activities: Activity[] = [
 /** Route → which activity it belongs to (drives rail highlight when no panel
  *  owns the sidebar). `route.name` may be undefined before mount. */
 function routeActivity(name: string | symbol | null | undefined): Activity['key'] | null {
+  if (name === 'addon-pages') return 'addon-pages'
   if (name === 'tasks') return 'tasks'
   if (name === 'schedules') return 'schedules'
   if (name === 'prompts') return 'prompts'
@@ -109,7 +112,7 @@ function toggleExplorer() {
  *  asserted centrally in {@link openSurface} (lib/surface), mirrored by the
  *  tab bar, so both entry points restore the correct rail. */
 function openActivity(a: Activity['key']) {
-  if (a === 'tasks' || a === 'schedules' || a === 'prompts' || a === 'memory' || a === 'execution-preview' || a === 'execution') {
+  if (a === 'addon-pages' || a === 'tasks' || a === 'schedules' || a === 'prompts' || a === 'memory' || a === 'execution-preview' || a === 'execution') {
     openSurface(a)
     return
   }
@@ -129,7 +132,7 @@ function openSettings() {
  *  otherwise an open panel wins, falling back to the route. */
 const activeKey = computed<Activity['key'] | null>(() => {
   const r = routeActivity(route.name)
-  if (r === 'chat' || r === 'execution-preview' || r === 'execution' || r === 'tasks' || r === 'schedules' || r === 'prompts' || r === 'memory') return r
+  if (r === 'addon-pages' || r === 'chat' || r === 'execution-preview' || r === 'execution' || r === 'tasks' || r === 'schedules' || r === 'prompts' || r === 'memory') return r
   const owner = panel.open ? panel.owner : null
   return owner === 'explorer' || owner === 'version' ? owner : r
 })
@@ -141,7 +144,7 @@ const settingsActive = computed(() => route.name === 'settings')
 watch(
   () => workspace.hasActive,
   (on) => {
-    if (on && !panel.open && !['tasks','schedules','prompts','memory'].includes(String(route.name))) panel.show('explorer', FileTree, 'Explorer')
+    if (on && !panel.open && !['addon-pages','tasks','schedules','prompts','memory'].includes(String(route.name))) panel.show('explorer', FileTree, 'Explorer')
   },
   { immediate: true },
 )
@@ -149,7 +152,7 @@ watch(
 // Route restoration can finish after workspace activation. Assert the full-page
 // surface again so a reload cannot leave the default Explorer beside it.
 watch(() => route.name, name => {
-  if (['tasks', 'schedules', 'prompts', 'memory'].includes(String(name))) panel.clear()
+  if (['addon-pages', 'tasks', 'schedules', 'prompts', 'memory'].includes(String(name))) panel.clear()
 }, {immediate: true})
 
 /** Keep the fs-watch and job subscriptions tied to the open workspace. */

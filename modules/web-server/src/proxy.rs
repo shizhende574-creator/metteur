@@ -60,6 +60,7 @@ fn pump_stream<T: Send + 'static>(
 
 #[tonic::async_trait]
 impl Daemon for ForwardService {
+    async fn addon_pages(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().addon_pages(request).await }
     async fn select_prompt_resource(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().select_prompt_resource(request).await }
     async fn write_schedule(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().write_schedule(request).await }
     async fn confirm_blueprint_launch(&self, request: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { self.client.clone().confirm_blueprint_launch(request).await }
@@ -511,6 +512,7 @@ mod tests {
 
     #[tonic::async_trait]
     impl Daemon for TestBackend {
+        async fn addon_pages(&self, _: Request<metteur_proto::proto::ResourceRequest>) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> { Err(Status::unimplemented("addon_pages")) }
         async fn list_oversight_reports(&self, request: Request<metteur_proto::proto::OversightReportsRequest>) -> Result<Response<metteur_proto::proto::OversightReports>, Status> { let r=request.into_inner(); if r.workspace_path=="denied" {return Err(Status::permission_denied("denied"));} Ok(Response::new(metteur_proto::proto::OversightReports{reports_json:r.run_id})) }
 
         type SendConciergeMessageStream = ReceiverStream<Result<metteur_proto::proto::ConciergeEvent, Status>>;

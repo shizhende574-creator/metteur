@@ -74,6 +74,7 @@ async fn serve_index(static_dir: &Path) -> Response {
     match tokio::fs::read(static_dir.join("index.html")).await {
         Ok(bytes) => Response::builder()
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::CONTENT_SECURITY_POLICY, "frame-src 'none';")
             // The HTML points at hashed assets. Do not let an already-open
             // browser keep an old entry point after a Retry fix is deployed.
             .header(header::CACHE_CONTROL, "no-store")

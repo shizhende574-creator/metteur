@@ -45,6 +45,7 @@ impl Permission {
 pub struct InvocationContext {
     /// Runtime handle captured before entering `spawn_blocking`.
     pub runtime: tokio::runtime::Handle,
+    pub parent_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub permissions: HashSet<Permission>,
     pub execution: parking_lot::Mutex<crate::execution::context::ExecutionContext>,
     pub http: reqwest::blocking::Client,
@@ -97,7 +98,32 @@ type Ctx = Arc<InvocationContext>;
 
 fn shared(user_data: UserData<Ctx>) -> Result<Ctx, extism::Error> {
     let inner = user_data.get().map_err(host_error)?;
-    inner.lock().map(|guard| guard.clone()).map_err(|_| extism::Error::msg("context poisoned"))
+    let ctx = inner.lock().map(|guard| guard.clone()).map_err(|_| extism::Error::msg("context poisoned"))?;
+    ensure_running(&ctx)?;
+    Ok(ctx)
+}
+
+pub(super) struct CancelOnDrop(pub Arc<std::sync::atomic::AtomicBool>);
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::SeqCst); }
+}
+fn ensure_running(ctx: &InvocationContext) -> Result<(), extism::Error> {
+    use std::sync::atomic::Ordering;
+    if ctx.parent_cancel.load(Ordering::SeqCst)
+        || ctx.execution.lock().cancel_requested.load(Ordering::SeqCst) {
+        return Err(denied("addon invocation cancelled"));
+    }
+    Ok(())
+}
+struct CallMonitor {
+    done: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for CallMonitor {
+    fn drop(&mut self) {
+        self.done.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+    }
 }
 
 extism::host_fn!(hf_log(user_data: Ctx; level: String, message: String) -> () {
@@ -159,6 +185,10 @@ extism::host_fn!(hf_fs_write(user_data: Ctx; path: String, data: Vec<u8>) -> () 
     if !ctx.runtime.block_on(crate::sandbox::authorize_write(&execution,&resolved,&path,"Addon file write")).map_err(host_error)? {
         return Err(denied("file write approval"));
     }
+    if ctx.parent_cancel.load(std::sync::atomic::Ordering::SeqCst)
+        || execution.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(denied("addon invocation cancelled"));
+    }
     execution.write_file(&resolved,&data,None).map_err(host_error)?;
     Ok(())
 });
@@ -187,11 +217,16 @@ extism::host_fn!(hf_http_request(
             }
         }
     }
+    // Sending a request can have remote effects even when no response arrives.
+    // Record uncertainty rather than making a retry-safe claim.
+    ctx.execution.lock().audit("addon.http.started", serde_json::json!({"method":method,"external_effects":"unknown_until_reconciled"}));
     let response = request.body(body).send().map_err(host_error)?;
+    ensure_running(&ctx)?;
     let status = response.status().as_u16();
     use std::io::Read;
     let mut body_bytes=vec![];
     response.take(1024*1024+1).read_to_end(&mut body_bytes).map_err(host_error)?;
+    ensure_running(&ctx)?;
     if body_bytes.len()>1024*1024 { return Err(denied("HTTP response exceeds addon limit")); }
     Ok(serde_json::json!({
         "status": status,
@@ -321,7 +356,7 @@ pub fn invoke(
     if input_json.len() > 1024 * 1024 {
         return Err(DaemonError::Addon("Addon input exceeds limit".into()));
     }
-    let wasm_manifest = bounded_manifest(
+    let mut wasm_manifest = bounded_manifest(
         wasm,
         manifest.call_timeout_ms(if fallback_timeout_ms == 0 {
             DEFAULT_CALL_TIMEOUT_MS
@@ -329,7 +364,12 @@ pub fn invoke(
             fallback_timeout_ms
         }),
     );
-    let user_data = UserData::new(call_context);
+    let active_timeout = std::time::Duration::from_millis(wasm_manifest.timeout_ms.unwrap());
+    // Extism wall timeout continues through synchronous host callbacks. Use
+    // its real cancellation handle with a host-owned active-time clock instead.
+    wasm_manifest.timeout_ms = None;
+    ensure_running(&call_context).map_err(|_| DaemonError::Addon("Addon cancelled before start".into()))?;
+    let user_data = UserData::new(call_context.clone());
 
     let mut plugin = PluginBuilder::new(wasm_manifest)
         .with_wasi(true)
@@ -348,6 +388,31 @@ pub fn invoke(
         .build()
         .map_err(|err| DaemonError::Addon(format!("plugin init failed: {err}")))?;
 
+    let (cancel, wait_clock) = {
+        let execution = call_context.execution.lock();
+        (execution.cancel_requested.clone(), execution.approval_wait_clock.clone())
+    };
+    let cancel_handle = plugin.cancel_handle();
+    let parent_cancel = call_context.parent_cancel.clone();
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let monitor_done = done.clone();
+    let invocation_cancel = cancel.clone();
+    let thread = std::thread::spawn(move || {
+        use std::sync::atomic::Ordering;
+        let start = std::time::Instant::now();
+        while !monitor_done.load(Ordering::SeqCst) {
+            let human_wait = wait_clock.as_ref().map(|clock| clock.elapsed()).unwrap_or_default();
+            if parent_cancel.load(Ordering::SeqCst) || invocation_cancel.load(Ordering::SeqCst)
+                || start.elapsed().saturating_sub(human_wait) >= active_timeout {
+                invocation_cancel.store(true, Ordering::SeqCst);
+                // Re-send until the worker returns: cancellation may precede
+                // Extism's Start event. Never treat the signal as termination.
+                let _ = cancel_handle.cancel();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    });
+    let _monitor = CallMonitor { done, thread: Some(thread) };
     let output: Vec<u8> = plugin
         .call(function, input_json)
         .map_err(|err| {
@@ -356,6 +421,8 @@ pub fn invoke(
                 .unwrap_or_else(|| err.to_string());
             DaemonError::Addon(format!("addon call '{function}' failed: {reason}"))
         })?;
+    ensure_running(&call_context).map_err(|_| DaemonError::Addon(
+        "Addon cancelled or timed out; inspect recorded effects before retrying".into()))?;
     if output.len() > 1024 * 1024 {
         return Err(DaemonError::Addon("Addon output exceeds limit".into()));
     }

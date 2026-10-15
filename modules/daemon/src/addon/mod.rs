@@ -5,6 +5,8 @@ pub mod package;
 pub mod runtime;
 pub mod signature;
 pub mod signer;
+pub(crate) mod ui;
+pub(crate) mod preview_targets;
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -87,6 +89,13 @@ impl AddonTool {
         ctx.attach_file_journal();
         let mut execution = ctx.child_nested();
         execution.permission_mode = ctx.permission_mode;
+        let parent_cancel = ctx.cancel_requested.clone();
+        let local_cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        execution.cancel_requested = local_cancel.clone();
+        execution.approval_wait_clock = Some(Arc::new(Default::default()));
+        // Dropping the async caller cancels the still-owned blocking worker;
+        // never start a replacement based only on a timeout or expired lease.
+        let _cancel_on_drop = runtime::CancelOnDrop(local_cancel);
         let runtime = tokio::runtime::Handle::current();
         let permissions = self.permissions.clone();
         let package = self.package.clone();
@@ -95,6 +104,7 @@ impl AddonTool {
         let (output, reads, full_reads, mutations) = tokio::task::spawn_blocking(move || {
             let context = Arc::new(runtime::InvocationContext {
                 runtime,
+                parent_cancel,
                 permissions,
                 execution: parking_lot::Mutex::new(execution),
                 http: reqwest::blocking::Client::builder()
@@ -122,6 +132,12 @@ impl AddonTool {
         })
         .await
         .map_err(|_| DaemonError::Addon("Addon worker failed".into()))??;
+        ctx.audit("addon.invocation.finished", serde_json::json!({
+            "package":self.package.identity, "function":self.function,
+            "outcome":if output.is_ok() { "returned" } else { "failed_or_cancelled" },
+            "recorded_mutation_count":mutations.len(), "automatic_retry":false,
+            "external_effects":"not_proven_absent"
+        }));
         ctx.read_paths.extend(reads);
         ctx.read_paths_full.extend(full_reads);
         ctx.mutated_paths.extend(mutations);

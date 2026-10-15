@@ -6,6 +6,7 @@
 //! methods win Rust's method resolution over the trait ones, so the delegates
 //! always reach the real handler (never recurse).
 
+mod addon_pages;
 mod continuations;
 mod launches;
 mod reports;
@@ -345,6 +346,8 @@ impl Daemon for DaemonService {
     ) -> Result<Response<AddonInfo>, Status> {
         self.install_addon(request).await
     }
+
+    async fn addon_pages(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.addon_pages(request).await }
 
     async fn list_addons(
         &self,

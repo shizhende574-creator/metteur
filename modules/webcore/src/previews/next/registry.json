@@ -93,26 +93,40 @@
     },
     {
       "id": "PV-06",
-      "revision": 0,
+      "revision": 1,
       "title": "Addon pages",
-      "state": "NOT_PRESENTED",
+      "state": "PROVISIONALLY_APPROVED",
       "coverage": [
         "isolation",
         "capabilities",
         "revocation"
-      ]
+      ],
+      "fixtureVersion": "nx-m5-fixture-1",
+      "approval": {
+        "message": "Sentinel_106b3f6af6ec819191a269986e0ac706",
+        "feedback": "暂时确定继续",
+        "at": "2026-10-15T11:46:54Z",
+        "scope": "Shown r1 interactions; final all-new-pages review required"
+      }
     },
     {
       "id": "PV-07",
-      "revision": 0,
+      "revision": 1,
       "title": "Preview checks",
-      "state": "NOT_PRESENTED",
+      "state": "PROVISIONALLY_APPROVED",
       "coverage": [
         "target",
         "deterministic evidence",
         "model opinion",
         "acceptance"
-      ]
+      ],
+      "fixtureVersion": "nx-m5-fixture-1",
+      "approval": {
+        "message": "Sentinel_106b3f6af6ec819191a269986e0ac706",
+        "feedback": "暂时确定继续",
+        "at": "2026-10-15T11:46:54Z",
+        "scope": "Shown r1 interactions; final all-new-pages review required"
+      }
     }
   ],
   "approval": {

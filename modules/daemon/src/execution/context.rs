@@ -237,6 +237,8 @@ pub struct ExecutionContext {
     pub pause_requested: Arc<std::sync::atomic::AtomicBool>,
     /// Set when execution should cancel (shared with the control RPCs).
     pub cancel_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// Per-call clock for separating human approval waits from active execution.
+    pub approval_wait_clock: Option<Arc<crate::sandbox::approval::ApprovalWaitClock>>,
     /// The workspace audit writer, if audit logging is enabled.
     pub audit: Option<AuditWriter>,
     /// The id of the current execution run.
@@ -359,6 +361,9 @@ impl ExecutionContext {
         bytes: &[u8],
         expected: Option<&[u8]>,
     ) -> crate::error::DaemonResult<()> {
+        if self.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(crate::error::DaemonError::Interrupted("File write cancelled before mutation".into()));
+        }
         self.attach_file_journal();
         self.transaction_log.mutate_file(
             &self.workspace_root,
@@ -391,6 +396,7 @@ impl ExecutionContext {
             pending_normal: VecDeque::new(),
             pause_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             cancel_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            approval_wait_clock: None,
             audit: None,
             run_id: uuid::Uuid::nil(),
             started_at: 0,
@@ -516,6 +522,7 @@ impl ExecutionContext {
         child.events = self.events.clone();
         child.pause_requested = self.pause_requested.clone();
         child.cancel_requested = self.cancel_requested.clone();
+        child.approval_wait_clock = self.approval_wait_clock.clone();
         child.user = self.user.clone();
         child.audit = self.audit.clone();
         child.run_id = self.run_id;
