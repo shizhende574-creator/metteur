@@ -67,6 +67,10 @@ The memory editor now retains its original note and revision, invalidates source
 
 All three probes passed after repair (`memory-races-fixed-666mybqp`), with effective app/config types (`memory-and-layout-types-m6bo3zjj`), lint (`memory-resource-lint-o1fcb7b9`) and production build (`frontend-production-memory-wszd5ubn`) passing. Native daemon memory validation remains separate.
 
+A further paging/reload probe reproduced an edited note disappearing from the editor when the latest returned page omitted it (`memory-page-before-w3xnqwj1`). The editor now renders its retained source snapshot independently of the returned page and advances its base revision directly from the write response. The four memory cases passed (`memory-snapshot-revision-hnipyak_`), and an additional directed check confirmed an off-page draft survives acknowledgement and sends revision 2 on its next save (`memory-page-revision-chkk5zw5`). The updated ordinary gate also passed frozen install, app/config types, lint, seven native/identity guards, navigation checks and preview isolation (`web-final-gate/first-k44as6eq`), with the recorded source digest unchanged during that run.
+
+The latest frontend production build also passed (`frontend-production-current-69yf_zgd`); its output is `D:/BaiduNetdiskDownload/metteur-a7-work/build/local-acceptance-20261020-web-current`. This artifact includes the final memory paging and launch-review fixes. Its large-chunk and EditorPane import warnings remain disclosed.
+
 The ordinary verification script also passed all seven steps (`default-gate/first-8umb2qrd`). A later direct production command detected a pnpm CI/non-CI virtual-store difference before building (`frontend-production-r2-mb78przy`); the workspace now explicitly selects the same local store layout in both modes. Typechecking and the latest production build passed in a normal shell without setting CI. Dependency versions did not change.
 
 ## Native Windows tools installed and exercised

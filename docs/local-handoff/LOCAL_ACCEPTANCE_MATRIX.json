@@ -44,7 +44,8 @@
         "typecheck-coverage-directed-8wh7l5ua",
         "fixture-e2e-owned-port-5idnbprw",
         "default-gate/first-8umb2qrd",
-        "frontend-production-memory-wszd5ubn"
+        "frontend-production-memory-wszd5ubn",
+        "web-final-gate/first-k44as6eq"
       ]
     },
     {
@@ -98,7 +99,9 @@
       "evidence": [
         "memory-races-fixed-666mybqp",
         "memory-and-layout-types-m6bo3zjj",
-        "memory-resource-lint-o1fcb7b9"
+        "memory-resource-lint-o1fcb7b9",
+        "memory-snapshot-revision-hnipyak_",
+        "memory-page-revision-chkk5zw5"
       ]
     },
     {
@@ -440,7 +443,9 @@
       "local_status": "PARTIAL_BROWSER_FIXTURE",
       "evidence": [
         "memory-races-before-z4vx1zn1",
-        "memory-races-fixed-666mybqp"
+        "memory-races-fixed-666mybqp",
+        "memory-snapshot-revision-hnipyak_",
+        "memory-page-revision-chkk5zw5"
       ],
       "limitations": "Editor identity and stale responses only. Native CAS, read limits and daemon behavior remain unrun."
     },

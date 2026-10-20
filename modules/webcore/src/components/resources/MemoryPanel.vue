@@ -17,9 +17,12 @@ const draftEntry = ref<MemoryEntry | null>(null)
 let generation = 0, editGeneration = 0, sourceGeneration = 0, mutationGeneration = 0
 const origins: Record<string,string> = { model_opinion:'Model opinion', user_note:'User note', user_convention:'User confirmed', handoff:'Host handoff / model summary', execution_evidence:'Deterministic check' }
 const kinds: Record<string,string> = { user_convention:'Convention', handoff:'Handoff', execution_evidence:'Evidence' }
-const entries = computed(() => [...raw.value, ...evidence.value].map(item => ({ id:item.reference.id, title:item.content.title, kind:kinds[item.content.origin] ?? 'Project note', origin:'evidenceLabel' in item ? String(item.evidenceLabel) : origins[item.content.origin] ?? item.content.origin, validity:item.content.validity === 'needs_review' ? 'Needs review' : item.content.validity, revision:item.reference.revision, digest:item.reference.content_digest, body:item.content.body, source:item.content.source ?? `Author: ${item.content.author}`, file:item.content.files.map(f => `${f.path} · ${f.digest}`).join(', '), evidence:['handoff','execution_evidence'].includes(item.content.origin), raw:item })))
+function displayEntry(item:MemoryEntry & { evidenceLabel?:string }) {
+  return { id:item.reference.id, title:item.content.title, kind:kinds[item.content.origin] ?? 'Project note', origin:item.evidenceLabel ?? origins[item.content.origin] ?? item.content.origin, validity:item.content.validity === 'needs_review' ? 'Needs review' : item.content.validity, revision:item.reference.revision, digest:item.reference.content_digest, body:item.content.body, source:item.content.source ?? `Author: ${item.content.author}`, file:item.content.files.map(f => `${f.path} · ${f.digest}`).join(', '), evidence:['handoff','execution_evidence'].includes(item.content.origin), raw:item }
+}
+const entries = computed(() => [...raw.value, ...evidence.value].map(displayEntry))
 const rows = computed(() => entries.value.filter(e => (kind.value === 'All entries' || e.kind === kind.value) && `${e.title} ${e.body}`.toLowerCase().includes(search.value.toLowerCase())))
-const entry = computed(() => editing.value && draftEntry.value ? entries.value.find(e => e.id === draftEntry.value!.reference.id) : rows.value.find(e => e.id === selected.value) ?? rows.value[0])
+const entry = computed(() => editing.value && draftEntry.value ? displayEntry(draftEntry.value) : rows.value.find(e => e.id === selected.value) ?? rows.value[0])
 const scenario = computed(() => !gateway.connected.value ? 'Disconnected' : busy.value ? 'Loading' : failed.value ? 'Error' : 'Ready')
 const writable = computed(() => gateway.connected.value && !busy.value && !failed.value && !mutating.value)
 async function load(append = false) {
@@ -59,7 +62,7 @@ async function mutate(method:'writeProjectNote'|'promoteProjectConvention'|'upda
   if (!result.ok) { notice.value = result.error; return false }
   const updated = result.data as MemoryEntry
   raw.value = raw.value.map(row => row.reference.id === updated.reference.id ? updated : row)
-  return true
+  return updated
 }
 async function promote() {
   dialog.value = false; if (!entry.value) return
@@ -68,8 +71,9 @@ async function promote() {
 async function save() {
   const item = draftEntry.value, edit = editGeneration, body = draft.value
   if (!editing.value || !item) return
-  if (await mutate('writeProjectNote', { id:item.reference.id, title:item.content.title, body, files:item.content.files.map(f => f.path) }, item.reference.revision) && edit === editGeneration && editing.value) {
-    draftEntry.value = raw.value.find(row => row.reference.id === item.reference.id) ?? item
+  const updated = await mutate('writeProjectNote', { id:item.reference.id, title:item.content.title, body, files:item.content.files.map(f => f.path) }, item.reference.revision)
+  if (updated && edit === editGeneration && editing.value) {
+    draftEntry.value = updated
     editing.value = draft.value !== body
     notice.value = editing.value ? 'Saved this revision. Your newer draft is still unsaved.' : 'New revision saved. Any previous convention confirmation no longer applies.'
   }
