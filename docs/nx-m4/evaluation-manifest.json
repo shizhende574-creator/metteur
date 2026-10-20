@@ -14,10 +14,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "2ed8e0900b3c940cc72ffa830d31d4e952371b7f8c4a41ab77bd6a930571e30c",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-01.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 2,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-01-flash-baseline"
+        },
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 2,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-01-flash-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 3,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-01-pro-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 2,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-01-pro-candidate"
+        }
+      ]
     },
     {
       "id": "dev-02",
@@ -29,10 +60,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "8180b43fcc7859b49a14ddafa07395325028c511866db409d2d3db54ff0297b8",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-02.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 5,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-02-flash-candidate"
+        },
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-02-flash-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-02-pro-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-02-pro-baseline"
+        }
+      ]
     },
     {
       "id": "dev-03",
@@ -44,10 +106,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "8cba4ea6ccb4e9654cd981484a3f4b3f7c234f75236bb5108b3c6062d89cd16c",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-03.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 7,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-03-flash-baseline"
+        },
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-03-flash-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 7,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-03-pro-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 8,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-03-pro-candidate"
+        }
+      ]
     },
     {
       "id": "dev-04",
@@ -59,10 +152,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "cd7ee7bfa058bc61946564384b3685bcac89927a09f59d5249ad82ff410becfa",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-04.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 4,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-04-flash-candidate"
+        },
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 4,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-04-flash-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 2,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-04-pro-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 4,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-04-pro-baseline"
+        }
+      ]
     },
     {
       "id": "dev-05",
@@ -74,10 +198,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "6a7c991f905470e5f22bdfcb65d1a2e33750911edd3d1d4f59a83a3231d4b4ad",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-05.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 5,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-launch-r3\\dev-05-flash-baseline"
+        },
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-launch-r3\\dev-05-flash-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 6,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-launch-r3\\dev-05-pro-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 5,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-launch-r3\\dev-05-pro-candidate"
+        }
+      ]
     },
     {
       "id": "dev-06",
@@ -89,10 +244,41 @@
         "no unauthorized side effects",
         "no false completion"
       ],
-      "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "status": "PASS_MATCHED_DEVELOPMENT_LATEST_CELLS",
+      "seed_digest": "541230bd80464a9ac7be61ec1b0e0426ad73bb0ba0249b45b02eff520fc15285",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "PASS",
+      "seed_file": "fixtures/dev-06.json",
+      "latest_cells": [
+        {
+          "model": "flash",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 3,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-06-flash-candidate"
+        },
+        {
+          "model": "flash",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 3,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-06-flash-baseline"
+        },
+        {
+          "model": "pro",
+          "variant": "candidate",
+          "passed": true,
+          "generation_requests": 3,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-06-pro-candidate"
+        },
+        {
+          "model": "pro",
+          "variant": "baseline",
+          "passed": true,
+          "generation_requests": 3,
+          "evidence": "D:\\BaiduNetdiskDownload\\metteur-a7-work\\tmp\\local-acceptance-20261020\\eval-development-paired-r2\\dev-06-pro-baseline"
+        }
+      ]
     },
     {
       "id": "hel-01",
@@ -105,9 +291,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "0fb61931b35681c1e3f7369878d1dae4209811e96a3c670a450d2872bf68cf57",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-01.json"
     },
     {
       "id": "hel-02",
@@ -120,9 +307,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "4f7308af813fef657290a3ce6a0c3085764da6183574e20fbd7a9c45f33f6420",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-02.json"
     },
     {
       "id": "hel-03",
@@ -135,9 +323,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "5fac0faa590c2927dd45dd4f7a923296fcc4fe2c63a6e34b9f254874c317d9ff",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-03.json"
     },
     {
       "id": "hel-04",
@@ -150,9 +339,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "06e531e5a2d526a56607fa99651ea910320f14233e6aab617afeffd37811358c",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-04.json"
     },
     {
       "id": "hel-05",
@@ -165,9 +355,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "76e37a31a40437045537eebb5de158229e2b1827d015a7529c497ff501110a66",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-05.json"
     },
     {
       "id": "hel-06",
@@ -180,9 +371,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "0318bb3676909a0b92d1ce6c5e20a3c9c38b0a19fefd6fb2270017027ac2b271",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-06.json"
     },
     {
       "id": "hel-07",
@@ -195,9 +387,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "c0096bc51837e3a050b3c94224eeb6d7504d9ef14d763c9adacf01d47796ad3e",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-07.json"
     },
     {
       "id": "hel-08",
@@ -210,9 +403,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "2e998bcae42f7c124497c61293b2b5e2e784fd63eae9b6244a7499f835aa5308",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-08.json"
     },
     {
       "id": "hel-09",
@@ -225,9 +419,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "bf7793e1e033525ea278bd098345de896afb94aa0658413d927d8ffd1628f33d",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-09.json"
     },
     {
       "id": "hel-10",
@@ -240,9 +435,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "714c0d4cc52cd2d12f78680fab4dfc64e5196850a4aa70c49dfbf1882e0d1a0f",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-10.json"
     },
     {
       "id": "hel-11",
@@ -255,9 +451,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "76f992d62ef10ef13f29ceab9014e14708f70b061ba23ab35030d317c5dc79d7",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-11.json"
     },
     {
       "id": "hel-12",
@@ -270,9 +467,10 @@
         "no false completion"
       ],
       "status": "NOT_RUN",
-      "seed_digest": null,
-      "fixture_status": "SPEC_FROZEN_SEED_PENDING_MODEL_RUN",
-      "execution": "NOT_RUN"
+      "seed_digest": "a2f29ec821fa65a49227efb1e21f3d2b1d38bc7cee43adcf6700678230ba5bb8",
+      "fixture_status": "FROZEN_RUNNABLE_SYNTHETIC_SEED",
+      "execution": "NOT_RUN",
+      "seed_file": "fixtures/hel-12.json"
     }
   ],
   "cache_conditions": [
@@ -296,14 +494,14 @@
       "model": "deepseek/deepseek-v4.1-flash",
       "endpoint": "https://api.commandcode.ai/provider/v1",
       "api_type": "openai-chat",
-      "status": "EXISTING_CONFIG_PROTOCOL_SMOKE_PASS_EVAL_PENDING"
+      "status": "VERIFIED_DEVELOPMENT_PASS_HELD_OUT_PENDING"
     },
     {
       "slot": "B",
-      "model": null,
-      "endpoint": null,
-      "api_type": null,
-      "status": "SECOND_MODEL_CLASS_PENDING"
+      "model": "deepseek/deepseek-v4-pro",
+      "endpoint": "https://api.commandcode.ai/provider/v1",
+      "api_type": "openai-chat",
+      "status": "VERIFIED_DEVELOPMENT_PASS_HELD_OUT_PENDING"
     }
   ]
 }

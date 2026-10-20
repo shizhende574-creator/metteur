@@ -13,6 +13,37 @@ fn fail(message: &str) -> DaemonError {
     DaemonError::PermissionDenied(message.into())
 }
 
+#[cfg(test)]
+mod model_evidence_tests {
+    use super::*;
+    #[test]
+    fn model_text_cannot_accept_grant_replace_checks_or_survive_revocation() {
+        let root = std::env::temp_dir().join(format!("nx-opinion-binding-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(root.join(".metteur")).unwrap();
+        std::fs::write(root.join("preview.html"), "<!doctype html><title>Synthetic review</title>").unwrap();
+        std::fs::write(root.join(".metteur/preview-targets.json"), r#"[{"id":"sample","title":"Synthetic","revision":1,"file":"preview.html"}]"#).unwrap();
+        let workspace = root.to_string_lossy().into_owned();
+        let id = Uuid::new_v4();
+        let nonce = Uuid::new_v4();
+        let snapshot = super::super::preview_targets::snapshot(&root, "sample").unwrap();
+        let report = super::super::preview_targets::inspect(&snapshot);
+        let report_id = report["id"].as_str().unwrap().to_owned();
+        let mut store = PageStore::default();
+        store.leases.insert(id, Lease { identity: Identity {id:"synthetic.page".into(),version:"1.0.0".into(),fingerprint:"pinned-package".into(),scope:workspace.clone(),registered_names:vec![]}, workspace:workspace.clone(),subject:"alice".into(),page:"sample".into(),nonce,selected:Some(snapshot.clone()),report:Some(report),expires:Instant::now()+Duration::from_secs(60),window:Instant::now(),count:0,requests:BTreeSet::new(),capabilities:BTreeSet::new() });
+        let evidence = json!({"schema_version":1,"digest":snapshot.digest,"model_status":"completed","human_acceptance":{"accepted":true},"permission_grant":true,"checks":[],"model_opinion":{"kind":"model_source_opinion","model":"deepseek/synthetic","provider":"synthetic","call_id":Uuid::new_v4(),"summary":"Model-authored words are data","findings":[],"permission_grant":true}});
+        let result = store.attach_model_opinion((id,nonce),&workspace,"alice",&report_id,evidence.clone(),&root.join("reports")).unwrap();
+        assert!(result["human_acceptance"].is_null());
+        assert!(result["permission_grant"].is_null());
+        assert!(result["model_opinion"]["permission_grant"].is_null());
+        assert_eq!(result["checks"].as_array().unwrap().len(),4);
+        assert!(store.attach_model_opinion((id,nonce),&workspace,"bob",&report_id,evidence.clone(),&root.join("reports")).is_err());
+        std::fs::write(root.join("preview.html"),"changed").unwrap();
+        assert!(store.attach_model_opinion((id,nonce),&workspace,"alice",&report_id,evidence.clone(),&root.join("reports")).is_err());
+        store.close(id,nonce,&workspace,"alice").unwrap();
+        assert!(store.attach_model_opinion((id,nonce),&workspace,"alice",&report_id,evidence,&root.join("reports")).is_err());
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum PageRequest {
@@ -264,6 +295,26 @@ impl PageStore {
                 checks.push(json!({"name":"Images declare an alt attribute","passed":evidence["metrics"]["imagesWithoutAlt"]==0,"kind":"isolated_browser"}));
             }
         }
+        report["human_acceptance"] = Value::Null;
+        super::preview_targets::save_report(reports, &report, subject, workspace, &l.identity)?;
+        l.report = Some(report.clone());
+        Ok(report)
+    }
+    pub fn attach_model_opinion(&mut self, instance: (Uuid, Uuid), workspace: &str, subject: &str, report_id: &str, evidence: Value, reports: &std::path::Path) -> DaemonResult<Value> {
+        let (id, nonce) = instance;
+        let snapshot = self.inspection_snapshot(id, nonce, workspace, subject, report_id)?;
+        let status = evidence["model_status"].as_str().ok_or_else(||fail("Missing model opinion status"))?;
+        if !matches!(status, "completed" | "failed" | "not_configured" | "busy") { return Err(fail("Invalid model opinion status")); }
+        if status == "completed" { super::preview_model::validate(&evidence, &snapshot.digest).map_err(fail)?; }
+        let l = self.lease(id, nonce, workspace, subject)?;
+        let mut report = l.report.clone().ok_or_else(||fail("Missing report"))?;
+        report["model_status"] = json!(status);
+        report["model_opinion"] = if status == "completed" {
+            let opinion = &evidence["model_opinion"];
+            // An opinion can carry text and provenance only. Ignore every
+            // worker-supplied acceptance, action, check or permission field.
+            json!({"kind":"model_source_opinion","model":opinion["model"],"provider":opinion["provider"],"call_id":opinion["call_id"],"summary":opinion["summary"],"findings":opinion["findings"],"scope":"Model opinion on selected source; not browser evidence, human acceptance or a permission grant."})
+        } else { Value::Null };
         report["human_acceptance"] = Value::Null;
         super::preview_targets::save_report(reports, &report, subject, workspace, &l.identity)?;
         l.report = Some(report.clone());

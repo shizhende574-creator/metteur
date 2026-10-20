@@ -944,12 +944,26 @@ impl AddonHost {
             let snapshot = self.pages.lock().inspection_snapshot(id, nonce, &workspace, subject, &report_id)?;
             // Never hold lifecycle/page locks while launching the isolated browser.
             let evidence = super::preview_renderer::render(&snapshot).await;
+            // Revalidate after rendering before starting the separately enabled
+            // paid worker. Revocation or a changed revision cannot start a new review.
+            {
+                let _maintenance = self.maintenance.lock().await;
+                if self.closed_roots.read().contains(&root) { return Err(failure("Workspace closed during inspection")); }
+                let loaded = self.loaded.read();
+                let mut pages = self.pages.lock();
+                pages.prune(&loaded.iter().map(|(key,value)|(key.clone(),value.package.identity.fingerprint.clone())).collect());
+                pages.inspection_snapshot(id, nonce, &workspace, subject, &report_id)?;
+            }
+            let opinion = super::preview_model::review(&snapshot).await;
             let _maintenance = self.maintenance.lock().await;
             if self.closed_roots.read().contains(&root) { return Err(failure("Workspace closed during inspection")); }
             let loaded = self.loaded.read();
             let mut pages = self.pages.lock();
             pages.prune(&loaded.iter().map(|(key,value)|(key.clone(),value.package.identity.fingerprint.clone())).collect());
             response["result"] = pages.attach_evidence(id, nonce, &workspace, subject, &report_id, evidence, &self.state_dir.join("inspection-reports"))?;
+            if opinion["model_status"] != "not_configured" {
+                response["result"] = pages.attach_model_opinion((id, nonce), &workspace, subject, &report_id, opinion, &self.state_dir.join("inspection-reports"))?;
+            }
         }
         Ok(response)
     }

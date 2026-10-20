@@ -8,6 +8,7 @@ pub mod signer;
 pub(crate) mod ui;
 pub(crate) mod preview_targets;
 pub(crate) mod preview_renderer;
+pub(crate) mod preview_model;
 
 use std::collections::HashSet;
 use std::path::Path;

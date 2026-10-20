@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "date": "2026-10-21 Asia/Shanghai",
-  "status": "ONE_EXISTING_MODEL_VERIFIED_EVAL_SEEDS_AND_SECOND_CLASS_PENDING",
+  "status": "TWO_DEEPSEEK_MODELS_DEVELOPMENT_PASS_HELD_OUT_PENDING",
   "authorization": {
     "paid_calls_allowed": true,
     "spending_limit": 5,
     "currency": "USD",
     "approved_provider": "DeepSeek models via existing CommandCode connection",
     "approved_task_data_scope": "Isolated synthetic acceptance data and necessary synthetic test code only",
-    "approval_reference": "Current local chat, owner: 上限 US$5，仅合成验收数据"
+    "approval_reference": "Current local owner: 上限 US$5，仅合成验收数据; subsequently 把剩余全部补齐,允许调用付费测试,全部完成了再报告"
   },
   "models": [
     {
@@ -39,14 +39,37 @@
         "completion_tokens_details"
       ],
       "usage_boundary": "Gateway-reported fields from two requests only; upstream cache semantics and actual billed amount unverified.",
-      "status": "PASS_SYNTHETIC_TOOL_SECOND_ROUND_PROTOCOL_ONLY"
+      "status": "PASS_REAL_DEVELOPMENT_THROUGH_NATIVE_DAEMON",
+      "evaluation_overrides": {
+        "context_input_limit": 64000,
+        "context_output_limit": 1024,
+        "temperature": 0,
+        "max_iterations": 7
+      }
     },
     {
       "slot": "B",
-      "configuration_alias": null,
-      "actual_model_id_and_version": null,
-      "status": "SECOND_MODEL_CLASS_PENDING",
-      "boundary": "Only one configured model found; original NX-33 two-class requirement remains open. Do not count two prompt variants as two models."
+      "configuration_alias": "pro (isolated evaluation only)",
+      "actual_model_id_and_version": "deepseek/deepseek-v4-pro",
+      "immutable_upstream_version": null,
+      "api_type": "openai-chat",
+      "redacted_endpoint": "https://api.commandcode.ai/provider/v1",
+      "credentials": "Existing CommandCode connection; credential remains in original local file",
+      "context_input_limit_evaluation": 64000,
+      "context_output_limit_evaluation": 1024,
+      "generation_parameters": {
+        "temperature": 0,
+        "max_tokens": 1024,
+        "max_iterations": 7
+      },
+      "status": "PASS_REAL_DEVELOPMENT_THROUGH_NATIVE_DAEMON",
+      "pricing_source": "https://commandcode.ai/models/deepseek-v4-pro",
+      "pricing_peak_usd_per_million": {
+        "input": 1.32,
+        "output": 3.96,
+        "cache_read": 0.04
+      },
+      "pricing_verified_date": "2026-10-21 Asia/Shanghai"
     }
   ],
   "pricing": {
@@ -70,13 +93,15 @@
     "cache_discount_assumed": false
   },
   "budget_control": {
-    "generation_request_attempts_so_far": 2,
+    "generation_request_attempts_so_far": 132,
     "smoke_reservation_usd": 0.05,
     "smoke_max_requests": 2,
     "max_request_bytes": 16000,
     "max_output_tokens_each": 512,
     "automatic_retries": 0,
-    "note": "Only this bounded smoke completed. Future evaluator must persist reservations across runs and stop on unknown usage or insufficient remaining cap."
+    "note": "Durable shared kernel-locked ledger is enforced by scripts/nx_model_support.py. Zero automatic generation retries. Unknown outcomes retain reservations and block new paid calls.",
+    "estimated_peak_upper_usd_so_far": 0.66681552,
+    "ledger_path": "D:/BaiduNetdiskDownload/metteur-a7-work/tmp/local-acceptance-20261020/real-model-ledger-20261021.json"
   },
   "evidence": [
     {
@@ -88,8 +113,16 @@
       "path": "evidence/20261021-deepseek-catalog.json",
       "sha256": "d03d9f73f7deece9fa50cc83b74f2d966b820d501f21d27e755af4f4822bafde",
       "original_source_sha256": "b37e17183c2f2491de2a78621ff3946ec10607e99c77e8376c330a3216dec392"
+    },
+    {
+      "path": "evidence/20261021-development-paired-r2.json",
+      "sha256": "3f49460ef7d0ee2de65764ca7990915550a9281c0792e4ac8df6e0854f0d7511"
+    },
+    {
+      "path": "evidence/20261021-development-launch-r3.json",
+      "sha256": "54d7258001917041db2746122f894ca220efba2f4d2dec1310bfbfec148f9735"
     }
   ],
-  "claim_boundary": "Not a daemon integration, old/new Prompt comparison, dataset run, upstream cache validation or final model acceptance.",
+  "claim_boundary": "Development matched cells passed. Held-out, installed Addon browser acceptance and final whole-project sign-off remain pending. No significant improvement claim.",
   "evidence_copy_boundary": "Public evidence copies normalize CRLF to LF for reproducible Git export. Both canonical copy SHA256 and original source SHA256 are retained."
 }
