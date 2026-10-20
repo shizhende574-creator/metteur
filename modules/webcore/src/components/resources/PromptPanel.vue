@@ -14,12 +14,13 @@ const workspace=useWorkspaceStore(), prompts=usePromptResourcesStore(), blueprin
 type Fragment={id:string;scope:string;name:string;revision:number;body:string;raw?:PromptEntry;selectionId?:string}
 const scope=ref('Project'),selection=ref(''),resources=ref<Fragment[]>([]),notice=ref(''),editing=ref(false),draft=ref(''),deleting=ref(false),previewBody=ref<Fragment|null>(null),busy=ref(false),failed=ref(false)
 const nodes=ref<Fragment[]>([]),search=ref(''),next=ref<string|null>(null)
-let generation=0
+const draftEntry=ref<Fragment|null>(null),saving=ref(false)
+let generation=0,viewEpoch=0,editGeneration=0
 const shown=computed(()=>resources.value.filter(item=>item.scope===scope.value && `${item.name} ${item.body}`.toLowerCase().includes(search.value.toLowerCase())))
-const selected=computed(()=>shown.value.find(item=>item.id===selection.value)??shown.value[0])
+const selected=computed(()=>editing.value&&draftEntry.value?draftEntry.value:shown.value.find(item=>item.id===selection.value)??shown.value[0])
 const chat=computed(()=>prompts.selections.map(item=>fromSnapshot(item.snapshot)))
 const scenario=computed(()=>!gateway.connected.value?'Disconnected':busy.value?'Loading':failed.value?'Error':'Ready')
-const writable=computed(()=>gateway.connected.value&&!busy.value&&!failed.value)
+const writable=computed(()=>gateway.connected.value&&!busy.value&&!failed.value&&!saving.value)
 function fromEntry(entry:PromptEntry):Fragment{return{id:entry.reference.id,scope:entry.reference.scope.scope==='project'?'Project':'Personal',name:entry.content.header.name,revision:entry.reference.revision,body:entry.content.body,raw:entry}}
 function fromSnapshot(snapshot:PromptSnapshot):Fragment{return{id:snapshot.reference.id,scope:snapshot.reference.scope.scope==='project'?'Project':'Personal',name:snapshot.name,revision:snapshot.reference.revision,body:snapshot.body,selectionId:snapshot.id}}
 async function load(append=false){
@@ -30,7 +31,7 @@ async function load(append=false){
  if(!result.ok){notice.value=result.error;return}
  const page=(result.data as PromptEntry[]).map(fromEntry);resources.value=append?[...resources.value,...page.filter(p=>!resources.value.some(r=>r.id===p.id))]:page;next.value=page.length===50?page[page.length-1]!.id:null
 }
-watch([()=>workspace.active?.path,scope],([path],[oldPath])=>{if(path!==oldPath){nodes.value=[];notice.value=''}resources.value=[];editing.value=false;deleting.value=false;void load()},{immediate:true})
+watch([()=>workspace.active?.path,scope],([path],[oldPath])=>{viewEpoch++;editGeneration++;saving.value=false;draftEntry.value=null;if(path!==oldPath){nodes.value=[];notice.value=''}resources.value=[];editing.value=false;deleting.value=false;previewBody.value=null;void load()},{immediate:true,flush:'sync'})
 async function insert(target:'chat'|'blueprint',fragment=selected.value){
  if(!fragment?.raw||!writable.value)return
  try{
@@ -50,11 +51,25 @@ async function drop(event:DragEvent,target:'chat'|'blueprint'){
 function changed(item:Fragment){return prompts.selections.find(chosen=>chosen.snapshot.id===item.selectionId)?.status==='changed'}
 function missing(item:Fragment){return prompts.selections.find(chosen=>chosen.snapshot.id===item.selectionId)?.status==='missing'}
 async function refresh(item:Fragment){const index=prompts.selections.findIndex(chosen=>chosen.snapshot.id===item.selectionId);if(index>=0)await prompts.refresh(index)}
+function editSelected(){
+ if(!selected.value||!writable.value)return
+ editGeneration++;draftEntry.value=selected.value;draft.value=selected.value.body;editing.value=true
+}
 async function save(){
- const item=selected.value,path=workspace.active?.path;if(!item?.raw||!path)return
- const result=await gateway.resourceRequest('writePromptResource',path,{scope:item.raw.reference.scope.scope,draft:{id:item.id,name:item.name,tags:item.raw.content.header.tags,body:draft.value}},item.revision)
- if(workspace.active?.path!==path)return
- if(!result.ok){notice.value=result.error;return}editing.value=false;await load();await prompts.validateChat();notice.value='Saved a new source revision. Pending selections must be reviewed again; sent history is unchanged.'
+ const item=draftEntry.value,path=workspace.active?.path,epoch=viewEpoch,edit=editGeneration,body=draft.value
+ if(!editing.value||!item?.raw||!path||!writable.value)return
+ const current=()=>epoch===viewEpoch&&edit===editGeneration&&workspace.active?.path===path
+ saving.value=true
+ try{
+  const result=await gateway.resourceRequest('writePromptResource',path,{scope:item.raw.reference.scope.scope,draft:{id:item.id,name:item.name,tags:item.raw.content.header.tags,body}},item.revision)
+  if(!current())return
+  if(!result.ok){notice.value=result.error;return}
+  draftEntry.value=fromEntry(result.data as PromptEntry)
+  editing.value=draft.value!==body
+  await load();await prompts.validateChat()
+  if(current())notice.value=editing.value?'Saved this revision. Your newer draft is still unsaved.':'Saved a new source revision. Pending selections must be reviewed again; sent history is unchanged.'
+ }catch(reason){if(current())notice.value=String(reason)}
+ finally{if(current())saving.value=false}
 }
 async function copy(){const item=selected.value,path=workspace.active?.path;if(!item?.raw||!path)return;const result=await gateway.resourceRequest('copyPromptToProject',path,{reference:item.raw.reference});if(workspace.active?.path!==path)return;if(!result.ok){notice.value=result.error;return}scope.value='Project';selection.value=(result.data as PromptEntry).reference.id;await load();notice.value='Copied to Project with a new ID and recorded origin. Future edits are independent.'}
 async function remove(){const item=selected.value,path=workspace.active?.path;if(!item?.raw||!path)return;const result=await gateway.resourceRequest('deletePromptResource',path,{scope:item.raw.reference.scope.scope,id:item.id},item.revision);if(workspace.active?.path!==path)return;if(!result.ok){notice.value=result.error;return}deleting.value=false;await load();await prompts.validateChat();notice.value='Source removed. Sent snapshots remain in conversation history; pending selections now require attention.'}
@@ -69,7 +84,7 @@ async function reviewRun(){const path=workspace.active?.path;if(!path)return;for
     <template v-else>
       <p v-if="!writable" class="pv-callout">{{ scenario }} · Selection, editing and sending are disabled.</p>
       <div class="pv-split"><aside class="pv-list"><button v-for="item in shown" :key="item.id" class="pv-row" :class="{ selected: selected?.id === item.id }" @click="selection = item.id; editing = false"><span class="pv-muted">{{ item.scope }} · r{{ item.revision }}</span><strong>{{ item.name }}</strong></button><p v-if="!shown.length" class="pv-empty">No matching resources.</p><button v-if="next" class="btn" :disabled="busy" @click="load(true)">Load more</button></aside>
-        <article v-if="selected" class="pv-detail"><div class="pv-between"><span class="pv-badge">{{ selected.scope }}</span><span class="pv-muted">Revision {{ selected.revision }}</span></div><h2 draggable="true" title="Drag this resource into Chat or a blueprint" @dragstart="drag">{{ selected.name }}</h2><label v-if="editing">Prompt body<textarea v-model="draft" class="input pv-editor" /></label><p v-else class="pv-body">{{ selected.body }}</p><details class="pv-disclosure"><summary>Source details</summary><dl class="pv-facts"><dt>Resource ID</dt><dd>{{ selected.id }}</dd><dt>Scope</dt><dd>{{ selected.scope }}</dd><dt>Revision</dt><dd>{{ selected.revision }}</dd></dl></details><div class="pv-actions"><button class="btn btn-primary" :disabled="!writable" @click="insert('chat')">Use in Chat</button><button class="btn" :disabled="!writable" @click="insert('blueprint')">Add to blueprint</button><button class="btn" v-if="editing" :disabled="!writable" @click="save">Save revision</button><button class="btn" v-if="editing" @click="editing = false">Cancel</button><MoreActions v-if="!editing"><button :disabled="!writable" @click="draft = selected.body; editing = true">Edit</button><button v-if="selected.scope === 'Personal'" :disabled="!writable" @click="copy">Copy to Project</button><button :disabled="!writable" @click="deleting = true">Delete source</button></MoreActions></div></article><p v-else class="pv-empty">Choose a resource to see its content and revision.</p>
+        <article v-if="selected" class="pv-detail"><div class="pv-between"><span class="pv-badge">{{ selected.scope }}</span><span class="pv-muted">Revision {{ selected.revision }}</span></div><h2 draggable="true" title="Drag this resource into Chat or a blueprint" @dragstart="drag">{{ selected.name }}</h2><label v-if="editing">Prompt body<textarea v-model="draft" class="input pv-editor" /></label><p v-else class="pv-body">{{ selected.body }}</p><details class="pv-disclosure"><summary>Source details</summary><dl class="pv-facts"><dt>Resource ID</dt><dd>{{ selected.id }}</dd><dt>Scope</dt><dd>{{ selected.scope }}</dd><dt>Revision</dt><dd>{{ selected.revision }}</dd></dl></details><div class="pv-actions"><button class="btn btn-primary" :disabled="!writable" @click="insert('chat')">Use in Chat</button><button class="btn" :disabled="!writable" @click="insert('blueprint')">Add to blueprint</button><button class="btn" v-if="editing" :disabled="!writable" @click="save">Save revision</button><button class="btn" v-if="editing" @click="editing = false">Cancel</button><MoreActions v-if="!editing"><button :disabled="!writable" @click="editSelected">Edit</button><button v-if="selected.scope === 'Personal'" :disabled="!writable" @click="copy">Copy to Project</button><button :disabled="!writable" @click="deleting = true">Delete source</button></MoreActions></div></article><p v-else class="pv-empty">Choose a resource to see its content and revision.</p>
       </div>
       <div v-if="chat.length || nodes.length" class="pv-toolbar"><section v-if="chat.length" class="pv-drop" style="flex:1" aria-label="Chat drop target" @dragover.prevent @drop.prevent="drop($event, 'chat')"><strong>Chat composer</strong><div v-for="(item, index) in chat" :key="index" class="pv-chip"><button @click="previewBody = item">{{ item.scope }} / {{ item.name }} · r{{ item.revision }}</button><span class="pv-warn" v-if="missing(item)">Source missing</span><template v-else-if="changed(item)"><span class="pv-warn">Changed — review required</span><button class="pv-link" @click="refresh(item)">Refresh selection</button></template><button :aria-label="`Remove chat prompt ${index + 1}`" @click="prompts.selections.splice(index, 1)">×</button></div><button class="btn" @click="openSurface('chat')">Open Chat</button></section>
       <section v-if="nodes.length" class="pv-drop" style="flex:1" aria-label="Blueprint drop target" @dragover.prevent @drop.prevent="drop($event, 'blueprint')"><strong>Blueprint canvas</strong><div v-for="(item, index) in nodes" :key="index" class="pv-chip"><button @click="previewBody = item">{{ item.scope }} / {{ item.name }} · r{{ item.revision }}</button><button :aria-label="`Remove blueprint prompt ${index + 1}`" @click="nodes.splice(index, 1)">×</button></div><button class="btn" :disabled="!writable || !nodes.length" @click="reviewRun">Review run resources</button></section></div>

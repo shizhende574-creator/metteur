@@ -34,3 +34,19 @@ The first browser attempt failed before tests: Windows denied the chosen localho
 - Paid model calls are permitted in principle, pending the owner's exact models, endpoints, data scope and spending limit. No real-model calls have been made.
 - Mock browser tests do not replace real daemon/provider tests or cover all new NX surfaces. Backend integration, resource/task/schedule interactions, the 45-task matrix and final human visual review remain open.
 - No remote publication, PR update or merge.
+
+## Resource ownership and draft regressions
+
+Additional directed probes found defects not covered by the former suite:
+
+- A pending selection from workspace A survived A → B → A and repopulated cleared selections. Workspace epochs now synchronously invalidate old requests, including refreshes.
+- Replacing the selection list during validation returned true for a new unchecked fragment. Validation now binds the exact items, and Chat also verifies the same snapshot IDs before sending.
+- A late Project save acknowledgement closed a newer Personal edit. Save completion now binds the scope/workspace view and edit session.
+- Filtering the resource list while editing sent the old body to the newly visible resource ID. The editor now retains its original resource/revision independently of filtering.
+- Saving prevents duplicate submissions and preserves text typed after submission as a newer unsaved draft.
+
+Initial failing evidence: `resource-races-before-fix-qtg1c3k4`, `resource-save-before-fix-tr0r3rt_`, and `resource-draft-binding-before-fix-kxnyoirb`. The first scope-save attempt also exposed an incorrect summary-button test locator; that locator was repaired before the actual draft-loss failure was recorded.
+
+The repaired five resource cases plus affected Chat/composer/rewind/blueprint-save tests passed: **33 passed**, one worker, zero retries (`resource-chat-blueprint-regression-9ntxd8fk`). These are 28 reused regression cases and five new cases, not 33 additional distinct requirements.
+
+This remains a mock gateway/browser check. Actual daemon ownership/permission checks and provider behavior remain separate acceptance layers.

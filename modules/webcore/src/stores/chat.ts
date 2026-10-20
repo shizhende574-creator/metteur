@@ -212,8 +212,14 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function send(content: string, options?: ChatOptions, mode: 'normal' | 'retry' = 'normal'): Promise<boolean> {
     const prompts=usePromptResourcesStore()
-    if(mode!=='retry' && !(await prompts.validateChat())) return false
     const selected=mode==='retry'?[]:prompts.selections.map(item=>item.snapshot.id)
+    if(mode!=='retry') {
+      if(!(await prompts.validateChat())) return false
+      if(selected.length!==prompts.selections.length||selected.some((id,index)=>prompts.selections[index]?.snapshot.id!==id)) {
+        prompts.error='Prompt selections changed. Review them and send again.'
+        return false
+      }
+    }
     options={...options,prompt_snapshots:selected}
     const ws = workspace.active
     const text = content.trim()
