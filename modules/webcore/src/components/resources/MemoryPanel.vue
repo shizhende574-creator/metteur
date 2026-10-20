@@ -13,12 +13,13 @@ const dialog = ref(false), editing = ref(false), draft = ref(''), busy = ref(fal
 const mutating = ref(false), sourceEvidence = ref('')
 const raw = ref<MemoryEntry[]>([]), next = ref<string | null>(null)
 const evidence = ref<(MemoryEntry & { evidenceLabel: string })[]>([])
-let generation = 0
+const draftEntry = ref<MemoryEntry | null>(null)
+let generation = 0, editGeneration = 0, sourceGeneration = 0, mutationGeneration = 0
 const origins: Record<string,string> = { model_opinion:'Model opinion', user_note:'User note', user_convention:'User confirmed', handoff:'Host handoff / model summary', execution_evidence:'Deterministic check' }
 const kinds: Record<string,string> = { user_convention:'Convention', handoff:'Handoff', execution_evidence:'Evidence' }
 const entries = computed(() => [...raw.value, ...evidence.value].map(item => ({ id:item.reference.id, title:item.content.title, kind:kinds[item.content.origin] ?? 'Project note', origin:'evidenceLabel' in item ? String(item.evidenceLabel) : origins[item.content.origin] ?? item.content.origin, validity:item.content.validity === 'needs_review' ? 'Needs review' : item.content.validity, revision:item.reference.revision, digest:item.reference.content_digest, body:item.content.body, source:item.content.source ?? `Author: ${item.content.author}`, file:item.content.files.map(f => `${f.path} · ${f.digest}`).join(', '), evidence:['handoff','execution_evidence'].includes(item.content.origin), raw:item })))
 const rows = computed(() => entries.value.filter(e => (kind.value === 'All entries' || e.kind === kind.value) && `${e.title} ${e.body}`.toLowerCase().includes(search.value.toLowerCase())))
-const entry = computed(() => rows.value.find(e => e.id === selected.value) ?? rows.value[0])
+const entry = computed(() => editing.value && draftEntry.value ? entries.value.find(e => e.id === draftEntry.value!.reference.id) : rows.value.find(e => e.id === selected.value) ?? rows.value[0])
 const scenario = computed(() => !gateway.connected.value ? 'Disconnected' : busy.value ? 'Loading' : failed.value ? 'Error' : 'Ready')
 const writable = computed(() => gateway.connected.value && !busy.value && !failed.value && !mutating.value)
 async function load(append = false) {
@@ -43,13 +44,17 @@ async function load(append = false) {
     if (ticket === generation && workspace.active?.path === path) evidence.value = records
   }
 }
-watch(() => workspace.active?.path, () => { generation++; raw.value = []; evidence.value = []; editing.value = false; dialog.value = false; void load() }, { immediate:true })
-async function mutate(method:'writeProjectNote'|'promoteProjectConvention'|'updateProjectMemoryStatus', payload:unknown) {
-  const item = entry.value; const path = workspace.active?.path; if (!item || !path || !writable.value) return false
+watch(() => workspace.active?.path, () => { generation++; editGeneration++; sourceGeneration++; mutationGeneration++; raw.value = []; evidence.value = []; draftEntry.value = null; editing.value = false; dialog.value = false; sourceEvidence.value = ''; notice.value = ''; mutating.value = false; busy.value = false; void load() }, { immediate:true, flush:'sync' })
+watch(() => entry.value?.id, () => { sourceGeneration++; sourceEvidence.value = ''; dialog.value = false }, { flush:'sync' })
+function selectEntry(id:string) { editGeneration++; selected.value = id; editing.value = false; draftEntry.value = null; notice.value = ''; sourceGeneration++; sourceEvidence.value = '' }
+function editNote() { if (!entry.value || !writable.value) return; editGeneration++; draftEntry.value = entry.value.raw; draft.value = entry.value.body; editing.value = true }
+async function mutate(method:'writeProjectNote'|'promoteProjectConvention'|'updateProjectMemoryStatus', payload:unknown, revision = entry.value?.revision) {
+  const path = workspace.active?.path; if (revision === undefined || !path || !writable.value) return false
   const ticket = generation
+  const mutation = ++mutationGeneration
   mutating.value = true
   let result
-  try { result = await gateway.resourceRequest(method, path, payload, item.revision) } finally { mutating.value = false }
+  try { result = await gateway.resourceRequest(method, path, payload, revision) } finally { if (mutation === mutationGeneration) mutating.value = false }
   if (ticket !== generation || workspace.active?.path !== path) return false
   if (!result.ok) { notice.value = result.error; return false }
   const updated = result.data as MemoryEntry
@@ -61,17 +66,23 @@ async function promote() {
   if (await mutate('promoteProjectConvention', { id:entry.value.id, content_digest:entry.value.digest })) notice.value = 'This exact revision was confirmed as a project convention. No tool permissions were granted.'
 }
 async function save() {
-  if (!entry.value) return
-  if (await mutate('writeProjectNote', { id:entry.value.id, title:entry.value.title, body:draft.value, files:entry.value.raw.content.files.map(f => f.path) })) { editing.value = false; notice.value = 'New revision saved. Any previous convention confirmation no longer applies.' }
+  const item = draftEntry.value, edit = editGeneration, body = draft.value
+  if (!editing.value || !item) return
+  if (await mutate('writeProjectNote', { id:item.reference.id, title:item.content.title, body, files:item.content.files.map(f => f.path) }, item.reference.revision) && edit === editGeneration && editing.value) {
+    draftEntry.value = raw.value.find(row => row.reference.id === item.reference.id) ?? item
+    editing.value = draft.value !== body
+    notice.value = editing.value ? 'Saved this revision. Your newer draft is still unsaved.' : 'New revision saved. Any previous convention confirmation no longer applies.'
+  }
 }
 async function archive() { if (entry.value && await mutate('updateProjectMemoryStatus', { id:entry.value.id, validity:'archived' })) notice.value = 'Archived. Existing references retain their identity and revision.' }
 async function showSource() {
   const source = entry.value?.raw.content.source; const path = workspace.active?.path
   if (!source || !path) { notice.value = 'No linked execution or conversation is available for this note.'; return }
-  const ticket = generation
+  const ticket = generation, sourceTicket = ++sourceGeneration, id = entry.value?.id
+  sourceEvidence.value = ''
   if (source.startsWith('run:')) {
     const result = await gateway.resourceRequest('queryProjectMemory', path, { operation:'evidence', run_id:source.slice(4), entry_id:null })
-    if (ticket === generation) { if (result.ok) sourceEvidence.value = JSON.stringify(result.data, null, 2); else notice.value = 'Source run is unavailable in this workspace.' }
+    if (ticket === generation && sourceTicket === sourceGeneration && workspace.active?.path === path && entry.value?.id === id) { if (result.ok) sourceEvidence.value = JSON.stringify(result.data, null, 2); else notice.value = 'Source run is unavailable in this workspace.' }
   } else { notice.value = `Source reference: ${source}. The original source retains its role and evidence classification.` }
 }
 </script>
@@ -87,7 +98,7 @@ async function showSource() {
       <div class="pv-split">
         <aside aria-label="Memory entries" class="pv-list">
 
-          <button v-for="row in rows" :key="row.id" class="pv-row" :class="{ selected: entry?.id === row.id }" @click="selected = row.id; editing = false; notice = ''; sourceEvidence = ''"><span class="pv-muted">{{ row.kind }} · r{{ row.revision }}</span><strong>{{ row.title }}</strong><span :class="row.validity === 'Needs review' ? 'pv-warn' : 'pv-muted'">{{ row.origin }} · {{ row.validity }}</span></button>
+          <button v-for="row in rows" :key="row.id" class="pv-row" :class="{ selected: entry?.id === row.id }" @click="selectEntry(row.id)"><span class="pv-muted">{{ row.kind }} · r{{ row.revision }}</span><strong>{{ row.title }}</strong><span :class="row.validity === 'Needs review' ? 'pv-warn' : 'pv-muted'">{{ row.origin }} · {{ row.validity }}</span></button>
           <p v-if="!rows.length" class="pv-empty">No matching entries.</p>
         </aside>
         <article v-if="entry" class="pv-detail">
@@ -98,9 +109,9 @@ async function showSource() {
           <div class="pv-actions" v-if="!entry.evidence">
 
             <button class="btn btn-primary" v-if="editing" :disabled="!writable" @click="save">Save new revision</button>
-            <button class="btn" v-if="editing" @click="editing = false">Cancel edit</button>
+            <button class="btn" v-if="editing" @click="editGeneration++; editing = false">Cancel edit</button>
             <button class="btn btn-primary" v-if="entry.kind !== 'Convention' && !editing" :disabled="!writable" @click="dialog = true">Pin as convention</button>
-            <MoreActions v-if="!editing"><button :disabled="!writable" @click="draft = entry.body; editing = true">Edit note</button><button :disabled="!writable" @click="archive">Archive</button></MoreActions>
+            <MoreActions v-if="!editing"><button :disabled="!writable" @click="editNote">Edit note</button><button :disabled="!writable" @click="archive">Archive</button></MoreActions>
           </div>
         </article>
         <div v-else class="pv-empty">Select a memory entry to inspect its source.</div>

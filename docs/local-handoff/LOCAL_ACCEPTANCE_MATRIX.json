@@ -1,0 +1,1046 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20 Asia/Shanghai",
+  "state": "IN_PROGRESS",
+  "base_commit": "ff7b795e536042e885f08a9bf7a2e5d4a3121749",
+  "evidence_root": "D:/BaiduNetdiskDownload/metteur-a7-work/tmp/local-acceptance-20261020",
+  "claim_boundary": "Historical cloud evidence is separate. Browser fixtures and static checks do not certify backend/provider/native-Windows behavior. Current local acceptance remains incomplete.",
+  "tasks": [
+    {
+      "id": "NX-00",
+      "phase": "NX-M0",
+      "requirement": "冻结真实起点与基线",
+      "historical_cloud_status": "DONE_TARGETED (historical)",
+      "local_status": "PASS_LOCAL_RECEPTION",
+      "evidence": [
+        "workspace-review-2026-10-20/handoff-reception.json",
+        "workspace-review-2026-10-20/source-bundle-comparison.json"
+      ]
+    },
+    {
+      "id": "NX-01",
+      "phase": "NX-M0",
+      "requirement": "修复 Addon 权限测试的假绿与过紧预算",
+      "historical_cloud_status": "DONE_TARGETED (historical)",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-02",
+      "phase": "NX-M0",
+      "requirement": "修复缓存请求的断点与排序",
+      "historical_cloud_status": "DONE_TARGETED (historical)",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-03",
+      "phase": "NX-M0",
+      "requirement": "建立可复现验证门槛",
+      "historical_cloud_status": "PARTIAL_PLATFORM",
+      "local_status": "PARTIAL_LOCAL_WEB",
+      "evidence": [
+        "current-frontend-types-xk9gxphl",
+        "typecheck-coverage-directed-8wh7l5ua",
+        "fixture-e2e-owned-port-5idnbprw",
+        "default-gate/first-8umb2qrd",
+        "frontend-production-memory-wszd5ubn"
+      ]
+    },
+    {
+      "id": "NX-04",
+      "phase": "NX-M1",
+      "requirement": "冻结共同身份、权限与数据契约",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-05",
+      "phase": "NX-M1",
+      "requirement": "建立隔离前端预览工作流",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "PARTIAL_STATIC_ISOLATION",
+      "evidence": [
+        "preview-isolation-e_qqnstl"
+      ]
+    },
+    {
+      "id": "NX-06",
+      "phase": "NX-M1",
+      "requirement": "增加版本化持久记录与迁移",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-07",
+      "phase": "NX-M1",
+      "requirement": "项目记忆与证据引用服务",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-08",
+      "phase": "NX-M1",
+      "requirement": "记忆查询／写笔记工具",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-09",
+      "phase": "NX-M1",
+      "requirement": "批准后接入项目黑板 UI",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "memory-races-fixed-666mybqp",
+        "memory-and-layout-types-m6bo3zjj",
+        "memory-resource-lint-o1fcb7b9"
+      ]
+    },
+    {
+      "id": "NX-10",
+      "phase": "NX-M1",
+      "requirement": "双作用域 Prompt 资源服务",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-11",
+      "phase": "NX-M1",
+      "requirement": "Prompt 快照与 Chat/蓝图上下文接入",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk"
+      ]
+    },
+    {
+      "id": "NX-12",
+      "phase": "NX-M1",
+      "requirement": "批准后接入 Prompt 资源 UI",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk"
+      ]
+    },
+    {
+      "id": "NX-13",
+      "phase": "NX-M2",
+      "requirement": "抽取宿主拥有的回合生命周期",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-14",
+      "phase": "NX-M2",
+      "requirement": "持久化事件、outbox 与 inbox",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-15",
+      "phase": "NX-M2",
+      "requirement": "任务状态机、订阅与等待提交",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-16",
+      "phase": "NX-M2",
+      "requirement": "统一准入、dispatch 与副作用租约",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-17",
+      "phase": "NX-M2",
+      "requirement": "Job 完成源与 owner 转移",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-18",
+      "phase": "NX-M2",
+      "requirement": "异步子代理句柄与完成事件",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-19",
+      "phase": "NX-M2",
+      "requirement": "定时规则与 fake clock 测试",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-20",
+      "phase": "NX-M2",
+      "requirement": "持久化调度器与启动/关闭集成",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-21",
+      "phase": "NX-M2",
+      "requirement": "续跑授权、根预算和 Stop",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-22",
+      "phase": "NX-M2",
+      "requirement": "事件参数与模型上下文适配",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-23",
+      "phase": "NX-M2",
+      "requirement": "三类源恢复与崩溃窗口收口",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-24",
+      "phase": "NX-M2",
+      "requirement": "批准后接入任务等待/唤起 UI",
+      "historical_cloud_status": "INTEGRATED_PROVISIONAL",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-25",
+      "phase": "NX-M2",
+      "requirement": "批准后接入定时管理 UI",
+      "historical_cloud_status": "INTEGRATED_PROVISIONAL",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-26",
+      "phase": "NX-M2",
+      "requirement": "唤起基础完整验收",
+      "historical_cloud_status": "LOCAL_CANDIDATE_VERIFIED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-27",
+      "phase": "NX-M3",
+      "requirement": "交接记录与版本依赖清单",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-28",
+      "phase": "NX-M3",
+      "requirement": "蓝图运行提案与具体确认",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-29",
+      "phase": "NX-M3",
+      "requirement": "安全 yield 后启动蓝图",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-30",
+      "phase": "NX-M3",
+      "requirement": "蓝图终态事件与父会话续跑",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-31",
+      "phase": "NX-M3",
+      "requirement": "批准后接入运行确认与交接 UI",
+      "historical_cloud_status": "INTEGRATED_PROVISIONAL",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-32",
+      "phase": "NX-M3",
+      "requirement": "聊天—蓝图—聊天集成验收",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-33",
+      "phase": "NX-M4",
+      "requirement": "选择两类实际模型与冻结任务集",
+      "historical_cloud_status": "DEFERRED_NOT_RUN",
+      "local_status": "BLOCKED_MODEL_CONFIGURATION",
+      "evidence": []
+    },
+    {
+      "id": "NX-34",
+      "phase": "NX-M4",
+      "requirement": "请求结构/缓存/用量观测",
+      "historical_cloud_status": "GENERAL_LAYER_IMPLEMENTED",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "NX-35",
+      "phase": "NX-M4",
+      "requirement": "共享底座与模型/角色适配",
+      "historical_cloud_status": "PARTIAL_DEFERRED",
+      "local_status": "BLOCKED_MODEL_CONFIGURATION",
+      "evidence": []
+    },
+    {
+      "id": "NX-36",
+      "phase": "NX-M4",
+      "requirement": "必要工具增量与权限目录收口",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-37",
+      "phase": "NX-M4",
+      "requirement": "真实模型匹配对照验收",
+      "historical_cloud_status": "DEFERRED_NOT_RUN",
+      "local_status": "BLOCKED_MODEL_CONFIGURATION",
+      "evidence": []
+    },
+    {
+      "id": "NX-38",
+      "phase": "NX-M5",
+      "requirement": "Addon 生产取消与审批等待语义",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-39",
+      "phase": "NX-M5",
+      "requirement": "页面 manifest、隔离 Bridge 与生命周期",
+      "historical_cloud_status": "IMPLEMENTED_TARGETED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-40",
+      "phase": "NX-M5",
+      "requirement": "批准后接入 Addon 页面宿主 UI",
+      "historical_cloud_status": "INTEGRATED_PROVISIONAL",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-41",
+      "phase": "NX-M5",
+      "requirement": "预览检查样例与独立成果验收",
+      "historical_cloud_status": "OFFLINE_RENDERER_VERIFIED",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "NX-42",
+      "phase": "NX-M6",
+      "requirement": "冻结候选并执行全链路验收",
+      "historical_cloud_status": "LOCAL_SCOPE_VERIFIED_GLOBAL_PENDING",
+      "local_status": "PARTIAL_LOCAL_WEB",
+      "evidence": [
+        "fixture-e2e-owned-port-5idnbprw",
+        "resource-chat-blueprint-regression-9ntxd8fk"
+      ]
+    },
+    {
+      "id": "NX-43",
+      "phase": "NX-M6",
+      "requirement": "规模、平台与迁移回退演练",
+      "historical_cloud_status": "PARTIAL_LINUX_ONLY",
+      "local_status": "BLOCKED_NATIVE_WINDOWS",
+      "evidence": [
+        "native-linker-probe-7wf65372"
+      ]
+    },
+    {
+      "id": "NX-44",
+      "phase": "NX-M6",
+      "requirement": "最终交付与状态审计",
+      "historical_cloud_status": "LOCAL_DELIVERY_READY",
+      "local_status": "IN_PROGRESS",
+      "evidence": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "BB-01",
+      "scenario": "项目隔离与归属",
+      "expected": "A 项目无法读取 B 的条目／会话引用；同名不构成相同身份。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BB-02",
+      "scenario": "模型笔记与用户约定",
+      "expected": "Agent 只能产生未验证笔记；提升需精确 revision 的人工确认。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BB-03",
+      "scenario": "约定编辑和确认失效",
+      "expected": "正文改变生成新修订，旧确认不能覆盖新内容。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BB-04",
+      "scenario": "事实投影防伪",
+      "expected": "普通写入不能伪造 Validator passed、来源 run 或用户身份。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BB-05",
+      "scenario": "文件版本失效",
+      "expected": "旧版本结论保留适用范围；变更、回滚和重试不显示成当前通过。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BB-06",
+      "scenario": "并发编辑／读取上限",
+      "expected": "expected_revision 冲突可诊断；查询分页、条目长度和检索预算生效。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "memory-races-before-z4vx1zn1",
+        "memory-races-fixed-666mybqp"
+      ],
+      "limitations": "Editor identity and stale responses only. Native CAS, read limits and daemon behavior remain unrun."
+    },
+    {
+      "id": "BB-07",
+      "scenario": "归档删除与恢复",
+      "expected": "引用 tombstone 不指向其他记录；迁移与重复恢复幂等。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-01",
+      "scenario": "项目与个人同名",
+      "expected": "显示作用域；按 scoped ID 选择，不静默覆盖或跨库注入。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-02",
+      "scenario": "格式与非法内容",
+      "expected": "TOML front matter 与正文边界确定；未知危险字段、脚本／远程 include 拒绝。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-03",
+      "scenario": "拖入 Chat 的用户级语义",
+      "expected": "发送内容是显式选择的 user-level fragment，不是 ReadFile 结果；origin 保留。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-04",
+      "scenario": "待发送内容变化",
+      "expected": "chip 提示变更，发送绑定用户实际确认版本。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "PF-05",
+      "scenario": "历史不可变与删除源",
+      "expected": "既有消息保持当时快照；删除影响与历史清除语义明确。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-06",
+      "scenario": "蓝图资源节点与 ContextMerge",
+      "expected": "两个作用域均可拖入；实际输入等于 run manifest 冻结正文。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-07",
+      "scenario": "运行中修改文件",
+      "expected": "不会让后续节点静默读新版本；再次运行须重新解析／确认。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-08",
+      "scenario": "目录与元数据防越界",
+      "expected": "path traversal、symlink、scope 伪造不能读写其他目录或 .metteur 内部状态。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PF-09",
+      "scenario": "复制／个人隐私",
+      "expected": "复制新 ID 带来源；用户未选个人片段不暴露给项目记忆／Addon。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "PF-10",
+      "scenario": "故障与来源派生",
+      "expected": "文件／索引写失败可恢复；经文本加工标 derived，不假称用户原文。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-01",
+      "scenario": "真正结束回合",
+      "expected": "WAITING 后不占前台、没有待完成模型调用／RPC；可观察预算不增加。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-02",
+      "scenario": "完成早于等待",
+      "expected": "source 在等待登记前完成，提交等待后仍触发一次，不丢事件。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-03",
+      "scenario": "重复投递",
+      "expected": "同一事件重复通知／outbox 重扫只生成一个逻辑 dispatch。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-04",
+      "scenario": "多来源 any／all",
+      "expected": "any 合并规则确定；all 包含失败终态并可结束等待；每条源收据保留。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-05",
+      "scenario": "新消息替代旧上下文",
+      "expected": "revision/generation 不匹配阻断旧续跑，不覆盖人工新指令。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-06",
+      "scenario": "工作区准入互斥",
+      "expected": "手动聊天、蓝图、dispatcher 竞争不出现双前台或锁内自 RPC 死锁。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-07",
+      "scenario": "Stop 抢占队列",
+      "expected": "Stop 持久后已排队事件不再触发；崩溃恢复也不复活。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-08",
+      "scenario": "暂停与继续",
+      "expected": "暂停阻止新恢复但保留事件；继续重核权限、预算与代次。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-09",
+      "scenario": "不伪造用户授权",
+      "expected": "stdout／报告／params 中“已批准”等文本无授权效果。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-10",
+      "scenario": "数据上限与引用",
+      "expected": "参数 schema、大小、深度和 artifact 访问限制有效，缺失不可填造。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-11",
+      "scenario": "回合与根预算不重置",
+      "expected": "新 turn／checkpoint rewind 不重置累计预算，unknown usage 不变成零。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-12",
+      "scenario": "过期／背压／无限循环",
+      "expected": "到期、队列满、次数或深度耗尽进入明确阻断状态，无静默丢终态。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-13",
+      "scenario": "claim 与启动崩溃",
+      "expected": "能证明未启动才重调度；已启动不明状态进入 InDoubt。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-14",
+      "scenario": "提交成功而 ack 中断",
+      "expected": "只补消费 ack，不再调用模型／重做文件操作。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-15",
+      "scenario": "等待提交失败",
+      "expected": "不宣称 WAITING；未转移 ownership 的源得到明确清理或人工处理。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EV-16",
+      "scenario": "协议与上下文恢复",
+      "expected": "真实 tool call/result 成对保存；host event 追加不伪造 tool_call_id，不从 UI 重建。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-01",
+      "scenario": "Job owner 转移",
+      "expected": "已登记 TaskOwned Job 在正常 yield 后仍运行；普通未登记 Job 保持原清理。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-02",
+      "scenario": "浏览器断开",
+      "expected": "批准 detached 的任务继续且可重订阅；普通聊天不被默认无限后台化。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-03",
+      "scenario": "daemon 重启的 Job",
+      "expected": "未确认进程结果标 interrupted/indeterminate，不自动重跑或按旧 PID 错认。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-04",
+      "scenario": "后台写入互斥",
+      "expected": "潜在写 Job 持有 effect lease，新冲突写执行排队，控制与检查仍可用。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-05",
+      "scenario": "异步子代理 allowlist",
+      "expected": "工具权限是宿主子集；默认不执行命令、写文件、创建调度或读个人库。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-06",
+      "scenario": "子代理独立收尾",
+      "expected": "同步 SpawnSubAgent 保持兼容；后台句柄有真实结果、预算和完成事件。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-07",
+      "scenario": "取消范围",
+      "expected": "取消 task 只清理所属源，不能杀别的项目／任务；迟到结果保留为过期来源。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "LF-08",
+      "scenario": "worker 存活不明",
+      "expected": "lease 到期不意味着可重启写调用；fencing 不被当成撤销外部效果。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-01",
+      "scenario": "一次性／相对时长",
+      "expected": "真实 fake clock 推进一次产生一个 occurrence，不靠真实 sleep 猜时序。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-02",
+      "scenario": "周期规则",
+      "expected": "interval／daily／weekly 具备确定的 next_due、end/max_occurrence 与取消。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-03",
+      "scenario": "时区与 DST",
+      "expected": "本地展示与 UTC 一致；不存在时刻跳过、重复时刻至多一次且可追溯。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-04",
+      "scenario": "错过触发",
+      "expected": "sleep/offline 后按 coalesce_once 或 skip，不产生无限 catch-up。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-05",
+      "scenario": "计划编辑代次",
+      "expected": "参数／目标／规则变更后旧 occurrence 无效，需对应授权与版本。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-06",
+      "scenario": "工作区关闭／恢复",
+      "expected": "关闭暂停，不自动打开任意目录；恢复正确显示错过触发与授权状态。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-07",
+      "scenario": "成本与取消",
+      "expected": "重复计划无有效 scope 不执行；达到次数／token／费用门槛停止。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "TM-08",
+      "scenario": "时钟回拨与重启",
+      "expected": "稳定 occurrence ID 防重复；相对计时与墙钟恢复语义可解释。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-01",
+      "scenario": "版本绑定确认",
+      "expected": "confirm card 的蓝图／Prompt／函数／Addon digest 与实际 run 一致。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-02",
+      "scenario": "确认后变更",
+      "expected": "任何受绑定资源变化均 Stale，不隐藏保存或执行新内容。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-03",
+      "scenario": "释放聊天后启动",
+      "expected": "无嵌套互斥等待；全部工具结果保存后 yield，再取得蓝图槽位。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-04",
+      "scenario": "重复确认与断连",
+      "expected": "相同 intent 查回相同逻辑 launch，不创建第二个 run。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-05",
+      "scenario": "按需会话交接",
+      "expected": "监督只读固定消息终点／授权范围，默认不注入全对话。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-06",
+      "scenario": "真实完成唤起",
+      "expected": "蓝图提交终态及副作用结算后，携带真实检查／产物恢复原 session 新 turn。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-07",
+      "scenario": "人工停止子蓝图",
+      "expected": "父任务不自动重跑；只显示结果或严格 report-only，总控制可阻断。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "BP-08",
+      "scenario": "启动／交接崩溃",
+      "expected": "intent／run／confirmation／handoff 对账，不明效果进入人工恢复。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "HC-01",
+      "scenario": "最终请求断点计数",
+      "expected": "实际完整请求中所有 marker 统一预算，system/tools/messages 组合不超界。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "HC-02",
+      "scenario": "稳定序列化",
+      "expected": "相同片段／目录产生相同顺序；非必要日期／事件变化不改写稳定前缀。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "HC-03",
+      "scenario": "角色与模型边界",
+      "expected": "主执行、客服、监督、只读子代理的工具与行为边界不因适配而扩大。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "HC-04",
+      "scenario": "协议组合与第二轮",
+      "expected": "支持的 API、推理回放、工具第二轮、流式／非流式都用本地 HTTP 夹具验证。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "HC-05",
+      "scenario": "用量与缓存未知值",
+      "expected": "reported cache read/write 与 input 口径一致；未知字段单列 coverage 不填零。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "HC-06",
+      "scenario": "真实模型匹配对照",
+      "expected": "同任务、工具、版本和预算比较旧／新 Prompt；保留失败与不同来源。",
+      "local_status": "BLOCKED_MODEL_CONFIGURATION",
+      "evidence": []
+    },
+    {
+      "id": "HC-07",
+      "scenario": "隐私与失效",
+      "expected": "日志不泄漏 Prompt／凭证；压缩／资源变更导致的合理 miss 不伪装修复。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-01",
+      "scenario": "原始权限测试修复",
+      "expected": "复现原超时，权限拒绝断言为具体原因；无关错误不能假通过。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-02",
+      "scenario": "超时与人工审批分离",
+      "expected": "执行/I/O/人工等待语义明确；迟到批准不能在已取消任务产生效果。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-03",
+      "scenario": "超时后副作用",
+      "expected": "核对实际文件与 journal；未知不能当未执行后重放。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-04",
+      "scenario": "页面来源与身份",
+      "expected": "manifest／资源绑定签名包与实例；不可冒充别的包／工作区。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-05",
+      "scenario": "Bridge schema 与权限",
+      "expected": "source/nonce/lease/能力逐次检查，拒绝任意 RPC／approval 字段／未知方法。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-06",
+      "scenario": "隔离与撤销",
+      "expected": "不能访问主 DOM／凭证／个人库；disable/upgrade/uninstall/close 立即撤销旧桥。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-07",
+      "scenario": "受控预览目标",
+      "expected": "检查只能操作登记 target，导航／重定向不越界，不能点宿主授权按钮。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "AD-08",
+      "scenario": "成果验收独立",
+      "expected": "human acceptance 绑定 preview revision，与系统权限 grant 严格不同。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "UI-01",
+      "scenario": "预览有明确版本",
+      "expected": "每项新功能有 preview ID/revision/fixture，NOT_PRESENTED 不能变 APPROVED。",
+      "local_status": "PARTIAL_STATIC_ISOLATION",
+      "evidence": [
+        "preview-isolation-e_qqnstl"
+      ]
+    },
+    {
+      "id": "UI-02",
+      "scenario": "状态覆盖",
+      "expected": "空、加载、错误、断线、只读、陈旧、等待审批、已应用等状态可预览。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "UI-03",
+      "scenario": "批准范围与差异",
+      "expected": "用户确认引用版本；未展示交互或显著变化需重新预览。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "UI-04",
+      "scenario": "真实接入保真",
+      "expected": "接入后与已批准结构／交互一致，不把 fixture 数据留在生产路径。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "UI-05",
+      "scenario": "跨工作区与重连",
+      "expected": "旧请求晚到不更新新工作区；重连不会显示伪造成功或错误 run。",
+      "local_status": "PASS_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "UI-06",
+      "scenario": "可用性与文案",
+      "expected": "键盘／焦点／窄屏／主题／减少动画；固定英文文案，不改用户原文。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "UI-07",
+      "scenario": "取消与确认入口",
+      "expected": "Stop、Pause、Run、schedule approval、成果验收均由正确宿主动作处理。",
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "resource-chat-blueprint-regression-9ntxd8fk",
+        "fixture-e2e-owned-port-5idnbprw"
+      ]
+    },
+    {
+      "id": "E2E-01",
+      "scenario": "完整主链路",
+      "expected": "个人/项目 Prompt → ReAct → 黑板 → 蓝图确认 → 执行 → event → 原会话续跑。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "E2E-02",
+      "scenario": "三类等待源",
+      "expected": "Job、异步子代理和 timer 各至少一条真实 daemon 完整链路。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "E2E-03",
+      "scenario": "资源与权限负链路",
+      "expected": "未批准、资源变更、跨库访问、停止、预算不足都无未授权副作用。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "E2E-04",
+      "scenario": "生产 Web 全链路",
+      "expected": "生产 Web → grpc-web → daemon → 本地模型夹具；不由 demo gateway 替代。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "E2E-05",
+      "scenario": "平台与冻结",
+      "expected": "固定提交、Linux 与目标 Windows，build/test/clippy 与 Web 全门槛有证据。",
+      "local_status": "BLOCKED_NATIVE_WINDOWS",
+      "evidence": [
+        "native-linker-probe-7wf65372"
+      ]
+    },
+    {
+      "id": "E2E-06",
+      "scenario": "升级／回退／维护",
+      "expected": "迁移备份、事件去重、旧会话兼容、文档和快照可恢复，未知结果列明。",
+      "local_status": "PARTIAL_SOURCE_RECOVERY",
+      "evidence": [
+        "workspace-review-2026-10-20/handoff-reception.json"
+      ]
+    },
+    {
+      "id": "PFM-01",
+      "scenario": "长会话／大图",
+      "expected": "建议 1k 节点／10k 调用记录／长日志样本测交互与 payload，阈值在基线后确定。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PFM-02",
+      "scenario": "事件风暴",
+      "expected": "重复事件与大量任务检验合并、背压、公平、内存界限，不丢终态。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "PFM-03",
+      "scenario": "长时间恢复",
+      "expected": "多次重启、暂停、权限撤销、资源更新后任务不失控、不重复消费。",
+      "local_status": "NOT_RUN",
+      "evidence": []
+    }
+  ],
+  "model_authorization": "Owner allows paid calls in principle; exact model, endpoint, data scope and spending limit pending. Zero actual calls."
+}

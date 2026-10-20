@@ -1,5 +1,9 @@
 # 类型检查修复起点
 
+> 2026-10-20：本机已复现并修复下列33条应用诊断，正常入口现检查app与所有
+> 根配置；注入错误也会失败。详细证据见 `LOCAL_ACCEPTANCE_20261020.md`。
+> 下文保留原始修复清单，供审计与回归参考。
+
 ## 已确认的问题
 `modules/webcore/tsconfig.json` 的 files 为空，只有references。历史 `pnpm typecheck` 实际是 `vue-tsc --noEmit`，可能空跑。先修这一入口；根级命令成功不能继续当成app检查成功。
 

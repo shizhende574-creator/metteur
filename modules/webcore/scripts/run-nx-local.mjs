@@ -1,4 +1,5 @@
 import { blueprintOutcome } from './nx-blueprint-fixture.mjs'
+import { localDelayCommand, withCurrentNodePath } from './local-job-fixture.mjs'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
@@ -40,7 +41,7 @@ const receipts = {
   sawToolResult: false,
 }
 
-function start(name, executable, args, env = process.env) {
+function start(name, executable, args, env = withCurrentNodePath()) {
   const log = createWriteStream(join(root, `${name}.log`))
   const child = spawn(executable, args, {
     cwd: webcore,
@@ -90,7 +91,7 @@ const provider = createServer(async (request, response) => {
     const job = jobText.match(/"job_id"\s*:\s*"([^"\s]+)"/)
     let final = jobMode ? hasWait : Boolean(result && JSON.stringify(result).includes(nonce))
     receipts.calls++
-    let tool = {id:jobMode?(job?'fixture-wait':'fixture-job'):'fixture-read',type:'function',function: jobMode ? (job? {name:'AwaitEvents',arguments:JSON.stringify({sources:[job[1]],mode:'all',deadline_ms:Date.now()+3600000,params:{fixture:'local-only'}})} : {name:'StartCommand',arguments:JSON.stringify({command:'sleep 8'})}) : {name:'ReadFile',arguments:JSON.stringify({path:'app.ts'})}}
+    let tool = {id:jobMode?(job?'fixture-wait':'fixture-job'):'fixture-read',type:'function',function: jobMode ? (job? {name:'AwaitEvents',arguments:JSON.stringify({sources:[job[1]],mode:'all',deadline_ms:Date.now()+3600000,params:{fixture:'local-only'}})} : {name:'StartCommand',arguments:JSON.stringify({command:localDelayCommand()})}) : {name:'ReadFile',arguments:JSON.stringify({path:'app.ts'})}}
     let content = jobMode ? 'M2_LOCAL_JOB completed through the host continuation.' : `METTEUR_LOCAL_READY ${nonce}: app.ts exports the local evidence constant.`
     const launchMode=body.messages?.some(m=>m.role==='user'&&String(m.content).includes('M3_LOCAL_BLUEPRINT'));
     const nodeMode=body.messages?.some(m=>String(m.content)==='BLUEPRINT_NODE');

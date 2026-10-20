@@ -28,9 +28,9 @@ The first browser attempt failed before tests: Windows denied the chosen localho
 
 ## Remaining acceptance
 
-- Native Windows Rust is blocked: a minimal program using installed Rust 1.99.0 fails with `link.exe not found`. MSVC/SDK/CMake/LLVM setup is needed; the owner has been asked to install the administrator-level prerequisites. Evidence: `native-linker-probe-7wf65372`.
+- Native Windows initially failed: a minimal program using installed Rust 1.99.0 returned `link.exe not found` (`native-linker-probe-7wf65372`). The owner subsequently requested installation; the signed Microsoft installer is installing MSVC/SDK/CMake, and the official LLVM installer is being downloaded with SHA256 verification. Installation and native validation are not yet complete.
 - Cargo offline preflight could not resolve cached `anyhow`; no tests compiled (`native-shared-preflight-icmhm95q`).
-- Local WSL Ubuntu 24.04 is available. Linux build prerequisites are being prepared; Linux results will remain separate from native Windows results.
+- Local WSL Ubuntu 24.04 build prerequisites and exact Rust 1.99.0 are installed. The locked workspace build is in progress (`linux-workspace-build-l8jyjnig`); this is separate from native Windows validation.
 - Paid model calls are permitted in principle, pending the owner's exact models, endpoints, data scope and spending limit. No real-model calls have been made.
 - Mock browser tests do not replace real daemon/provider tests or cover all new NX surfaces. Backend integration, resource/task/schedule interactions, the 45-task matrix and final human visual review remain open.
 - No remote publication, PR update or merge.
@@ -50,3 +50,21 @@ Initial failing evidence: `resource-races-before-fix-qtg1c3k4`, `resource-save-b
 The repaired five resource cases plus affected Chat/composer/rewind/blueprint-save tests passed: **33 passed**, one worker, zero retries (`resource-chat-blueprint-regression-9ntxd8fk`). These are 28 reused regression cases and five new cases, not 33 additional distinct requirements.
 
 This remains a mock gateway/browser check. Actual daemon ownership/permission checks and provider behavior remain separate acceptance layers.
+
+## Further local verification work
+
+- Marked the Blueprint custom node component raw and reused its type map. The four save-failure browser cases now also assert that rendering emits no reactive-component warning; all passed in the 33-case directed run.
+- Pinned `verifyDepsBeforeRun: error`: scripts fail on stale dependencies instead of silently reinstalling them during other checks. An overlapping pnpm install previously caused an EPERM rename failure (`resource-race-types-eqv0gcd6`); this environment failure remains recorded. After explicit frozen installation, normal app/config checking passed (`current-frontend-types-xk9gxphl`) and lint passed (`current-frontend-lint-fhvpf6ch`).
+- Replaced the NX fixture's `sleep 8` command with an actual Node timer and ensured its daemon inherits the launcher's Node directory in PATH. Native Windows shell execution and PATH handling passed four unit cases; identity checks passed three more (`fixture-identity-and-native-delay-l4urco9k`). This proves the command helper, not the complete native daemon flow.
+- Navigation normalization/move/upgrade assertions passed (`navigation-order-jqkxezq4`); preview registry/production-entry isolation passed (`preview-isolation-e_qqnstl`). These checks are now included in the ordinary verification script.
+- `LOCAL_ACCEPTANCE_MATRIX.json` enumerates all **45 NX tasks and 88 scenarios**, with unrun and partial local states retained. Model authorization is pending concrete configuration and budget; native Windows tooling installation is in progress.
+
+## Project memory concurrency repairs
+
+Three further directed browser probes reproduced source evidence appearing under a different note, filtering retargeting a draft to another note, and save acknowledgements discarding newer text (`memory-races-before-z4vx1zn1`: three semantic failures).
+
+The memory editor now retains its original note and revision, invalidates source requests on selection/workspace changes, and binds save completion to its edit session. Newer text remains unsaved after the submitted revision is acknowledged. Workspace changes invalidate mutation completions synchronously.
+
+All three probes passed after repair (`memory-races-fixed-666mybqp`), with effective app/config types (`memory-and-layout-types-m6bo3zjj`), lint (`memory-resource-lint-o1fcb7b9`) and production build (`frontend-production-memory-wszd5ubn`) passing. Native daemon memory validation remains separate.
+
+The ordinary verification script also passed all seven steps (`default-gate/first-8umb2qrd`). A later direct production command detected a pnpm CI/non-CI virtual-store difference before building (`frontend-production-r2-mb78przy`); the workspace now explicitly selects the same local store layout in both modes. Typechecking and the latest production build passed in a normal shell without setting CI. Dependency versions did not change.
