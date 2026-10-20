@@ -23,6 +23,7 @@ const chat = useChatStore(),
   error = ref(''),
   confirm = ref(false),
   next = ref<string | null>(null)
+const entry = computed(() => rows.value.find((r) => r.task.id === selected.value) ?? rows.value[0])
 interface LaunchReceipt { id:string; state:string; blueprint_name:string; run_id:string|null; attention:string|null; resume_on_completion:boolean; result:unknown }
 const launchReceipt=ref<LaunchReceipt|null>(null),launchError=ref(''),execution=useExecutionStore()
 let launchQuery=0
@@ -42,7 +43,6 @@ const models = computed(() => Object.keys(config.effective.llm?.models ?? {}))
 let preferredSession = ''
 let generation = 0,
   refreshing = false
-const entry = computed(() => rows.value.find((r) => r.task.id === selected.value) ?? rows.value[0])
 const available = computed(() => gateway.connected.value && !busy.value)
 async function load(append = false) {
   const root = workspace.active?.path

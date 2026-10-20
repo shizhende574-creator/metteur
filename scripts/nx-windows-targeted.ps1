@@ -23,8 +23,11 @@ foreach ($case in $cases) {
  $cargo = (Get-Command cargo -CommandType Application -ErrorAction Stop).Source
  $stdout = Join-Path $OutputDirectory "$name.stdout.log"
  $stderr = Join-Path $OutputDirectory "$name.stderr.log"
- $process = Start-Process -FilePath $cargo -ArgumentList (@('test','--locked','-p','metteur-daemon') + $arguments + @('--','--nocapture')) -WorkingDirectory $root -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -Wait -PassThru
- $process.Refresh()
+ $process = Start-Process -FilePath $cargo -ArgumentList (@('test','--locked','-p','metteur-daemon') + $arguments + @('--','--nocapture')) -WorkingDirectory $root -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
+ # Retain the process handle before exit; wait for Cargo itself rather than
+ # persistent compiler helpers in its process tree. Preserve the real exit code.
+ $handle = $process.Handle
+ $process.WaitForExit()
  $exitCode = $process.ExitCode
  @("Exit code: $exitCode", '--- stdout ---', (Get-Content -Raw -LiteralPath $stdout), '--- stderr ---', (Get-Content -Raw -LiteralPath $stderr)) | Set-Content -LiteralPath (Join-Path $OutputDirectory "$name.log") -Encoding UTF8
  if ($null -eq $exitCode -or $exitCode -ne 0) { throw "$name failed with exit code $exitCode; preserve logs and stop." }

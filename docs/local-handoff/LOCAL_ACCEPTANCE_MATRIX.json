@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "date": "2026-10-20 Asia/Shanghai",
+  "date": "Started 2026-10-20; updated 2026-10-21 Asia/Shanghai",
   "state": "IN_PROGRESS",
   "base_commit": "ff7b795e536042e885f08a9bf7a2e5d4a3121749",
   "evidence_root": "D:/BaiduNetdiskDownload/metteur-a7-work/tmp/local-acceptance-20261020",
@@ -236,16 +236,20 @@
       "phase": "NX-M2",
       "requirement": "批准后接入任务等待/唤起 UI",
       "historical_cloud_status": "INTEGRATED_PROVISIONAL",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_PRODUCTION_RENDERING",
+      "evidence": [
+        "native-live-page-review-ready-99wj4s_e"
+      ]
     },
     {
       "id": "NX-25",
       "phase": "NX-M2",
       "requirement": "批准后接入定时管理 UI",
       "historical_cloud_status": "INTEGRATED_PROVISIONAL",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_PRODUCTION_RENDERING",
+      "evidence": [
+        "native-live-page-review-ready-99wj4s_e"
+      ]
     },
     {
       "id": "NX-26",
@@ -388,8 +392,10 @@
       "phase": "NX-M5",
       "requirement": "批准后接入 Addon 页面宿主 UI",
       "historical_cloud_status": "INTEGRATED_PROVISIONAL",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_PRODUCTION_RENDERING",
+      "evidence": [
+        "native-live-page-review-ready-99wj4s_e"
+      ]
     },
     {
       "id": "NX-41",
@@ -983,10 +989,11 @@
       "id": "UI-02",
       "scenario": "状态覆盖",
       "expected": "空、加载、错误、断线、只读、陈旧、等待审批、已应用等状态可预览。",
-      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "local_status": "PARTIAL_NATIVE_RENDERING_AND_NAVIGATION",
       "evidence": [
         "resource-chat-blueprint-regression-9ntxd8fk",
-        "fixture-e2e-owned-port-5idnbprw"
+        "fixture-e2e-owned-port-5idnbprw",
+        "native-live-page-review-ready-99wj4s_e"
       ]
     },
     {
@@ -1019,19 +1026,21 @@
       "id": "UI-06",
       "scenario": "可用性与文案",
       "expected": "键盘／焦点／窄屏／主题／减少动画；固定英文文案，不改用户原文。",
-      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "local_status": "PARTIAL_NATIVE_RENDERING_AND_NAVIGATION",
       "evidence": [
         "resource-chat-blueprint-regression-9ntxd8fk",
-        "fixture-e2e-owned-port-5idnbprw"
+        "fixture-e2e-owned-port-5idnbprw",
+        "native-live-page-review-ready-99wj4s_e"
       ]
     },
     {
       "id": "UI-07",
       "scenario": "取消与确认入口",
       "expected": "Stop、Pause、Run、schedule approval、成果验收均由正确宿主动作处理。",
-      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "local_status": "PARTIAL_NATIVE_RENDERING_AND_NAVIGATION",
       "evidence": [
-        "launch-review-binding-g5fpfc5b"
+        "launch-review-binding-g5fpfc5b",
+        "native-live-page-review-ready-99wj4s_e"
       ],
       "limitations": "Blueprint launch review only; other confirmation/cancellation surfaces remain separate."
     },
@@ -1071,11 +1080,13 @@
       "id": "E2E-05",
       "scenario": "平台与冻结",
       "expected": "固定提交、Linux 与目标 Windows，build/test/clippy 与 Web 全门槛有证据。",
-      "local_status": "PARTIAL_NATIVE_AND_LINUX_BUILD",
+      "local_status": "PARTIAL_NATIVE_TARGETED_PASS_LINUX_SUITE_REPAIR",
       "evidence": [
         "native-linker-probe-7wf65372",
         "native-workspace-build-zeqx_w2j",
-        "linux-continuation-build-srs0ixhz"
+        "linux-continuation-build-srs0ixhz",
+        "native-targeted-serial-w80j_8tn",
+        "linux-frozen-rust-final-sjl43_2m"
       ]
     },
     {
@@ -1126,18 +1137,22 @@
       ]
     },
     "native_windows_daemon_targeted": {
-      "status": "PARTIAL_LOCK_STORAGE_AND_REPAIRED_RECOVERY_PASS_FROZEN_RERUN_PENDING",
+      "status": "PASS_ACTUAL_THREE_GROUPS_WITH_CANDIDATE_SCRIPT",
+      "passed": 7,
+      "failed": 0,
       "evidence": [
-        "native-daemon-targeted-fixed-qm39jt7o",
+        "native-targeted-serial-w80j_8tn",
         "native-recovery-fixed-i59ki_j4",
         "native-canonical-checkpoint-oalhtm6t"
       ]
     },
     "linux_workspace": {
-      "status": "BUILD_PASS_FULL_TESTS_AND_CLIPPY_PENDING",
+      "status": "BUILD_PASS_TEST_FAILED_CATALOGUE_FIXED_RERUN_PENDING_CLIPPY_NOT_RUN",
+      "reported_passed_before_stop": 725,
+      "reported_failed": 1,
       "evidence": [
-        "linux-workspace-build-l8jyjnig",
-        "linux-continuation-build-srs0ixhz"
+        "linux-frozen-rust-final-sjl43_2m",
+        "node-catalog-native-rpc-ia1wrslw"
       ]
     },
     "windows_validation_script_contract": {
@@ -1159,6 +1174,22 @@
         "linux-daemon-live-nx-transition-4wdpse3g",
         "linux-live-blueprint-follow-ooeig6gk",
         "linux-live-blueprint-reload-_moki4dd"
+      ]
+    },
+    "native_windows_live": {
+      "status": "PASS_SYNTHETIC_PROVIDER_FLOWS_AND_TASK_ID_REOPEN",
+      "evidence": [
+        "native-live-chat-r88c2gc5",
+        "native-live-job-decline-ouk3k220",
+        "native-live-blueprint-reload-6xt0_jkd",
+        "node-catalog-native-rpc-ia1wrslw"
+      ]
+    },
+    "native_production_surfaces": {
+      "status": "PASS_TECHNICAL_RENDERING_OWNER_APPROVAL_PENDING",
+      "rendering_checks": 28,
+      "evidence": [
+        "native-live-page-review-ready-99wj4s_e"
       ]
     }
   }
