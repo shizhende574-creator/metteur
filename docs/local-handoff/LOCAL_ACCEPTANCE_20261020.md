@@ -1,3 +1,5 @@
+> 当前收尾结果（2026-10-21）：[COMPLETION_20261021.md](COMPLETION_20261021.md)。下文为接收/历史过程记录，旧的未付费、未测 Windows、未完成配对状态已被当前证据取代。
+
 # Local acceptance in progress — started 2026-10-20, updated 2026-10-21
 
 > Later model/configuration audit on 2026-10-21: see [UNFINISHED_AUDIT_20261021.md](UNFINISHED_AUDIT_20261021.md). Existing DeepSeek configuration verified by two bounded real generation requests under the owner's USD 5 synthetic-data authorization. Historical zero-call statements below describe the earlier engineering candidate; no paired evaluation has run.

@@ -1,3 +1,5 @@
+> 2026-10-21 配对评测已完成，见 [EVALUATION_20261021.md](EVALUATION_20261021.md)。以下改动按发生阶段保留；held-out 没有用于继续调 Prompt。
+
 # Harness候选变化
 
 2026-10-21 本地 development 适配：`runtime-contract.md` 升为 nx-m4-2。真实 DeepSeek Flash 的 dev-02 请求在给定测试命令后追加 `; echo EXIT=%ERRORLEVEL%`，触发了额外审批且混用了 shell 语法。候选现明确 ExecuteCommand 已返回 exit_code，应原样执行指定验证命令；拒绝后不得扩大命令范围。旧 Prompt 基线保留，评测执行器只批准完整匹配的合成命令，新增规则不扩大任何角色权限。首轮执行器审批大小写错误与文件占用失败另行记录，不归因于模型质量。保留集尚未运行；最终效果以配对记录为准。

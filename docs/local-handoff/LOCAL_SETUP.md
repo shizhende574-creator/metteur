@@ -95,11 +95,17 @@ MSVC/Windows SDK/CMake/LLVM 已安装；原生工作区构建、共享模块57�
 使用本轮已有前端产物，以下命令仅启动隔离演示和本地合成 provider，直接在当前本机 PowerShell 运行：
 
 ```powershell
-$env:METTEUR_WEB_DIST = 'D:/BaiduNetdiskDownload/metteur-a7-work/build/local-acceptance-20261021-web-final'
+$env:METTEUR_WEB_DIST = 'D:/BaiduNetdiskDownload/metteur-a7-work/build/local-acceptance-20261021-web-complete'
 $env:METTEUR_VALIDATION_DIR = 'D:/BaiduNetdiskDownload/metteur-a7-work/tmp/manual-native-demonstration'
 py -3.12 -X utf8 F:/space/06_Projects/Agent/workspace-review-2026-10-20/run_native.py node modules/webcore/scripts/run-nx-local.mjs --serve-only
 ```
 
 按启动输出/ready.json中的实际 URL 和测试 workspace 打开界面；端口自动分配。在该终端按 Ctrl+C 停止演示。编译或重新链接 Windows 可执行文件前，先停止使用它的演示服务。本机验证启动器会激活已安装的工具，不要求修改全局 PATH。交接包 `local-tools/` 保存这些脚本；迁移机器时先调整脚本中的本机路径并安装相应工具。
 
-这条入口不配置实际模型。用户已原则上允许付费调用，实际两类模型ID、接口/端点、允许数据范围和费用上限尚待给定；截至本轮真实模型调用数为0。
+这条演示入口不配置实际模型。真实双 DeepSeek 配对与完整链路已完成，总 US$5 合成数据授权未超额，逐次用量与估算见 EVALUATION_20261021.md。
+
+## 收尾包直接启动与模型意见配置
+
+包根 `Start-demo.ps1` 使用包内 runtime/windows 和 runtime/web；只需 Node 24，不需要 node_modules 或重新编译。此入口为免费合成演示。实际启动可显式运行 `metteurd --config <本机安全TOML> --data-dir <自己的数据目录> --listen-addr 127.0.0.1:<端口>`，再以 metteur-web 指向该 daemon 和生产 static-dir。不要从演示配置继承 synthetic provider，也不要把测试费用授权扩大为真实数据调用。
+
+Addon 模型意见默认关闭。可信操作员需同时设置绝对路径 `METTEUR_PREVIEW_MODEL_PYTHON`、`METTEUR_PREVIEW_MODEL_REVIEWER`（source/scripts/nx_preview_model.py）、`METTEUR_PREVIEW_MODEL_SETTINGS`。settings 只引用 credential_config/credential_alias、允许模型 ID、同一 ledger_path、spending_limit_usd=5 和原 smoke imported_nano_usd=261900；不在 settings 放密钥。不要重建账本以绕过原 US$5 总额。renderer 仍需原有 Node/Chromium 绝对路径配置，保留沙箱。缺配置如实显示 not_configured；模型意见不是浏览器事实、人工验收或权限批准。

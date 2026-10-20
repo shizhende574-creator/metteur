@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "date": "2026-10-21 Asia/Shanghai",
-  "status": "TWO_DEEPSEEK_MODELS_DEVELOPMENT_PASS_HELD_OUT_PENDING",
+  "status": "TWO_DEEPSEEK_MODELS_PAIRED_EVALUATION_AND_ROLE_CHAINS_COMPLETE",
   "authorization": {
     "paid_calls_allowed": true,
     "spending_limit": 5,
@@ -45,7 +45,8 @@
         "context_output_limit": 1024,
         "temperature": 0,
         "max_iterations": 7
-      }
+      },
+      "current_evaluation": "PASS_MATCHED_SYNTHETIC_AND_ACTUAL_ROLE_BOUNDARIES"
     },
     {
       "slot": "B",
@@ -69,7 +70,8 @@
         "output": 3.96,
         "cache_read": 0.04
       },
-      "pricing_verified_date": "2026-10-21 Asia/Shanghai"
+      "pricing_verified_date": "2026-10-21 Asia/Shanghai",
+      "current_evaluation": "PASS_MATCHED_SYNTHETIC_AND_ACTUAL_ROLE_BOUNDARIES"
     }
   ],
   "pricing": {
@@ -93,15 +95,12 @@
     "cache_discount_assumed": false
   },
   "budget_control": {
-    "generation_request_attempts_so_far": 132,
-    "smoke_reservation_usd": 0.05,
-    "smoke_max_requests": 2,
-    "max_request_bytes": 16000,
-    "max_output_tokens_each": 512,
+    "generation_request_attempts_so_far": 379,
     "automatic_retries": 0,
-    "note": "Durable shared kernel-locked ledger is enforced by scripts/nx_model_support.py. Zero automatic generation retries. Unknown outcomes retain reservations and block new paid calls.",
-    "estimated_peak_upper_usd_so_far": 0.66681552,
-    "ledger_path": "D:/BaiduNetdiskDownload/metteur-a7-work/tmp/local-acceptance-20261020/real-model-ledger-20261021.json"
+    "note": "US$5 shared durable ledger. All first failures and smoke included. No further paid calls needed for this completion.",
+    "estimated_peak_upper_usd_so_far": 1.82139858,
+    "ledger_path": "D:/BaiduNetdiskDownload/metteur-a7-work/tmp/local-acceptance-20261020/real-model-ledger-20261021.json",
+    "provider_actual_bill_usd": null
   },
   "evidence": [
     {
@@ -123,6 +122,6 @@
       "sha256": "54d7258001917041db2746122f894ca220efba2f4d2dec1310bfbfec148f9735"
     }
   ],
-  "claim_boundary": "Development matched cells passed. Held-out, installed Addon browser acceptance and final whole-project sign-off remain pending. No significant improvement claim.",
+  "claim_boundary": "24 latest development cells and 48 frozen held-out cells accepted, with disclosed driver corrections. Floating aliases, small synthetic sample, no general improvement or actual-bill claim.",
   "evidence_copy_boundary": "Public evidence copies normalize CRLF to LF for reproducible Git export. Both canonical copy SHA256 and original source SHA256 are retained."
 }

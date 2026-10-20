@@ -1,3 +1,5 @@
+> 当前本地 45/88 完整工程状态已更新到 [LOCAL_ACCEPTANCE_MATRIX.json](../local-handoff/LOCAL_ACCEPTANCE_MATRIX.json) 与 [收尾报告](../local-handoff/COMPLETION_20261021.md)。下表保留云端阶段历史，不代表当前验收。
+
 # NX requirement closure matrix
 
 All 45 task IDs are accounted for. Statuses deliberately distinguish implementation, scoped evidence, provisional UI approval and deferred final acceptance. Historical evidence is not relabelled as a new frozen-RC test.

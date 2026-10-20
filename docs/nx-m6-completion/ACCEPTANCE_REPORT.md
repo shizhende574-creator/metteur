@@ -1,3 +1,5 @@
+> 2026-10-21 当前补充：受控真实模型意见与签名安装页验收已完成，见 [本地收尾](../local-handoff/COMPLETION_20261021.md)。下文旧 not_run/待办为历史阶段状态。
+
 > 最新本地交接说明（2026-10-15）：以下为阶段历史记录。当前状态、类型检查更正和后续全部任务以 `docs/local-handoff/START_HERE.md` 为入口；历史“前端typecheck通过”不能当作有效app检查通过，当前尚有33条既有诊断。规模/渲染等后续补齐以最新报告为准。
 
 # M6 non-model completion report

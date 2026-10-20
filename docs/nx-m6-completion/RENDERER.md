@@ -1,3 +1,5 @@
+> 2026-10-21 当前补充：受控真实模型意见与签名安装页验收已完成，见 [本地收尾](../local-handoff/COMPLETION_20261021.md)。下文旧 not_run/待办为历史阶段状态。
+
 # Offline preview renderer
 
 This is an optional operator-owned host adapter. It renders only the exact selected registered local HTML bytes. It is not a general browser agent, does not visit an arbitrary URL and makes no paid/model requests.
