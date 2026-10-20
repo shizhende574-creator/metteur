@@ -568,6 +568,11 @@ impl DaemonService {
             let (mut terminal, saved) = match outcome {
                 Ok(outcome) => {
                     wait_intent = outcome.waiting.clone();
+                    if wait_intent.is_some() {
+                        if let Some(handle) = &task_handle {
+                            transcript.lock().push_waiting(handle.id, now);
+                        }
+                    }
                     // Text-only answers are not appended by the loop; persist
                     // them so a resumed session remembers prior turns.
                     let mut saved_context = outcome.context.clone();
@@ -603,6 +608,7 @@ impl DaemonService {
                             // show a capacity meter without a second RPC.
                             "context": stats,
                             "session_id": session_id.to_string(),
+                            "task_id": task_handle.as_ref().map(|handle| handle.id.to_string()),
                             "turn_elapsed_ms": turn_elapsed_ms,
                         })
                         .to_string(),

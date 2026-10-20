@@ -38,14 +38,17 @@
       "phase": "NX-M0",
       "requirement": "建立可复现验证门槛",
       "historical_cloud_status": "PARTIAL_PLATFORM",
-      "local_status": "PARTIAL_LOCAL_WEB",
+      "local_status": "PARTIAL_WEB_AND_PLATFORM_BUILDS",
       "evidence": [
         "current-frontend-types-xk9gxphl",
         "typecheck-coverage-directed-8wh7l5ua",
         "fixture-e2e-owned-port-5idnbprw",
         "default-gate/first-8umb2qrd",
         "frontend-production-memory-wszd5ubn",
-        "web-final-gate/first-k44as6eq"
+        "web-final-gate/first-k44as6eq",
+        "web-follow-gate/first-bbohctr8",
+        "native-workspace-build-zeqx_w2j",
+        "linux-continuation-build-srs0ixhz"
       ]
     },
     {
@@ -161,16 +164,21 @@
       "phase": "NX-M2",
       "requirement": "统一准入、dispatch 与副作用租约",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_RECOVERY",
+      "evidence": [
+        "native-recovery-fixed-i59ki_j4",
+        "native-canonical-checkpoint-oalhtm6t"
+      ]
     },
     {
       "id": "NX-17",
       "phase": "NX-M2",
       "requirement": "Job 完成源与 owner 转移",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_JOB_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-daemon-live-nx-transition-4wdpse3g"
+      ]
     },
     {
       "id": "NX-18",
@@ -217,8 +225,11 @@
       "phase": "NX-M2",
       "requirement": "三类源恢复与崩溃窗口收口",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_RECOVERY",
+      "evidence": [
+        "native-recovery-fixed-i59ki_j4",
+        "native-canonical-checkpoint-oalhtm6t"
+      ]
     },
     {
       "id": "NX-24",
@@ -241,8 +252,10 @@
       "phase": "NX-M2",
       "requirement": "唤起基础完整验收",
       "historical_cloud_status": "LOCAL_CANDIDATE_VERIFIED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_JOB_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-daemon-live-nx-transition-4wdpse3g"
+      ]
     },
     {
       "id": "NX-27",
@@ -257,33 +270,47 @@
       "phase": "NX-M3",
       "requirement": "蓝图运行提案与具体确认",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_BLUEPRINT_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "NX-29",
       "phase": "NX-M3",
       "requirement": "安全 yield 后启动蓝图",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_BLUEPRINT_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "NX-30",
       "phase": "NX-M3",
       "requirement": "蓝图终态事件与父会话续跑",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_BLUEPRINT_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "NX-31",
       "phase": "NX-M3",
       "requirement": "批准后接入运行确认与交接 UI",
       "historical_cloud_status": "INTEGRATED_PROVISIONAL",
-      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "local_status": "PARTIAL_LIVE_BLUEPRINT_SYNTHETIC_PROVIDER",
       "evidence": [
-        "launch-review-binding-g5fpfc5b"
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
       ]
     },
     {
@@ -291,8 +318,12 @@
       "phase": "NX-M3",
       "requirement": "聊天—蓝图—聊天集成验收",
       "historical_cloud_status": "IMPLEMENTED_TARGETED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_BLUEPRINT_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "NX-33",
@@ -536,8 +567,10 @@
       "id": "EV-01",
       "scenario": "真正结束回合",
       "expected": "WAITING 后不占前台、没有待完成模型调用／RPC；可观察预算不增加。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_JOB_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-daemon-live-nx-transition-4wdpse3g"
+      ]
     },
     {
       "id": "EV-02",
@@ -648,8 +681,10 @@
       "id": "LF-01",
       "scenario": "Job owner 转移",
       "expected": "已登记 TaskOwned Job 在正常 yield 后仍运行；普通未登记 Job 保持原清理。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_JOB_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-daemon-live-nx-transition-4wdpse3g"
+      ]
     },
     {
       "id": "LF-02",
@@ -760,8 +795,11 @@
       "id": "BP-01",
       "scenario": "版本绑定确认",
       "expected": "confirm card 的蓝图／Prompt／函数／Addon digest 与实际 run 一致。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_BROWSER_FIXTURE_AND_LIVE_APPROVAL",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b",
+        "linux-live-blueprint-follow-ooeig6gk"
+      ]
     },
     {
       "id": "BP-02",
@@ -774,8 +812,11 @@
       "id": "BP-03",
       "scenario": "释放聊天后启动",
       "expected": "无嵌套互斥等待；全部工具结果保存后 yield，再取得蓝图槽位。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PASS_LIVE_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "BP-04",
@@ -795,8 +836,11 @@
       "id": "BP-06",
       "scenario": "真实完成唤起",
       "expected": "蓝图提交终态及副作用结算后，携带真实检查／产物恢复原 session 新 turn。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PASS_LIVE_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "BP-07",
@@ -963,10 +1007,12 @@
       "id": "UI-05",
       "scenario": "跨工作区与重连",
       "expected": "旧请求晚到不更新新工作区；重连不会显示伪造成功或错误 run。",
-      "local_status": "PASS_BROWSER_FIXTURE",
+      "local_status": "PARTIAL_BROWSER_FIXTURE_AND_LIVE_RELOAD",
       "evidence": [
         "resource-chat-blueprint-regression-9ntxd8fk",
-        "fixture-e2e-owned-port-5idnbprw"
+        "fixture-e2e-owned-port-5idnbprw",
+        "chat-following-regressions-gyfbusp6",
+        "linux-live-blueprint-reload-_moki4dd"
       ]
     },
     {
@@ -1014,16 +1060,22 @@
       "id": "E2E-04",
       "scenario": "生产 Web 全链路",
       "expected": "生产 Web → grpc-web → daemon → 本地模型夹具；不由 demo gateway 替代。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_LIVE_PRODUCTION_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-live-chat-v2-sualv4f3",
+        "linux-daemon-live-nx-transition-4wdpse3g",
+        "linux-live-blueprint-reload-_moki4dd"
+      ]
     },
     {
       "id": "E2E-05",
       "scenario": "平台与冻结",
       "expected": "固定提交、Linux 与目标 Windows，build/test/clippy 与 Web 全门槛有证据。",
-      "local_status": "BLOCKED_NATIVE_WINDOWS",
+      "local_status": "PARTIAL_NATIVE_AND_LINUX_BUILD",
       "evidence": [
-        "native-linker-probe-7wf65372"
+        "native-linker-probe-7wf65372",
+        "native-workspace-build-zeqx_w2j",
+        "linux-continuation-build-srs0ixhz"
       ]
     },
     {
@@ -1074,21 +1126,39 @@
       ]
     },
     "native_windows_daemon_targeted": {
-      "status": "BUILD_IN_PROGRESS",
+      "status": "PARTIAL_LOCK_STORAGE_AND_REPAIRED_RECOVERY_PASS_FROZEN_RERUN_PENDING",
       "evidence": [
-        "native-daemon-targeted-fixed-qm39jt7o"
+        "native-daemon-targeted-fixed-qm39jt7o",
+        "native-recovery-fixed-i59ki_j4",
+        "native-canonical-checkpoint-oalhtm6t"
       ]
     },
     "linux_workspace": {
-      "status": "BUILD_IN_PROGRESS",
+      "status": "BUILD_PASS_FULL_TESTS_AND_CLIPPY_PENDING",
       "evidence": [
-        "linux-workspace-build-l8jyjnig"
+        "linux-workspace-build-l8jyjnig",
+        "linux-continuation-build-srs0ixhz"
       ]
     },
     "windows_validation_script_contract": {
       "status": "PASS_NATIVE_STUB_CONTRACT_ONLY",
       "evidence": [
         "windows-gate-contract-1ewoepf1"
+      ]
+    },
+    "native_windows_workspace_build": {
+      "status": "PASS_DIRTY_SOURCE_RECORDED",
+      "evidence": [
+        "native-workspace-build-zeqx_w2j"
+      ]
+    },
+    "live_production_web": {
+      "status": "PARTIAL_ACTUAL_DAEMON_SYNTHETIC_PROVIDER",
+      "evidence": [
+        "linux-live-chat-v2-sualv4f3",
+        "linux-daemon-live-nx-transition-4wdpse3g",
+        "linux-live-blueprint-follow-ooeig6gk",
+        "linux-live-blueprint-reload-_moki4dd"
       ]
     }
   }

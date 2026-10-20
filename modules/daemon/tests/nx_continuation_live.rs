@@ -146,11 +146,16 @@ async fn real_job_yields_saves_entire_batch_and_resumes_once_in_same_session() {
     .unwrap()
     .into_inner();
     let mut waiting = false;
+    let mut waiting_task = None;
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         while let Some(e) = stream.next().await {
             let e = e.unwrap();
             assert_ne!(e.kind, "error", "{}", e.content);
             waiting |= e.kind == "waiting";
+            if e.kind == "waiting" {
+                let detail: serde_json::Value = serde_json::from_str(&e.detail_json).unwrap();
+                waiting_task = detail["task_id"].as_str().map(str::to_owned);
+            }
         }
     })
     .await
@@ -180,10 +185,12 @@ async fn real_job_yields_saves_entire_batch_and_resumes_once_in_same_session() {
     assert_eq!(task.task.budget.reserved_tokens, 0);
     assert!(!task.task.budget.unknown_usage);
     assert_eq!(task.task.dispatch_history.len(), 1);
+    assert_eq!(waiting_task, Some(task.task.id.to_string()));
     assert!(task.task.events.values().all(|e| e.consumed));
     let saved =
         metteur_daemon::chat::session::load_thread(&ws.db, &task.task.session).unwrap().unwrap();
     assert!(saved.context.messages.iter().any(|m| m.text_content() == "completed once"));
+    assert!(saved.transcript.iter().any(|entry| entry.continuation_task == Some(task.task.id)));
 }
 
 struct ChildScript {

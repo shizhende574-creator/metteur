@@ -30,7 +30,7 @@ The first browser attempt failed before tests: Windows denied the chosen localho
 
 - Native Windows initially failed: a minimal program using installed Rust 1.99.0 returned `link.exe not found` (`native-linker-probe-7wf65372`). The owner subsequently requested installation. MSVC/SDK/CMake and LLVM are now installed and the functional tool probes pass; project-level native acceptance remains in progress.
 - Cargo offline preflight could not resolve cached `anyhow`; no tests compiled (`native-shared-preflight-icmhm95q`).
-- Local WSL Ubuntu 24.04 build prerequisites and exact Rust 1.99.0 are installed. The locked workspace build is in progress (`linux-workspace-build-l8jyjnig`); this is separate from native Windows validation.
+- Local WSL Ubuntu 24.04 build prerequisites and exact Rust 1.99.0 are installed. The initial locked workspace build passed (`linux-workspace-build-l8jyjnig`); this is separate from native Windows validation.
 - Paid model calls are permitted in principle, pending the owner's exact models, endpoints, data scope and spending limit. No real-model calls have been made.
 - Mock browser tests do not replace real daemon/provider tests or cover all new NX surfaces. Backend integration, resource/task/schedule interactions, the 45-task matrix and final human visual review remain open.
 - No remote publication, PR update or merge.
@@ -92,3 +92,25 @@ Four native Windows worker checks passed (`native-offline-renderer-_3bhcros`): a
 Two directed browser probes reproduced stale approval state when a proposal changed under the same request ID and an old response resolving a replacement request (`launch-review-before-qso4yc5d`). Review confirmation now binds the complete proposal, request and workspace; changes synchronously reset confirmation and invalidate old callbacks. Unmounting also invalidates pending responses.
 
 Four directed cases passed (`launch-review-binding-g5fpfc5b`): changed proposal clears approval, old acknowledgement does not resolve a new request, policy changes require fresh approval and send the exact digest/scope/policy, and Decline records a negative decision without requiring approval. Effective types passed (`launch-review-types-iju5zaf8`), lint passed (`launch-review-lint-w4cf_zaz`) and the updated production build passed (`frontend-production-launch-8gde207w`). Existing EditorPane/chunk-size warnings remain. These are browser component fixtures; actual host version checks remain a separate layer.
+
+
+## Actual daemon acceptance and native checkpoint repair
+
+The complete workspace builds on both native Windows (`native-workspace-build-zeqx_w2j`, exit 0) and WSL Linux (`linux-continuation-build-srs0ixhz`, exit 0). The following evidence uses the repaired source, with the dirty source list retained by the launcher; a clean frozen final Rust gate is still required.
+
+The first native daemon targeted run passed all five lock tests and the additive migration/CAS/replay/restart/rollback test, but failed the recovery admission test (`native-daemon-targeted-fixed-qm39jt7o`). Diagnosis exposed an actual Windows path defect: RocksDB appends forward slashes while creating a checkpoint, which fails for canonical verbatim-prefix paths. Database open already normalized such paths, but checkpoint creation did not. Checkpoints now use the same normalization. The new canonical-path regression proves the checkpoint retains the old value after the live database changes (`native-canonical-checkpoint-oalhtm6t`: 1 passed). Both recovery admission cases then passed (`native-recovery-fixed-i59ki_j4`: 2 passed), including corrupt saved chat state preventing the turn before any file write. No test assertion was relaxed.
+
+Actual production browser → owned daemon → isolated synthetic provider checks passed:
+
+- ReadFile tool round trip and conversation persistence across reload (`linux-daemon-live-chat-f44ftqie`; repeated on the repaired candidate in `linux-live-chat-v2-sualv4f3`).
+- A real eight-second Job completes, the host dispatches exactly one continuation and its result reaches the original session. Reservations return to zero; declining a blueprint starts no execution and produces no repeated proposal (`linux-daemon-live-nx-transition-4wdpse3g`).
+- Explicit blueprint version/scope/policy approval starts exactly one execution, produces one terminal dispatch and completes its parent task (`linux-live-blueprint-follow-ooeig6gk`).
+- Reloading the browser after the chat safely yields restores the saved task identity and receives the completion in the original session (`linux-live-blueprint-reload-_moki4dd`).
+
+The positive blueprint probe first found another actual defect: the daemon completed and persisted the answer, but the current chat surface stayed at its waiting notice (`linux-live-blueprint-completion-1hm4er1t`). A structured host task ID now travels in the live event and persisted transcript. The chat performs scoped read-only status/session refreshes after yielding, invalidates late responses on conversation/workspace changes and preserves pending composer files. It sends no model request and never controls or resumes a task. Paused/stopped/attention states use the saved host state. The three new browser regressions and affected chat/rewind/resource/launch tests passed: 42 passed, zero retries (`chat-following-regressions-gyfbusp6`). The latest ordinary web gate passed all seven steps with unchanged source digest (`web-follow-gate/first-bbohctr8`); latest production output is `D:/BaiduNetdiskDownload/metteur-a7-work/build/local-acceptance-20261020-web-follow` (`frontend-production-follow-g67zzp09`).
+
+All provider traffic above used a nonce-verified loopback synthetic service. No real-model or paid request has been sent. Setup-only browser locator failures remain recorded separately; the earlier stale-UI failure is a product defect and is retained as failing evidence.
+
+The earlier scoped Linux frozen Rust attempt was deliberately interrupted before tests to repair the two actual defects (`linux-frozen-rust-gate-scoped-git-4ayc_vwl`, exit 2); it is not a passed gate. A global stable rustfmt check also reports substantial existing cloud formatting differences and nightly-only configuration options; no broad formatting rewrite was applied. Final full tests/clippy, the clean native targeted rerun, remaining plan scenarios, real models, scale/long-run drills and owner visual approval are still open.
+
+The first live stack was stopped and its daemon/web child PIDs verified absent before the retained closed-stack archive was made (`linux-owned-live-stack-f315b24s/closed-stack-evidence.tar.gz`, SHA256 `80c0e8437ee130e7761f56ce89bb1c19a02ef0492f2905500f492e031c7e4b38`). An earlier running snapshot is explicitly named `unverified-live-diagnostic.tar.gz` and is not recovery evidence.
