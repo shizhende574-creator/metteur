@@ -81,12 +81,15 @@
   "evidence": [
     {
       "path": "evidence/20261021-deepseek-smoke.json",
-      "sha256": "d8c9de117e43cbe2a29eeeb728ab5ea4510dffa456b39227b2607a5fb7c95679"
+      "sha256": "108e4bfcd07fd92033c3ba20492d25f1fab58cd5bab7cc9a5a0dd197766e919f",
+      "original_source_sha256": "d8c9de117e43cbe2a29eeeb728ab5ea4510dffa456b39227b2607a5fb7c95679"
     },
     {
       "path": "evidence/20261021-deepseek-catalog.json",
-      "sha256": "b37e17183c2f2491de2a78621ff3946ec10607e99c77e8376c330a3216dec392"
+      "sha256": "d03d9f73f7deece9fa50cc83b74f2d966b820d501f21d27e755af4f4822bafde",
+      "original_source_sha256": "b37e17183c2f2491de2a78621ff3946ec10607e99c77e8376c330a3216dec392"
     }
   ],
-  "claim_boundary": "Not a daemon integration, old/new Prompt comparison, dataset run, upstream cache validation or final model acceptance."
+  "claim_boundary": "Not a daemon integration, old/new Prompt comparison, dataset run, upstream cache validation or final model acceptance.",
+  "evidence_copy_boundary": "Public evidence copies normalize CRLF to LF for reproducible Git export. Both canonical copy SHA256 and original source SHA256 are retained."
 }
