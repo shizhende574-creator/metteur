@@ -86,3 +86,20 @@ node modules/webcore/scripts/run-nx-local.mjs --serve-only
 
 ## 七、数据与回退
 停止写入后完整备份数据库和工作区，或使用项目checkpoint机制；不要随意复制RocksDB部分文件。保存Prompt源、个人资源、日志、journal、报告与批注。旧二进制不能保证读写新schema；先在副本验证，禁止手改schema标记“兼容”。
+
+
+## 2026-10-21 已验证的本机快速启动
+
+MSVC/Windows SDK/CMake/LLVM 已安装；原生工作区构建、共享模块57项以及锁/存储/恢复三组7项均已通过。实际 Windows 浏览器/daemon 的文件工具、Job续跑、蓝图批准/拒绝与等待中刷新恢复也已实测。完整范围和失败修复记录见 `LOCAL_ACCEPTANCE_20261020.md`。
+
+使用本轮已有前端产物，以下命令仅启动隔离演示和本地合成 provider，直接在当前本机 PowerShell 运行：
+
+```powershell
+$env:METTEUR_WEB_DIST = 'D:/BaiduNetdiskDownload/metteur-a7-work/build/local-acceptance-20261021-web-final'
+$env:METTEUR_VALIDATION_DIR = 'D:/BaiduNetdiskDownload/metteur-a7-work/tmp/manual-native-demonstration'
+py -3.12 -X utf8 F:/space/06_Projects/Agent/workspace-review-2026-10-20/run_native.py node modules/webcore/scripts/run-nx-local.mjs --serve-only
+```
+
+按启动输出/ready.json中的实际 URL 和测试 workspace 打开界面；端口自动分配。在该终端按 Ctrl+C 停止演示。编译或重新链接 Windows 可执行文件前，先停止使用它的演示服务。本机验证启动器会激活已安装的工具，不要求修改全局 PATH。交接包 `local-tools/` 保存这些脚本；迁移机器时先调整脚本中的本机路径并安装相应工具。
+
+这条入口不配置实际模型。用户已原则上允许付费调用，实际两类模型ID、接口/端点、允许数据范围和费用上限尚待给定；截至本轮真实模型调用数为0。
