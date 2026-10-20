@@ -133,7 +133,9 @@ function candidate(node: EventTarget | null): Element | null {
   // been moved aside, and re-entering it must still be recognized as the same
   // target.
   const el = node.closest(`[title], [${ATTRIBUTE}], [${STASH}], button[aria-label], a[aria-label]`)
-  if (!el || el === tip) return null
+  // A frame's title names its browsing context for assistive technology.
+  // Moving it into the tooltip stash makes a hovered/focused frame unnamed.
+  if (!el || el === tip || el.matches('iframe, frame')) return null
   // Never tooltip the tooltip.
   if (tip && el.contains(tip)) return null
   return el
