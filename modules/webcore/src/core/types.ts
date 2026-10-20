@@ -489,6 +489,8 @@ export interface ModelPricing {
 
 /** LLM-related settings. */
 export interface LlmSettings {
+  /** Ordered project instruction filenames, matching the daemon configuration. */
+  project_instruction_files?: string[]
   /** Default model identifier. */
   default_model?: string | null
   /** Default temperature. */
@@ -638,6 +640,8 @@ export interface LspLanguageSettings {
 
 /** LSP-related settings. */
 export interface LspSettings {
+  /** File-change debounce in milliseconds. */
+  debounce_ms?: number
   /** Whether LSP integration is enabled. */
   enabled?: boolean
   /** Language server definitions. */
