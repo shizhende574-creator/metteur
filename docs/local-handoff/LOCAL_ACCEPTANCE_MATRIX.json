@@ -1042,5 +1042,30 @@
       "evidence": []
     }
   ],
-  "model_authorization": "Owner allows paid calls in principle; exact model, endpoint, data scope and spending limit pending. Zero actual calls."
+  "model_authorization": "Owner allows paid calls in principle; exact model, endpoint, data scope and spending limit pending. Zero actual calls.",
+  "platform_checks": {
+    "native_windows_tools": {
+      "status": "PASS_FUNCTIONAL_PROBES",
+      "evidence": [
+        "native-tools-functional-f3p3rtvp"
+      ]
+    },
+    "native_windows_shared_unit": {
+      "status": "PASS",
+      "passed": 57,
+      "failed": 0,
+      "evidence": [
+        "native-shared-tests-pse0g8zb"
+      ]
+    },
+    "native_windows_daemon_targeted": {
+      "status": "NOT_RUN"
+    },
+    "linux_workspace": {
+      "status": "BUILD_IN_PROGRESS",
+      "evidence": [
+        "linux-workspace-build-l8jyjnig"
+      ]
+    }
+  }
 }

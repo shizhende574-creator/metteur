@@ -1,5 +1,7 @@
 # 本地恢复和环境准备
 
+2026-10-20 更新：当前本机候选及验收状态见 `LOCAL_ACCEPTANCE_20261020.md`。Windows 编译工具已安装并通过实际编译/链接探针；项目级验收仍在进行。
+
 ## 一、只读校验后在新目录恢复
 在解压包根目录：
 
@@ -28,6 +30,17 @@ git -C <新的恢复目录> status --short
 - WSL可供辅助开发，但不能代替原生Windows证据。
 - 如缺依赖，列出官方来源及安装项；凭据/网络安全配置按本地授权操作，不以交接包自动授权任意安装。
 
+本机已按用户授权安装 Visual Studio Build Tools 2026（18.11.0）到 `D:/Tocoding/VSBuildTools2026`，包含 x64 MSVC、Windows SDK 10.0.26100.0 和 CMake 4.3.1；LLVM/libclang 23.1.3 位于 `D:/Tocoding/LLVM/bin`。安装均返回 0，无需重启。Rust 1.99.0 链接运行、使用 Windows SDK 的 C++ 编译运行、libclang DLL 加载均已通过。
+
+本机留有独立环境启动器，设置当前子进程的 VS、Rust、libclang 和 D 盘构建缓存，不修改全局 PATH：
+
+```powershell
+py -3.12 -X utf8 F:/space/06_Projects/Agent/workspace-review-2026-10-20/run_native.py --probe
+py -3.12 -X utf8 F:/space/06_Projects/Agent/workspace-review-2026-10-20/run_native.py cargo test --locked -p metteur-shared --lib -j 1
+```
+
+这些路径是本机配置，迁移机器时应重新定位工具。安装日志和校验记录在 `F:/space/06_Projects/Agent/workspace-review-2026-10-20/native-tools-install`。
+
 ## 三、最小构建（先核实际环境）
 从恢复仓库根目录：
 
@@ -35,11 +48,11 @@ git -C <新的恢复目录> status --short
 cargo build --locked -p metteur-daemon --bin metteurd -p metteur-web-server --bin metteur-web
 Set-Location modules/webcore
 corepack pnpm install --frozen-lockfile
-corepack pnpm exec vue-tsc --noEmit -p tsconfig.app.json --ignoreDeprecations 6.0
+corepack pnpm typecheck
 corepack pnpm build
 ```
 
-当前有效typecheck预期暴露既有错误；先按修复清单处理，不说这是环境偶发。构建若使用CARGO_TARGET_DIR，后续启动必须指向同一目录。安装依赖可能访问官方包注册表，但不应调用模型API。
+有效应用/config 类型检查已修复并在本机通过，保留严格源码检查。构建若使用CARGO_TARGET_DIR，后续启动必须指向同一目录。安装依赖可能访问官方包注册表，但不应调用模型API。
 
 ## 四、本地无付费演示入口
 依赖及debug二进制、前端dist准备好后，从仓库根目录运行：
@@ -52,7 +65,7 @@ node modules/webcore/scripts/run-nx-local.mjs --serve-only
 
 可选环境变量：METTEUR_VALIDATION_DIR、CARGO_TARGET_DIR、METTEUR_DAEMON_BIN、METTEUR_WEB_BIN、METTEUR_WEB_DIST、METTEUR_WEB_PORT。值必须按本机选择，不能复制云端 `/workspace/scratch/...` 路径。
 
-`M3_LOCAL_BLUEPRINT`是夹具识别词，仅在这个隔离provider的新会话中使用，触发一个需人工确认的本地蓝图提案；Decline应结束。不要把它当成真实模型成功。Job样例的`sleep 8`需要本地先核shell适配。
+`M3_LOCAL_BLUEPRINT`是夹具识别词，仅在这个隔离provider的新会话中使用，触发一个需人工确认的本地蓝图提案；Decline应结束。不要把它当成真实模型成功。Job样例已改为跨平台 Node 定时命令，其 Windows shell 探针已通过；完整 daemon 流程另行记录。
 
 ## 五、原生Windows必要验证
 从干净候选仓库根目录，以一个尚不存在的绝对目录：

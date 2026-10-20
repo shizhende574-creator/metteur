@@ -28,7 +28,7 @@ The first browser attempt failed before tests: Windows denied the chosen localho
 
 ## Remaining acceptance
 
-- Native Windows initially failed: a minimal program using installed Rust 1.99.0 returned `link.exe not found` (`native-linker-probe-7wf65372`). The owner subsequently requested installation; the signed Microsoft installer is installing MSVC/SDK/CMake, and the official LLVM installer is being downloaded with SHA256 verification. Installation and native validation are not yet complete.
+- Native Windows initially failed: a minimal program using installed Rust 1.99.0 returned `link.exe not found` (`native-linker-probe-7wf65372`). The owner subsequently requested installation. MSVC/SDK/CMake and LLVM are now installed and the functional tool probes pass; project-level native acceptance remains in progress.
 - Cargo offline preflight could not resolve cached `anyhow`; no tests compiled (`native-shared-preflight-icmhm95q`).
 - Local WSL Ubuntu 24.04 build prerequisites and exact Rust 1.99.0 are installed. The locked workspace build is in progress (`linux-workspace-build-l8jyjnig`); this is separate from native Windows validation.
 - Paid model calls are permitted in principle, pending the owner's exact models, endpoints, data scope and spending limit. No real-model calls have been made.
@@ -57,7 +57,7 @@ This remains a mock gateway/browser check. Actual daemon ownership/permission ch
 - Pinned `verifyDepsBeforeRun: error`: scripts fail on stale dependencies instead of silently reinstalling them during other checks. An overlapping pnpm install previously caused an EPERM rename failure (`resource-race-types-eqv0gcd6`); this environment failure remains recorded. After explicit frozen installation, normal app/config checking passed (`current-frontend-types-xk9gxphl`) and lint passed (`current-frontend-lint-fhvpf6ch`).
 - Replaced the NX fixture's `sleep 8` command with an actual Node timer and ensured its daemon inherits the launcher's Node directory in PATH. Native Windows shell execution and PATH handling passed four unit cases; identity checks passed three more (`fixture-identity-and-native-delay-l4urco9k`). This proves the command helper, not the complete native daemon flow.
 - Navigation normalization/move/upgrade assertions passed (`navigation-order-jqkxezq4`); preview registry/production-entry isolation passed (`preview-isolation-e_qqnstl`). These checks are now included in the ordinary verification script.
-- `LOCAL_ACCEPTANCE_MATRIX.json` enumerates all **45 NX tasks and 88 scenarios**, with unrun and partial local states retained. Model authorization is pending concrete configuration and budget; native Windows tooling installation is in progress.
+- `LOCAL_ACCEPTANCE_MATRIX.json` enumerates all **45 NX tasks and 88 scenarios**, with unrun and partial local states retained. Model authorization is pending concrete configuration and budget; native Windows project validation is in progress.
 
 ## Project memory concurrency repairs
 
@@ -68,3 +68,11 @@ The memory editor now retains its original note and revision, invalidates source
 All three probes passed after repair (`memory-races-fixed-666mybqp`), with effective app/config types (`memory-and-layout-types-m6bo3zjj`), lint (`memory-resource-lint-o1fcb7b9`) and production build (`frontend-production-memory-wszd5ubn`) passing. Native daemon memory validation remains separate.
 
 The ordinary verification script also passed all seven steps (`default-gate/first-8umb2qrd`). A later direct production command detected a pnpm CI/non-CI virtual-store difference before building (`frontend-production-r2-mb78przy`); the workspace now explicitly selects the same local store layout in both modes. Typechecking and the latest production build passed in a normal shell without setting CI. Dependency versions did not change.
+
+## Native Windows tools installed and exercised
+
+The Microsoft-signed Build Tools installer installed Visual Studio Build Tools 2026 18.11.0, MSVC 14.51, Windows SDK 10.0.26100.0 and CMake 4.3.1 at `D:/Tocoding/VSBuildTools2026`. The official LLVM 23.1.3 x64 MSI was matched to the winget manifest SHA256 `5153f848ac87553118340f16f8d3cd4351d729bcba6e4785c6a4a9af29676de9` before installation at `D:/Tocoding/LLVM`. Both installers returned 0 and VS reports no reboot required. Installation logs are retained in the workspace review's `native-tools-install` directory.
+
+Actual unprivileged probes passed (`native-tools-functional-f3p3rtvp`): Rust 1.99.0 linked and ran a native executable, MSVC compiled and ran a C++ executable using Windows SDK APIs, and Python loaded libclang.dll and queried its version. CMake and protoc executables were also exercised. Two earlier probe attempts failed in the test launcher's quoting/PATH resolution before compilation; both are retained (`native-installed-tool-probes-wzh3h0m1`, `native-installed-tool-probes-fixed-08y7yfqx`) and the launcher was corrected. These probes establish tool availability, not a project test pass.
+
+The project's shared-module native Windows unit suite subsequently passed: **57 passed, 0 failed, 0 ignored** (`native-shared-tests-pse0g8zb`), with default test concurrency and a single compiler job. The separate daemon lock/storage/recovery cases are next; shared tests do not substitute for them.
