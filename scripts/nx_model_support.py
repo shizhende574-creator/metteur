@@ -41,6 +41,43 @@ def nano_cost(input_tokens, output_tokens, model):
     value = (Decimal(input_tokens) * Decimal(rates['input']) + Decimal(output_tokens) * Decimal(rates['output'])) * 1000
     return int(value.to_integral_value(rounding=ROUND_CEILING))
 
+def process_identity(pid):
+    """Live process creation identity, so a recycled PID never owns a receipt."""
+    try:
+        if not isinstance(pid, int) or pid <= 0:
+            return None
+        if os.name == 'nt':
+            import ctypes
+            from ctypes import wintypes
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.WaitForSingleObject.restype = wintypes.DWORD
+            kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+            handle = kernel.OpenProcess(0x00101000, False, pid)
+            if not handle:
+                return None
+            try:
+                if kernel.WaitForSingleObject(handle, 0) != 258:
+                    return None
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not kernel.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+                    return None
+                created = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+                return f'windows:{created}'
+            finally:
+                kernel.CloseHandle(handle)
+        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        if fields[0] in ('Z', 'X'):
+            return None
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        return f'linux:{boot}:{fields[19]}'
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 class BudgetError(RuntimeError):
     pass
 
@@ -90,13 +127,23 @@ class Ledger:
         reservation = nano_cost(len(raw) + 8192, max_tokens, model)
         with self.lock():
             data = self.read()
+            orphaned = False
+            for call in data['calls']:
+                if call['state'] == 'reserved' and (not call.get('owner_identity') or call['owner_identity'] != process_identity(call.get('owner_pid'))):
+                    call.update(state='unknown', error_type='reservation_owner_lost')
+                    orphaned = True
+            if orphaned:
+                atomic_json(self.path, data)
             if any(c['state'] == 'unknown' for c in data['calls']):
                 raise BudgetError('An unknown outcome requires reconciliation before another paid call')
             committed = data['imported_estimated_nano_usd'] + sum(c.get('charged_upper_nano_usd', c['reserved_nano_usd']) for c in data['calls'])
             if committed + reservation > self.limit:
                 raise BudgetError('Insufficient remaining authorized budget')
+            owner_identity = process_identity(os.getpid())
+            if owner_identity is None:
+                raise BudgetError('Cannot verify the paid request owner process')
             ident = str(uuid.uuid4())
-            call = {'id': ident, 'model': model, 'label': label, 'state': 'reserved', 'started_utc': datetime.now(timezone.utc).isoformat(), 'request_bytes': len(raw), 'max_output_tokens': max_tokens, 'reserved_nano_usd': reservation, 'request_fingerprint': hmac.new(bytes.fromhex(data['fingerprint_epoch']), raw, hashlib.sha256).hexdigest()}
+            call = {'id': ident, 'model': model, 'label': label, 'state': 'reserved', 'owner_pid': os.getpid(), 'owner_identity': owner_identity, 'started_utc': datetime.now(timezone.utc).isoformat(), 'request_bytes': len(raw), 'max_output_tokens': max_tokens, 'reserved_nano_usd': reservation, 'request_fingerprint': hmac.new(bytes.fromhex(data['fingerprint_epoch']), raw, hashlib.sha256).hexdigest()}
             data['calls'].append(call)
             atomic_json(self.path, data)
             return ident

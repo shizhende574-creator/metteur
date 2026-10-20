@@ -8,9 +8,40 @@ import tempfile
 import unittest
 
 from nx_eval_fixtures import tasks
-from nx_model_support import BudgetError, Ledger, nano_cost, usage_from_body
+from nx_model_support import BudgetError, Ledger, atomic_json, nano_cost, usage_from_body
 
 class BudgetSafety(unittest.TestCase):
+    def test_dead_request_owner_becomes_unknown_without_releasing_cost(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'ledger.json'
+            script = 'from nx_model_support import Ledger; import os,sys; Ledger(sys.argv[1],5).reserve("deepseek/deepseek-v4.1-flash",b"x",512,"crash"); os._exit(0)'
+            subprocess.run([sys.executable, '-c', script, str(path)], cwd=Path(__file__).parent, check=True, timeout=15)
+            ledger = Ledger(path, 5)
+            reserved = ledger.read()['calls'][0]['reserved_nano_usd']
+            with self.assertRaises(BudgetError):
+                ledger.reserve('deepseek/deepseek-v4.1-flash', b'{}', 512, 'new')
+            call = ledger.read()['calls'][0]
+            self.assertEqual(call['state'], 'unknown')
+            self.assertEqual(call['reserved_nano_usd'], reserved)
+            self.assertEqual(len(ledger.read()['calls']), 1)
+
+    def test_recycled_pid_cannot_own_a_reservation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = Ledger(Path(folder) / 'ledger.json', 5)
+            ledger.reserve('deepseek/deepseek-v4.1-flash', b'{}', 512, 'first')
+            data = ledger.read(); data['calls'][0]['owner_identity'] = 'different-process-creation'
+            atomic_json(ledger.path, data)
+            with self.assertRaises(BudgetError):
+                ledger.reserve('deepseek/deepseek-v4.1-flash', b'{}', 512, 'recycled')
+            self.assertEqual(ledger.read()['calls'][0]['state'], 'unknown')
+
+    def test_live_owner_allows_bounded_concurrent_requests(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = Ledger(Path(folder) / 'ledger.json', 5)
+            for label in ['parent', 'child']:
+                ledger.reserve('deepseek/deepseek-v4.1-flash', b'{}', 512, label)
+            self.assertEqual([c['state'] for c in ledger.read()['calls']], ['reserved', 'reserved'])
+
     def test_parallel_processes_cannot_overspend_or_reset_cap(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'ledger.json'

@@ -181,7 +181,16 @@ def assert_case(spec, report, workspace):
         if checks.get({'stale_prompt_rejected': 'stale_prompt', 'approval_denied': 'approval_denied', 'reconnected_same_task': 'reconnect'}[name]):
             assertions[name] = report.get('checks', {}).get(name, False)
     if checks.get('launch') == 'stale':
-        assertions['stale_launch_rejected'] = report.get('checks', {}).get('stale_launch_rejected', False)
+        # Confirmation records a human choice; the tool revalidates the current
+        # manifest before dispatch. Its explicit failed receipt is authoritative.
+        assertions['stale_launch_rejected'] = any(
+            event.get('kind') == 'tool'
+            and (event.get('detail') or {}).get('name') == 'RequestBlueprintRun'
+            and (event.get('detail') or {}).get('ok') is False
+            and 'Launch is stale' in event.get('content', '')
+            for event in report.get('events', [])
+        ) or bool(report.get('checks', {}).get('stale_launch_rejected') and re.search(
+            r'stale|changed|version|manifest', report.get('checks', {}).get('stale_launch_error', ''), re.I))
     if 'executions' in checks:
         assertions['execution_count_exact'] = len(report.get('executions', [])) == checks['executions']
     if checks.get('continuation'):
@@ -315,6 +324,8 @@ def main():
         summary['all_cells_passed'] = bool(summary['cases']) and all(x['passed'] for x in summary['cases'])
         atomic_json(args.output / 'summary.json', summary)
         print(json.dumps({'output': str(args.output), 'cells': len(summary['cases']), 'all_passed': summary['all_cells_passed'], 'source_unchanged': summary['source_unchanged']}), flush=True)
+    if not summary['all_cells_passed'] or not summary['source_unchanged']:
+        raise SystemExit(1)
 
 if __name__ == '__main__':
     main()

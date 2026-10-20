@@ -97,7 +97,9 @@ try {
             report.checks.launch_confirmation_recorded = true
           } catch (error) {
             if (spec.checks.launch !== 'stale') throw error
+            if (!/stale|changed|version|manifest/i.test(String(error))) throw error
             report.checks.stale_launch_rejected = true
+            report.checks.stale_launch_error = String(error)
             await client.respondApproval({ workspacePath, requestId, decision: 'DenyOnce' }).catch(() => {})
           }
         } else {
