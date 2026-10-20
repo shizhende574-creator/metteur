@@ -51,12 +51,19 @@ try {
   if (spec.mode === 'stale_prompt') {
     const id = randomUUID()
     const first = await resource('writePromptResource', { scope: 'project', draft: { id, name: 'Synthetic prompt', tags: [], body: 'SYNTHETIC_OLD_PROMPT' } })
-    const selected = await resource('selectPromptResource', { reference: first.reference, purpose: 'chat' })
+    const selected = await resource('selectPromptResource', { reference: first.reference, purpose: { kind: 'chat' } })
     await resource('writePromptResource', { scope: 'project', draft: { id, name: 'Synthetic prompt', tags: [], body: 'SYNTHETIC_NEW_PROMPT' } }, first.reference.revision)
     options.prompt_snapshots = [selected.id]
   }
   let message = spec.goal.replaceAll('{blueprint_id}', blueprintId || '').replaceAll('{delay_command}', ready.delay_command)
   message = message.replace(/\{test_command:([^}]+)\}/g, (_, name) => ready.test_command.replace('{file}', name))
+  if (spec.checks.continuation) {
+    // Resolve the fixture's relative deadline on the host. Models have no clock
+    // tool and must never invent a Unix timestamp for the absolute API field.
+    const now = Date.now()
+    message += `\nSynthetic host clock: current Unix milliseconds ${now}; for AwaitEvents use deadline_ms ${now + 60000}, mode "any", and params {}. Use only the source returned by the host.`
+  }
+  report.resolved_message = message
   try {
     const stream = client.sendChat({ workspacePath, message, optionsJson: JSON.stringify(options) }, { timeoutMs: 160000, signal: controller.signal })
     for await (const event of stream) {
@@ -133,7 +140,7 @@ try {
   }
   const audit = await client.listAuditLog({ workspacePath })
   report.audit = audit.entries.map(e => ({ operation: e.operation, detail: JSON.parse(e.detailJson || '{}') }))
-  report.executions = (await client.listExecutions({ workspacePath })).executions.map(e => ({ id: e.id, status: e.status }))
+  report.executions = (await client.listExecutions({ workspacePath })).executions.map(e => ({ id: e.runId, status: e.status }))
   report.approval_count = approvalCount
   report.checks.stop_sent = stopSent
   report.status = 'EXECUTED_ASSERTIONS_PENDING'
