@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import InlineHelp from '@/components/resources/InlineHelp.vue'
-import {computed,ref,watch} from 'vue'
+import {computed,onBeforeUnmount,ref,watch} from 'vue'
 import {Workflow,Layers,MessagesSquare,ShieldCheck,X} from '@lucide/vue'
 import {gateway} from '@/core'
 import {useWorkspaceStore} from '@/stores/workspace'
@@ -16,8 +16,10 @@ interface Proposal {
 const props=defineProps<{payload:Proposal;requestId:string}>()
 const emit=defineEmits<{resolved:[]}>()
 const workspace=useWorkspaceStore(),section=ref('overview'),resume=ref(false),source=ref(false),confirmed=ref(false),busy=ref(false),error=ref('')
-watch(()=>props.requestId,()=>{resume.value=props.payload.resume_on_completion;source.value=props.payload.handoff.allow_source_read;confirmed.value=false;section.value='overview';error.value=''}, {immediate:true})
-watch([resume,source],()=>{confirmed.value=false})
+let generation=0
+watch([()=>props.requestId,()=>props.payload,()=>workspace.active?.path],()=>{generation++;busy.value=false;resume.value=props.payload.resume_on_completion;source.value=props.payload.handoff.allow_source_read;confirmed.value=false;section.value='overview';error.value=''}, {immediate:true,deep:true,flush:'sync'})
+watch([resume,source],()=>{confirmed.value=false}, {flush:'sync'})
+onBeforeUnmount(()=>{generation++})
 const tabs=[{id:'overview',label:'Run overview',icon:Workflow},{id:'resources',label:'Bound versions',icon:Layers},{id:'handoff',label:'Conversation handoff',icon:MessagesSquare}]
 const resourceRows=computed(()=>{
  const m=props.payload.manifest
@@ -33,12 +35,14 @@ function display(value:unknown){return typeof value==='string'?value:JSON.string
 async function decide(allow:boolean){
  const root=workspace.active?.path
  if(!root||busy.value||allow&&!confirmed.value)return
+ const ticket=generation,current=()=>ticket===generation&&workspace.active?.path===root
  busy.value=true;error.value=''
  try{
   const result=await gateway.resourceRequest('confirmBlueprintLaunch',root,{request_id:props.requestId,intent_id:props.payload.intent_id,original_digest:props.payload.digest,allow,resume_on_completion:resume.value,allow_source_read:source.value})
+  if(!current())return
   if(result.ok)emit('resolved');else error.value=result.error
- }catch(e){error.value=e instanceof Error?e.message:'The decision could not be recorded. Reconnect and review the pending request.'}
- finally{busy.value=false}
+ }catch(e){if(current())error.value=e instanceof Error?e.message:'The decision could not be recorded. Reconnect and review the pending request.'}
+ finally{if(current())busy.value=false}
 }
 </script>
 <template>

@@ -278,8 +278,10 @@
       "phase": "NX-M3",
       "requirement": "批准后接入运行确认与交接 UI",
       "historical_cloud_status": "INTEGRATED_PROVISIONAL",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_BROWSER_FIXTURE",
+      "evidence": [
+        "launch-review-binding-g5fpfc5b"
+      ]
     },
     {
       "id": "NX-32",
@@ -360,8 +362,10 @@
       "phase": "NX-M5",
       "requirement": "预览检查样例与独立成果验收",
       "historical_cloud_status": "OFFLINE_RENDERER_VERIFIED",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_RENDERER_WORKER",
+      "evidence": [
+        "native-offline-renderer-_3bhcros"
+      ]
     },
     {
       "id": "NX-42",
@@ -894,15 +898,21 @@
       "id": "AD-06",
       "scenario": "隔离与撤销",
       "expected": "不能访问主 DOM／凭证／个人库；disable/upgrade/uninstall/close 立即撤销旧桥。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_RENDERER_WORKER",
+      "evidence": [
+        "native-offline-renderer-_3bhcros"
+      ],
+      "limitations": "Synthetic offline worker only; daemon identity, attachment and revocation remain unrun."
     },
     {
       "id": "AD-07",
       "scenario": "受控预览目标",
       "expected": "检查只能操作登记 target，导航／重定向不越界，不能点宿主授权按钮。",
-      "local_status": "NOT_RUN",
-      "evidence": []
+      "local_status": "PARTIAL_NATIVE_RENDERER_WORKER",
+      "evidence": [
+        "native-offline-renderer-_3bhcros"
+      ],
+      "limitations": "Synthetic offline worker only; daemon identity, attachment and revocation remain unrun."
     },
     {
       "id": "AD-08",
@@ -970,9 +980,9 @@
       "expected": "Stop、Pause、Run、schedule approval、成果验收均由正确宿主动作处理。",
       "local_status": "PARTIAL_BROWSER_FIXTURE",
       "evidence": [
-        "resource-chat-blueprint-regression-9ntxd8fk",
-        "fixture-e2e-owned-port-5idnbprw"
-      ]
+        "launch-review-binding-g5fpfc5b"
+      ],
+      "limitations": "Blueprint launch review only; other confirmation/cancellation surfaces remain separate."
     },
     {
       "id": "E2E-01",
@@ -1059,12 +1069,21 @@
       ]
     },
     "native_windows_daemon_targeted": {
-      "status": "NOT_RUN"
+      "status": "BUILD_IN_PROGRESS",
+      "evidence": [
+        "native-daemon-targeted-fixed-qm39jt7o"
+      ]
     },
     "linux_workspace": {
       "status": "BUILD_IN_PROGRESS",
       "evidence": [
         "linux-workspace-build-l8jyjnig"
+      ]
+    },
+    "windows_validation_script_contract": {
+      "status": "PASS_NATIVE_STUB_CONTRACT_ONLY",
+      "evidence": [
+        "windows-gate-contract-1ewoepf1"
       ]
     }
   }
