@@ -546,7 +546,7 @@ async fn nx41_selected_source_report_review_and_changed_revision() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nx38_slow_http_stop_and_timeout_do_not_run_following_mutation() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
     use std::sync::atomic::Ordering;
     fn allocation(text: &str, local: &str) -> String {
         let stores = text.bytes().enumerate().map(|(i,b)|format!("local.get ${local} i64.const {i} i64.add i32.const {b} call $store")).collect::<Vec<_>>().join(" ");
@@ -557,8 +557,29 @@ async fn nx38_slow_http_stop_and_timeout_do_not_run_following_mutation() {
         let url = format!("http://{}/slow", listener.local_addr().unwrap());
         let (sent, received) = tokio::sync::oneshot::channel();
         let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = [0;4096]; socket.read(&mut request).await.unwrap();
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut request = tokio::io::BufReader::new(socket);
+            let mut header_bytes = 0;
+            let mut content_length = 0;
+            loop {
+                let mut line = String::new();
+                let read = request.read_line(&mut line).await.unwrap();
+                assert!(read > 0, "request ended before its headers");
+                header_bytes += read;
+                assert!(header_bytes <= 16 * 1024, "fixture request headers exceed limit");
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    content_length = value.trim().parse::<usize>().unwrap();
+                }
+            }
+            assert!(content_length <= 4096, "fixture request body exceeds limit");
+            let mut body = vec![0; content_length];
+            request.read_exact(&mut body).await.unwrap();
+            let mut socket = request.into_inner();
             socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n").await.unwrap();
             let _ = sent.send(());
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
