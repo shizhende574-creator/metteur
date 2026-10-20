@@ -157,6 +157,9 @@ impl Db {
 
     /// Creates a consistent checkpoint without copying a live database directory.
     pub fn checkpoint(&self, path: &Path) -> DaemonResult<()> {
+        // As with opening a database, RocksDB needs the ordinary Windows path:
+        // its checkpoint implementation appends '/' before linking each file.
+        let path = normalize_path(path);
         rocksdb::checkpoint::Checkpoint::new(&self.inner)
             .and_then(|checkpoint| checkpoint.create_checkpoint(path))
             .map_err(|e| DaemonError::Persistence(e.to_string()))
@@ -275,5 +278,19 @@ mod tests {
         let db = Db::open(&dir).unwrap();
         db.put(cf::BLUEPRINTS, b"key1", b"value1").unwrap();
         assert_eq!(db.get(cf::BLUEPRINTS, b"key1").unwrap().unwrap(), b"value1");
+    }
+
+    #[test]
+    fn canonical_checkpoint_preserves_live_data() {
+        let root = std::env::temp_dir().join(format!("metteur-db-checkpoint-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let db = Db::open(&root.join("source")).unwrap();
+        db.put_durable(cf::BLUEPRINTS, b"key", b"before").unwrap();
+        let checkpoint = root.canonicalize().unwrap().join("checkpoint");
+        db.checkpoint(&checkpoint).unwrap();
+        db.put_durable(cf::BLUEPRINTS, b"key", b"after").unwrap();
+        let restored = Db::open(&checkpoint).unwrap();
+        assert_eq!(restored.get(cf::BLUEPRINTS, b"key").unwrap().unwrap(), b"before");
+        assert_eq!(db.get(cf::BLUEPRINTS, b"key").unwrap().unwrap(), b"after");
     }
 }
