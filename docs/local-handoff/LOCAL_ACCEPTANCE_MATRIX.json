@@ -450,8 +450,9 @@
       "phase": "NX-M4",
       "requirement": "选择两类实际模型与冻结任务集",
       "historical_cloud_status": "DEFERRED_NOT_RUN",
-      "local_status": "BLOCKED_MODEL_CONFIGURATION",
-      "evidence": []
+      "local_status": "PARTIAL_ONE_REAL_MODEL_REGISTERED_SECOND_CLASS_AND_SEEDS_PENDING",
+      "evidence": [],
+      "model_registration": "docs/nx-m4/model-registration.local-20261021.json"
     },
     {
       "id": "NX-34",
@@ -472,8 +473,9 @@
       "phase": "NX-M4",
       "requirement": "共享底座与模型/角色适配",
       "historical_cloud_status": "PARTIAL_DEFERRED",
-      "local_status": "BLOCKED_MODEL_CONFIGURATION",
-      "evidence": []
+      "local_status": "PARTIAL_SHARED_CONTRACT_REAL_MODEL_ADAPTATION_EVAL_PENDING",
+      "evidence": [],
+      "model_registration": "docs/nx-m4/model-registration.local-20261021.json"
     },
     {
       "id": "NX-36",
@@ -493,8 +495,9 @@
       "phase": "NX-M4",
       "requirement": "真实模型匹配对照验收",
       "historical_cloud_status": "DEFERRED_NOT_RUN",
-      "local_status": "BLOCKED_MODEL_CONFIGURATION",
-      "evidence": []
+      "local_status": "NOT_RUN_MATCHED_EVALUATION_SYNTHETIC_SMOKE_ONLY",
+      "evidence": [],
+      "model_registration": "docs/nx-m4/model-registration.local-20261021.json"
     },
     {
       "id": "NX-38",
@@ -572,7 +575,7 @@
       "phase": "NX-M6",
       "requirement": "最终交付与状态审计",
       "historical_cloud_status": "LOCAL_DELIVERY_READY",
-      "local_status": "LOCAL_SOURCE_CANDIDATE_SAVED_PACKAGE_VERIFICATION_SEPARATE",
+      "local_status": "LOCAL_CANDIDATE_PACKAGE_RESTORE_VERIFIED_FINAL_ACCEPTANCE_PENDING",
       "evidence": []
     }
   ],
@@ -649,7 +652,7 @@
         "memory-page-revision-chkk5zw5",
         "linux-frozen-gate/first-21szndqv"
       ],
-      "limitations": "Editor identity and stale responses only. Native CAS, read limits and daemon behavior remain unrun.",
+      "limitations": "Browser editor identity/stale response checks and linked Rust revision/query-limit tests passed. Complete production UI-to-daemon workflow remains partial.",
       "scoped_checks": [
         "MEMORY"
       ]
@@ -1330,8 +1333,9 @@
       "id": "HC-06",
       "scenario": "真实模型匹配对照",
       "expected": "同任务、工具、版本和预算比较旧／新 Prompt；保留失败与不同来源。",
-      "local_status": "BLOCKED_MODEL_CONFIGURATION",
-      "evidence": []
+      "local_status": "NOT_RUN_MATCHED_EVALUATION_SYNTHETIC_SMOKE_ONLY",
+      "evidence": [],
+      "limitations": "One DeepSeek model protocol smoke passed; matched task seeds, runner, second model class and paired results remain pending."
     },
     {
       "id": "HC-07",
@@ -1414,7 +1418,7 @@
         "native-offline-renderer-_3bhcros",
         "linux-frozen-gate/first-21szndqv"
       ],
-      "limitations": "Synthetic offline worker only; daemon identity, attachment and revocation remain unrun.",
+      "limitations": "Signed-page binding and revocation have linked Rust tests; native offline rendering passed. Installed Addon page browser-to-daemon revocation workflow remains pending.",
       "scoped_checks": [
         "ADDON"
       ]
@@ -1434,7 +1438,8 @@
       "scenario": "成果验收独立",
       "expected": "human acceptance 绑定 preview revision，与系统权限 grant 严格不同。",
       "local_status": "NOT_RUN",
-      "evidence": []
+      "evidence": [],
+      "limitations": "Local Rust nx41_selected_source_report_review_and_changed_revision checks permission_grant=false and changed digest rejection; complete installed-page native workflow remains NOT_RUN."
     },
     {
       "id": "UI-01",
@@ -1606,7 +1611,7 @@
       ]
     }
   ],
-  "model_authorization": "Owner allows paid calls in principle; exact model, endpoint, data scope and spending limit pending. Zero actual calls.",
+  "model_authorization": "Owner selected DeepSeek and authorized total USD 5, synthetic acceptance data and necessary synthetic test code only. Existing CommandCode Flash config verified by two generation requests; estimates and unknown actual billing recorded in docs/nx-m4/model-registration.local-20261021.json. Full paired evaluation and second model class pending.",
   "platform_checks": {
     "native_windows_tools": {
       "status": "PASS_FUNCTIONAL_PROBES",
@@ -1689,6 +1694,14 @@
         "frontend-source-checks-final-cbkx9hjz",
         "web-source-final-gate/first-n3gsr_v3"
       ]
+    },
+    "real_deepseek_protocol": {
+      "status": "PASS_BOUNDED_SYNTHETIC_TWO_ROUND_PROTOCOL_ONLY",
+      "generation_requests": 2,
+      "evidence": [
+        "docs/nx-m4/evidence/20261021-deepseek-smoke.json"
+      ],
+      "boundary": "No daemon/paired evaluation inference."
     }
   },
   "scoped_backend_coverage": [
@@ -2096,5 +2109,6 @@
       ],
       "boundary": "1,000 nodes/999 edges, 10,000 synthetic invocations, 12 DB reopens; 64 sources/4,096 duplicate notifications/8 recoveries. No multi-day soak or real model workload."
     }
-  ]
+  ],
+  "current_unfinished_audit": "docs/local-handoff/UNFINISHED_AUDIT_20261021.md"
 }

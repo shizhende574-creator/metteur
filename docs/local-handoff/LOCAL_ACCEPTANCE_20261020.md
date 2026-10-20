@@ -1,5 +1,7 @@
 # Local acceptance in progress — started 2026-10-20, updated 2026-10-21
 
+> Later model/configuration audit on 2026-10-21: see [UNFINISHED_AUDIT_20261021.md](UNFINISHED_AUDIT_20261021.md). Existing DeepSeek configuration verified by two bounded real generation requests under the owner's USD 5 synthetic-data authorization. Historical zero-call statements below describe the earlier engineering candidate; no paired evaluation has run.
+
 Base: `ff7b795e536042e885f08a9bf7a2e5d4a3121749`. The owner requested local tests, comparison with the complete NX plan, repairs and quality improvements. Active branch: `codex/local-acceptance-20261020`. The original M1 checkout and downloaded package are preserved.
 
 ## Frontend gate repaired

@@ -1,5 +1,7 @@
 # 当前真实状态
 
+> 2026-10-21 最新任务审计与模型配置：[UNFINISHED_AUDIT_20261021.md](UNFINISHED_AUDIT_20261021.md)。已授权本轮 US$5、仅合成数据；现有 DeepSeek 经两次真实生成检查可用，配对评测仍未运行。
+
 > 2026-10-20 本地接手更新：有效类型检查、资源竞态及本机验收的新结果见
 > `LOCAL_ACCEPTANCE_20261020.md` 与 `LOCAL_ACCEPTANCE_MATRIX.json`。
 > 下文保留为 ff7b795 云端交接时点，旧33条类型诊断等状态已由本地记录更新。

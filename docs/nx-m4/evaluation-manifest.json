@@ -285,23 +285,25 @@
   ],
   "claim_limit": "Declared cold/warm is not provider-reported cache hit. No performance claim before matched actual runs.",
   "paid_authorization": {
-    "status": "BLOCKED_AUTH",
-    "allowed_usd": 0
+    "status": "AUTHORIZED_SYNTHETIC_ONLY",
+    "allowed_usd": 5,
+    "registration": "model-registration.local-20261021.json",
+    "note": "Current owner authorization supersedes old zero-budget state; evaluation tasks remain NOT_RUN."
   },
   "model_slots": [
     {
       "slot": "A",
-      "model": null,
-      "endpoint": null,
-      "api_type": null,
-      "status": "WAITING_USER_SELECTION"
+      "model": "deepseek/deepseek-v4.1-flash",
+      "endpoint": "https://api.commandcode.ai/provider/v1",
+      "api_type": "openai-chat",
+      "status": "EXISTING_CONFIG_PROTOCOL_SMOKE_PASS_EVAL_PENDING"
     },
     {
       "slot": "B",
       "model": null,
       "endpoint": null,
       "api_type": null,
-      "status": "WAITING_USER_SELECTION"
+      "status": "SECOND_MODEL_CLASS_PENDING"
     }
   ]
 }
