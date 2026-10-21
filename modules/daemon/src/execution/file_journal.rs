@@ -226,17 +226,12 @@ pub fn validate_path(root: &Path, path: &Path) -> DaemonResult<()> {
         current.push(component);
         match std::fs::symlink_metadata(&current) {
             Ok(meta) => {
-                let mut link = meta.file_type().is_symlink();
+                let link = crate::workspace::fs::is_link(&meta);
                 #[cfg(unix)]
-                {
+                let link = {
                     use std::os::unix::fs::MetadataExt;
-                    link |= meta.is_file() && meta.nlink() > 1;
-                }
-                #[cfg(windows)]
-                {
-                    use std::os::windows::fs::MetadataExt;
-                    link |= meta.file_attributes() & 0x400 != 0;
-                }
+                    link || meta.is_file() && meta.nlink() > 1
+                };
                 if link
                     || (current == path && !meta.is_file())
                     || (current != path && !meta.is_dir())

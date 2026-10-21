@@ -86,7 +86,7 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let _admission = ws.activity_gate.lock().await;
+        let _admission = ws.admit().await.map_err(to_status)?;
         if self.state.running.read().await.contains_key(&ws.root)
             || self.state.chats.read().await.contains_key(&ws.root)
         {
@@ -259,7 +259,7 @@ impl DaemonService {
         let interrupt_bus = InterruptBus::new();
         let pause_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let registry=self.state.registry_for(Some(ws.root()),true).await?;
+        let registry = self.state.registry_for(Some(ws.root()), true).await?;
         checkpoint.ensure_addons(&registry).map_err(to_status)?;
         let addon_fragments = registry.addon_fragments.values().flatten().cloned().collect();
 
@@ -386,11 +386,19 @@ impl DaemonService {
         let summary = crate::llm::billing::run_usage(&ws.db, &config.billing, &req.run_id)
             .map_err(to_status)?;
         let oversight_json = match uuid::Uuid::parse_str(&req.run_id) {
-            Ok(run) if crate::execution::DbCheckpointSink::load(&ws.db, run).map_err(to_status)?.is_some() => {
-                let settings = metteur_shared::config::oversight::OversightConfig::from_config(&config)
-                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                serde_json::to_string(&crate::oversight::budget::summary(&ws.db, run, &settings).map_err(to_status)?)
-                    .map_err(|e| Status::internal(e.to_string()))?
+            Ok(run)
+                if crate::execution::DbCheckpointSink::load(&ws.db, run)
+                    .map_err(to_status)?
+                    .is_some() =>
+            {
+                let settings =
+                    metteur_shared::config::oversight::OversightConfig::from_config(&config)
+                        .map_err(|e| Status::invalid_argument(e.to_string()))?;
+                serde_json::to_string(
+                    &crate::oversight::budget::summary(&ws.db, run, &settings)
+                        .map_err(to_status)?,
+                )
+                .map_err(|e| Status::internal(e.to_string()))?
             }
             _ => String::new(),
         };

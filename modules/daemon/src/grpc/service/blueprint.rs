@@ -50,9 +50,9 @@ impl DaemonService {
         let proto_blueprint =
             req.blueprint.ok_or_else(|| Status::invalid_argument("blueprint is required"))?;
         let blueprint = proto_to_blueprint(&proto_blueprint).map_err(to_status)?;
-        let registry=self.state.registry_for(Some(ws.root()),false).await?;
+        let registry = self.state.registry_for(Some(ws.root()), false).await?;
         ensure_valid(&blueprint, &registry)?;
-        let _admission = ws.activity_gate.lock().await;
+        let _admission = ws.admit().await.map_err(to_status)?;
         self.ensure_blueprint_idle(&ws.root, blueprint.id).await?;
         crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
         let uri = if req.file_path.is_empty() {
@@ -99,7 +99,7 @@ impl DaemonService {
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
         let blueprint = crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
             .map_err(to_status)?;
-        let registry=self.state.registry_for(Some(ws.root()),false).await?;
+        let registry = self.state.registry_for(Some(ws.root()), false).await?;
         ensure_valid(&blueprint, &registry)?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
@@ -127,7 +127,7 @@ impl DaemonService {
                 "workspace already has an active execution or chat",
             ));
         }
-        let registry=self.state.registry_for(Some(ws.root()),true).await?;
+        let registry = self.state.registry_for(Some(ws.root()), true).await?;
         // Inline content is a consistency assertion, never a hidden persistence path.
         let inline = if req.blueprint_json.trim().is_empty() {
             None
@@ -168,12 +168,35 @@ impl DaemonService {
         let run_id = uuid::Uuid::new_v4();
         let mut prompt_manifest = std::collections::BTreeMap::new();
         for node in blueprint.nodes.iter().filter(|node| node.kind == "PromptResource") {
-            let selection = node.data.get("snapshot_id").and_then(|value| value.as_str()).and_then(|value| uuid::Uuid::parse_str(value).ok()).ok_or_else(|| Status::failed_precondition("Prompt resource requires an explicit user selection"))?;
-            let snapshot = self.selected_prompt(&req.workspace_path, &subject, selection).await.map_err(|error| Status::failed_precondition(error.to_string()))?;
-            if snapshot.purpose != (metteur_shared::resources::PromptPurpose::Blueprint { blueprint_id: blueprint.id, node_id: node.id }) { return Err(Status::permission_denied("prompt selection is bound to another graph or node")); }
+            let selection = node
+                .data
+                .get("snapshot_id")
+                .and_then(|value| value.as_str())
+                .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                .ok_or_else(|| {
+                    Status::failed_precondition(
+                        "Prompt resource requires an explicit user selection",
+                    )
+                })?;
+            let snapshot = self
+                .selected_prompt(&req.workspace_path, &subject, selection)
+                .await
+                .map_err(|error| Status::failed_precondition(error.to_string()))?;
+            if snapshot.purpose
+                != (metteur_shared::resources::PromptPurpose::Blueprint {
+                    blueprint_id: blueprint.id,
+                    node_id: node.id,
+                })
+            {
+                return Err(Status::permission_denied(
+                    "prompt selection is bound to another graph or node",
+                ));
+            }
             prompt_manifest.insert(node.id, snapshot);
         }
-        crate::prompt_snapshots::SelectionStore::new(ws.db.clone(), ws.root()).and_then(|store| store.freeze_run(run_id, &prompt_manifest)).map_err(|error| Status::failed_precondition(error.to_string()))?;
+        crate::prompt_snapshots::SelectionStore::new(ws.db.clone(), ws.root())
+            .and_then(|store| store.freeze_run(run_id, &prompt_manifest))
+            .map_err(|error| Status::failed_precondition(error.to_string()))?;
         let ws_key = ws.root().to_path_buf();
 
         let interrupt_bus = InterruptBus::new();
@@ -232,6 +255,7 @@ impl DaemonService {
         let recorded = crate::oversight::recovery::mark_direct_cancel(&ws.db, entry.run_id);
         // Stop remains effective even if persisting its recovery receipt fails.
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        ws.db.notify_changes();
         if let Some(broker) = &entry.approvals {
             broker.close();
         }
@@ -261,6 +285,7 @@ impl DaemonService {
             ));
         }
         entry.pause_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        ws.db.notify_changes();
         Ok(Response::new(Empty {}))
     }
 
@@ -286,6 +311,7 @@ impl DaemonService {
             ));
         }
         entry.pause_requested.store(false, std::sync::atomic::Ordering::SeqCst);
+        ws.db.notify_changes();
         Ok(Response::new(Empty {}))
     }
 
@@ -342,9 +368,7 @@ impl DaemonService {
         request: Request<SaveFunctionRequest>,
     ) -> Result<Response<SaveFunctionResponse>, Status> {
         let req = request.into_inner();
-        let info = req
-            .info
-            .ok_or_else(|| Status::invalid_argument("info is required"))?;
+        let info = req.info.ok_or_else(|| Status::invalid_argument("info is required"))?;
         let root = optional_workspace(&req.workspace_path)?;
         let registry = self.state.registry_for(root.as_deref(), true).await?;
         if registry
@@ -359,9 +383,7 @@ impl DaemonService {
         if importing
             && (registry.node_executor(&info.name).is_some() || registry.tool(&info.name).is_some())
         {
-            return Err(Status::already_exists(
-                "Function copy name conflicts with a node or tool",
-            ));
+            return Err(Status::already_exists("Function copy name conflicts with a node or tool"));
         }
         let mut entry = if importing {
             if root.is_none()
@@ -405,8 +427,7 @@ impl DaemonService {
             }
         } else {
             let body = proto_to_blueprint(
-                &req.body
-                    .ok_or_else(|| Status::invalid_argument("body is required"))?,
+                &req.body.ok_or_else(|| Status::invalid_argument("body is required"))?,
             )
             .map_err(to_status)?;
             proto_to_function(&info, body).map_err(to_status)?
@@ -432,7 +453,7 @@ impl DaemonService {
                 .get(&root)
                 .await
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
-            let _admission = ws.activity_gate.lock().await;
+            let _admission = ws.admit().await.map_err(to_status)?;
             if self.state.running.read().await.contains_key(ws.root())
                 || self.state.chats.read().await.contains_key(ws.root())
             {
@@ -461,20 +482,13 @@ impl DaemonService {
             let bound = crate::storage::blueprint_files::binding(&ws.db, entry.body.id)
                 .map_err(to_status)?;
             file_path = if req.file_path.is_empty() {
-                bound
-                    .as_ref()
-                    .map(|v| v.blueprint_uri.clone())
-                    .unwrap_or_default()
+                bound.as_ref().map(|v| v.blueprint_uri.clone()).unwrap_or_default()
             } else {
                 req.file_path
             };
             if !file_path.is_empty() {
                 if importing
-                    && ws
-                        .version_manager
-                        .blueprint_path(&file_path)
-                        .map_err(to_status)?
-                        .exists()
+                    && ws.version_manager.blueprint_path(&file_path).map_err(to_status)?.exists()
                 {
                     return Err(Status::already_exists("Import path already exists"));
                 }
@@ -516,7 +530,9 @@ impl DaemonService {
         self.state.registry.register_function(entry.clone());
         let mut info = function_to_proto(&entry);
         info.file_path = file_path;
-        Ok(Response::new(SaveFunctionResponse { info: Some(info) }))
+        Ok(Response::new(SaveFunctionResponse {
+            info: Some(info),
+        }))
     }
 
     pub(crate) async fn list_functions(
@@ -551,7 +567,9 @@ impl DaemonService {
                 Ok(info)
             })
             .collect::<Result<Vec<_>, Status>>()?;
-        Ok(Response::new(FunctionList { functions }))
+        Ok(Response::new(FunctionList {
+            functions,
+        }))
     }
 
     pub(crate) async fn load_function(
@@ -561,9 +579,8 @@ impl DaemonService {
         let req = request.into_inner();
         let root = optional_workspace(&req.workspace_path)?;
         let registry = self.state.registry_for(root.as_deref(), false).await?;
-        let entry = registry
-            .function(&req.name)
-            .ok_or_else(|| Status::not_found("function not found"))?;
+        let entry =
+            registry.function(&req.name).ok_or_else(|| Status::not_found("function not found"))?;
         ensure_valid(&entry.body, &registry)?;
         let mut info = function_to_proto(&entry);
         info.addon_binding_json = registry
@@ -626,7 +643,7 @@ impl DaemonService {
                 .get(&PathBuf::from(&req.workspace_path))
                 .await
                 .ok_or_else(|| Status::not_found("workspace not open"))?;
-            let _admission = ws.activity_gate.lock().await;
+            let _admission = ws.admit().await.map_err(to_status)?;
             if self.state.running.read().await.contains_key(ws.root())
                 || self.state.chats.read().await.contains_key(ws.root())
             {
@@ -650,14 +667,12 @@ impl DaemonService {
     ) -> Result<Response<Blueprint>, Status> {
         let req = request.into_inner();
         let source = req.source;
-        let workspace=optional_workspace(&req.workspace_path)?;
-        let registry=self.state.registry_for(workspace.as_deref(),false).await?;
-        let blueprint = metteur_shared::dsl::compile_with_catalog(
-            &source,
-            &registry.authoring_catalog(),
-        )
-        .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        ensure_valid(&blueprint,&registry)?;
+        let workspace = optional_workspace(&req.workspace_path)?;
+        let registry = self.state.registry_for(workspace.as_deref(), false).await?;
+        let blueprint =
+            metteur_shared::dsl::compile_with_catalog(&source, &registry.authoring_catalog())
+                .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        ensure_valid(&blueprint, &registry)?;
         Ok(Response::new(blueprint_to_proto(&blueprint)))
     }
 
@@ -893,8 +908,8 @@ fn function_to_proto(entry: &FunctionEntry) -> ProtoFunctionInfo {
         outputs: entry.signature.outputs.iter().map(fn_pin_to_proto).collect(),
         source: source.to_string(),
         updated_at: 0,
-        addon_binding_json:String::new(),
-        file_path:String::new(),
+        addon_binding_json: String::new(),
+        file_path: String::new(),
     }
 }
 

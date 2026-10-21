@@ -7,19 +7,19 @@
 //! always reach the real handler (never recurse).
 
 mod addon_pages;
-mod continuations;
-mod launches;
-mod reports;
-mod resources;
-mod prompts;
 mod blackboard;
 mod blueprint;
 mod chat;
-mod config;
 mod concierge;
+mod config;
+mod continuations;
 mod files;
 mod jobs;
+mod launches;
+mod prompts;
 mod registry;
+mod reports;
+mod resources;
 mod sandbox;
 mod state;
 mod versioning;
@@ -50,7 +50,7 @@ use super::proto::{
     SaveBlueprintRequest, SaveFunctionRequest, SaveFunctionResponse, SendChatRequest,
     SetAddonEnabledRequest, SetConfigRequest, SnapshotInfo, SnapshotList, StatFileRequest,
     ToolList, UninstallAddonRequest, UsageSummary, WatchEvent, WatchJobsRequest,
-    WatchWorkspaceRequest, WorkspaceInfo, WorkspaceList, WriteFileRequest,
+    WatchWorkspaceRequest, WorkspaceChange, WorkspaceInfo, WorkspaceList, WriteFileRequest,
 };
 
 pub use state::AppState;
@@ -84,27 +84,109 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
-    async fn select_prompt_resource(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.select_prompt_resource(request).await }
-    async fn write_schedule(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.write_schedule(request).await }
-    async fn confirm_blueprint_launch(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.confirm_blueprint_launch(request).await }
-    async fn query_blueprint_launch(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_blueprint_launch(request).await }
-    async fn query_continuations(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_continuations(request).await }
-    async fn control_continuation(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.control_continuation(request).await }
-    async fn query_prompt_resources(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_prompt_resources(request).await }
-    async fn write_prompt_resource(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.write_prompt_resource(request).await }
-    async fn delete_prompt_resource(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.delete_prompt_resource(request).await }
-    async fn copy_prompt_to_project(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.copy_prompt_to_project(request).await }
-    async fn query_project_memory(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.query_project_memory(request).await }
-    async fn write_project_note(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.write_project_note(request).await }
-    async fn promote_project_convention(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.promote_project_convention(request).await }
-    async fn update_project_memory_status(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.update_project_memory_status(request).await }
-    async fn list_oversight_reports(&self, request: Request<super::proto::OversightReportsRequest>) -> Result<Response<super::proto::OversightReports>, Status> { self.list_oversight_reports(request).await }
+    async fn select_prompt_resource(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.select_prompt_resource(request).await
+    }
+    async fn write_schedule(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.write_schedule(request).await
+    }
+    async fn confirm_blueprint_launch(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.confirm_blueprint_launch(request).await
+    }
+    async fn query_blueprint_launch(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.query_blueprint_launch(request).await
+    }
+    async fn query_continuations(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.query_continuations(request).await
+    }
+    async fn control_continuation(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.control_continuation(request).await
+    }
+    async fn query_prompt_resources(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.query_prompt_resources(request).await
+    }
+    async fn write_prompt_resource(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.write_prompt_resource(request).await
+    }
+    async fn delete_prompt_resource(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.delete_prompt_resource(request).await
+    }
+    async fn copy_prompt_to_project(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.copy_prompt_to_project(request).await
+    }
+    async fn query_project_memory(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.query_project_memory(request).await
+    }
+    async fn write_project_note(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.write_project_note(request).await
+    }
+    async fn promote_project_convention(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.promote_project_convention(request).await
+    }
+    async fn update_project_memory_status(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.update_project_memory_status(request).await
+    }
+    async fn list_oversight_reports(
+        &self,
+        request: Request<super::proto::OversightReportsRequest>,
+    ) -> Result<Response<super::proto::OversightReports>, Status> {
+        self.list_oversight_reports(request).await
+    }
 
-    type SendConciergeMessageStream = tokio_stream::wrappers::ReceiverStream<Result<super::proto::ConciergeEvent, Status>>;
-    async fn get_concierge_state(&self, request: Request<super::proto::ConciergeStateRequest>) -> Result<Response<super::proto::ConciergeState>, Status> {
+    type SendConciergeMessageStream =
+        tokio_stream::wrappers::ReceiverStream<Result<super::proto::ConciergeEvent, Status>>;
+    async fn get_concierge_state(
+        &self,
+        request: Request<super::proto::ConciergeStateRequest>,
+    ) -> Result<Response<super::proto::ConciergeState>, Status> {
         self.get_concierge_state(request).await
     }
-    async fn send_concierge_message(&self, request: Request<super::proto::SendConciergeMessageRequest>) -> Result<Response<Self::SendConciergeMessageStream>, Status> {
+    async fn send_concierge_message(
+        &self,
+        request: Request<super::proto::SendConciergeMessageRequest>,
+    ) -> Result<Response<Self::SendConciergeMessageStream>, Status> {
         self.send_concierge_message(request).await
     }
     async fn rewind_chat(
@@ -118,6 +200,8 @@ impl Daemon for DaemonService {
     type ContinueExecutionStream =
         tokio_stream::wrappers::ReceiverStream<Result<ExecutionEvent, Status>>;
     type WatchWorkspaceStream = tokio_stream::wrappers::ReceiverStream<Result<WatchEvent, Status>>;
+    type WatchWorkspaceChangesStream =
+        tokio_stream::wrappers::ReceiverStream<Result<WorkspaceChange, Status>>;
     type WatchJobsStream = tokio_stream::wrappers::ReceiverStream<Result<JobEvent, Status>>;
     type SendChatStream =
         tokio_stream::wrappers::UnboundedReceiverStream<Result<ChatEvent, Status>>;
@@ -192,7 +276,10 @@ impl Daemon for DaemonService {
         self.send_interrupt(request).await
     }
 
-    async fn list_tools(&self, request: Request<metteur_proto::proto::RegistryRequest>) -> Result<Response<ToolList>, Status> {
+    async fn list_tools(
+        &self,
+        request: Request<metteur_proto::proto::RegistryRequest>,
+    ) -> Result<Response<ToolList>, Status> {
         self.list_tools(request).await
     }
 
@@ -347,7 +434,12 @@ impl Daemon for DaemonService {
         self.install_addon(request).await
     }
 
-    async fn addon_pages(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>, Status> { self.addon_pages(request).await }
+    async fn addon_pages(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.addon_pages(request).await
+    }
 
     async fn list_addons(
         &self,
@@ -431,6 +523,13 @@ impl Daemon for DaemonService {
         request: Request<WatchWorkspaceRequest>,
     ) -> Result<Response<Self::WatchWorkspaceStream>, Status> {
         self.watch_workspace(request).await
+    }
+
+    async fn watch_workspace_changes(
+        &self,
+        request: Request<WatchWorkspaceRequest>,
+    ) -> Result<Response<Self::WatchWorkspaceChangesStream>, Status> {
+        self.watch_workspace_changes(request).await
     }
 
     async fn list_jobs(

@@ -11,7 +11,58 @@ use super::super::proto::{
 };
 use super::*;
 
+fn resolve_ws_entry(root: &std::path::Path, relative: &str) -> Result<PathBuf, Status> {
+    let path = resolve_ws_path(root, relative)?;
+    if path == root {
+        return Err(Status::invalid_argument("Choose a file or folder inside the workspace"));
+    }
+    Ok(path)
+}
+
 impl DaemonService {
+    pub(crate) async fn watch_workspace_changes(
+        &self,
+        request: Request<WatchWorkspaceRequest>,
+    ) -> Result<
+        Response<tokio_stream::wrappers::ReceiverStream<Result<WorkspaceChange, Status>>>,
+        Status,
+    > {
+        let root = PathBuf::from(request.into_inner().workspace_path);
+        let ws = self
+            .state
+            .workspaces
+            .get(&root)
+            .await
+            .ok_or_else(|| Status::not_found("workspace not open"))?;
+        let mut changes = ws.db.subscribe_changes();
+        let mut personal = self.state.global_db.as_ref().map(|db| db.subscribe_changes());
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let mut sequence = 0_u64;
+            loop {
+                changes.borrow_and_update();
+                if let Some(personal) = personal.as_mut() {
+                    personal.borrow_and_update();
+                }
+                if tx
+                    .send(Ok(WorkspaceChange {
+                        sequence,
+                    }))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+                tokio::select! {
+                    _ = tx.closed() => break,
+                    change = changes.changed() => if change.is_err() { break; },
+                    change = async { match personal.as_mut() { Some(personal) => personal.changed().await, None => std::future::pending().await } } => if change.is_err() { break; },
+                }
+                sequence = sequence.wrapping_add(1);
+            }
+        });
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+    }
     pub(crate) async fn list_files(
         &self,
         request: Request<ListFilesRequest>,
@@ -37,7 +88,7 @@ impl DaemonService {
                 .strip_prefix(ws.root())
                 .map_err(|_| Status::internal("entry outside workspace"))?
                 .to_string_lossy()
-                .to_string();
+                .replace('\\', "/");
             // The workspace metadata directory stays invisible to clients.
             if std::path::Path::new(&rel).starts_with(crate::workspace::METADATA_DIR) {
                 continue;
@@ -86,8 +137,18 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let path = resolve_ws_path(ws.root(), &req.path)?;
-        let _admission = ws.activity_gate.lock().await;
+        let path = resolve_ws_entry(ws.root(), &req.path)?;
+        let _admission = ws.admit().await.map_err(to_status)?;
+        if req.create_only && path.exists() {
+            return Err(Status::already_exists("file already exists"));
+        }
+        if let Some(expected) = &req.expected_content {
+            if std::fs::read(&path).map_err(io_status)? != expected.as_bytes() {
+                return Err(Status::failed_precondition(
+                    "File changed on disk; reload or explicitly overwrite it",
+                ));
+            }
+        }
         let bound = crate::storage::blueprint_files::bindings(&ws.db)
             .map_err(to_status)?
             .into_iter()
@@ -97,7 +158,7 @@ impl DaemonService {
         if bound || path.extension().is_some_and(|ext| ext == "blueprint") {
             let graph = crate::storage::blueprint_files::decode(req.content.as_bytes())
                 .map_err(to_status)?;
-            let registry=self.state.registry_for(Some(ws.root()),false).await?;
+            let registry = self.state.registry_for(Some(ws.root()), false).await?;
             super::blueprint::ensure_valid(&graph, &registry)?;
             self.ensure_blueprint_idle(&ws.root, graph.id).await?;
             crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
@@ -111,7 +172,13 @@ impl DaemonService {
             )
             .map_err(to_status)?;
         } else {
-            mutate_regular_file(&ws, &path, Some(req.content.as_bytes())).map_err(to_status)?;
+            mutate_regular_file(
+                &ws,
+                &path,
+                Some(req.content.as_bytes()),
+                req.expected_content.as_deref().map(str::as_bytes),
+            )
+            .map_err(to_status)?;
         }
         Ok(Response::new(Empty {}))
     }
@@ -147,7 +214,8 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let path = resolve_ws_path(ws.root(), &req.path)?;
+        let path = resolve_ws_entry(ws.root(), &req.path)?;
+        let _admission = ws.admit().await.map_err(to_status)?;
         std::fs::create_dir_all(&path).map_err(io_status)?;
         Ok(Response::new(Empty {}))
     }
@@ -163,14 +231,14 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let path = resolve_ws_path(ws.root(), &req.path)?;
+        let path = resolve_ws_entry(ws.root(), &req.path)?;
         let meta = std::fs::symlink_metadata(&path).map_err(io_status)?;
-        let _admission = ws.activity_gate.lock().await;
+        let _admission = ws.admit().await.map_err(to_status)?;
         protect_blueprint_identity(&ws, &path)?;
         if meta.is_dir() {
             std::fs::remove_dir_all(&path).map_err(io_status)?;
         } else {
-            mutate_regular_file(&ws, &path, None).map_err(to_status)?;
+            mutate_regular_file(&ws, &path, None, None).map_err(to_status)?;
         }
         Ok(Response::new(Empty {}))
     }
@@ -186,11 +254,17 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let from = resolve_ws_path(ws.root(), &req.from)?;
-        let to = resolve_ws_path(ws.root(), &req.to)?;
-        let _admission = ws.activity_gate.lock().await;
+        let from = resolve_ws_entry(ws.root(), &req.from)?;
+        let to = resolve_ws_entry(ws.root(), &req.to)?;
+        let _admission = ws.admit().await.map_err(to_status)?;
         protect_blueprint_identity(&ws, &from)?;
         protect_blueprint_identity(&ws, &to)?;
+        if from == to {
+            return Ok(Response::new(Empty {}));
+        }
+        if to.exists() {
+            return Err(Status::already_exists("Rename destination already exists"));
+        }
         std::fs::rename(&from, &to).map_err(io_status)?;
         Ok(Response::new(Empty {}))
     }
@@ -228,15 +302,18 @@ impl DaemonService {
             .get(&PathBuf::from(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("workspace not open"))?;
-        let watcher = ws
-            .watcher()
+        let mut rx = ws
+            .watch_files()
             .ok_or_else(|| Status::unavailable("workspace file watcher unavailable"))?;
-        let mut rx = watcher.subscribe();
         let root = ws.root().to_path_buf();
         let (tx, rx_stream) = tokio::sync::mpsc::channel(64);
         tokio::spawn(async move {
             loop {
-                match rx.recv().await {
+                let event = tokio::select! {
+                    _ = tx.closed() => break,
+                    event = rx.recv() => event,
+                };
+                match event {
                     Ok(ev) => {
                         let rel = ev.path.strip_prefix(&root).unwrap_or(&ev.path);
                         let rel_str = rel.to_string_lossy().replace('\\', "/");
@@ -256,8 +333,15 @@ impl DaemonService {
                             break;
                         }
                     }
-                    // Backlog overflow: forward the newest events only.
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    // Reconnect forces a full resync; silently dropping a removal loses editor state.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        let _ = tx
+                            .send(Err(Status::resource_exhausted(
+                                "File events overflowed; resubscribe and resync",
+                            )))
+                            .await;
+                        break;
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -271,6 +355,7 @@ fn mutate_regular_file(
     ws: &crate::workspace::manager::Workspace,
     path: &std::path::Path,
     after: Option<&[u8]>,
+    expected: Option<&[u8]>,
 ) -> crate::error::DaemonResult<()> {
     use crate::execution::file_journal::{DbFileJournal, FileJournal, FileOrigin};
     let log = crate::execution::TransactionLog::new().with_journal(FileJournal::new(
@@ -287,7 +372,7 @@ fn mutate_regular_file(
             attempt: 1,
             wal_position: 0,
         },
-        None,
+        expected,
     )
 }
 

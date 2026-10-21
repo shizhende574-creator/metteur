@@ -115,6 +115,9 @@ service Daemon {
   rpc RevealInExplorer(RevealInExplorerRequest) returns (Empty);
   // Live file-change events for the workspace (created / modified / removed).
   rpc WatchWorkspace(WatchWorkspaceRequest) returns (stream WatchEvent);
+  // Coalesced invalidations after committed runtime/resource changes. Subscribe
+  // before reading a snapshot; the first event and every reconnect require resync.
+  rpc WatchWorkspaceChanges(WatchWorkspaceRequest) returns (stream WorkspaceChange);
 
   // Background commands (jobs) of the workspace.
   rpc ListJobs(ListJobsRequest) returns (JobList);
@@ -568,6 +571,8 @@ message WriteFileRequest {
   string workspace_path = 1;
   string path = 2;
   string content = 3;
+  optional string expected_content = 4;
+  bool create_only = 5;
 }
 
 message StatFileRequest {
@@ -612,6 +617,11 @@ message WatchEvent {
   string path = 1;
   // One of: created | modified | removed.
   string kind = 2;
+}
+
+message WorkspaceChange {
+  // Connection-local invalidation sequence, not a persisted database revision.
+  uint64 sequence = 1;
 }
 
 // ---- Background commands (jobs) ------------------------------------------------

@@ -90,7 +90,11 @@ impl DaemonService {
                 after,
             } => {
                 let page = store.list(after).map_err(to_status)?;
-                let next = if page.len() == 50 {page.last().map(|r| r.task.id)} else {None};
+                let next = if page.len() == 50 {
+                    page.last().map(|r| r.task.id)
+                } else {
+                    None
+                };
                 serde_json::json!({"items":page.iter().filter(|r|r.owner_subject==subject).map(&project).collect::<Vec<_>>(),"next":next})
             }
             Query::Read {
@@ -122,7 +126,7 @@ impl DaemonService {
             .get(Path::new(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace is not open"))?;
-        let _gate = ws.activity_gate.lock().await;
+        let _gate = ws.admit().await.map_err(to_status)?;
         let store = ContinuationStore::new(ws.db.clone(), ws.root()).map_err(to_status)?;
         let r = store
             .update(input.id, req.expected_revision, |r| {
@@ -131,7 +135,9 @@ impl DaemonService {
                 }
                 match input.action.as_str() {
                     "stop" => {
-                        r.task.cancel_timer_sources("task_stopped", now_ms()).map_err(|e|DaemonError::Execution(e.into()))?;
+                        r.task
+                            .cancel_timer_sources("task_stopped", now_ms())
+                            .map_err(|e| DaemonError::Execution(e.into()))?;
                         if r.task.state != TaskState::Stopped {
                             r.task.stop();
                         }
@@ -140,11 +146,16 @@ impl DaemonService {
                         }
                     }
                     "cancel_schedule" => {
-                        r.task.cancel_timer_sources("schedule_cancelled", now_ms()).map_err(|e|DaemonError::Execution(e.into()))?;
+                        r.task
+                            .cancel_timer_sources("schedule_cancelled", now_ms())
+                            .map_err(|e| DaemonError::Execution(e.into()))?;
                         for schedule in &mut r.schedules {
                             schedule.cancel();
                         }
-                        if !matches!(r.task.state, TaskState::Active | TaskState::Stopped | TaskState::Completed) {
+                        if !matches!(
+                            r.task.state,
+                            TaskState::Active | TaskState::Stopped | TaskState::Completed
+                        ) {
                             r.task.wait = None;
                             r.task.state = if r.task.dispatch.as_ref().is_some_and(|d| {
                                 matches!(
@@ -160,8 +171,13 @@ impl DaemonService {
                         }
                     }
                     "pause" => {
-                        if matches!(r.task.state, TaskState::Stopped | TaskState::Completed | TaskState::NeedsAttention) {
-                            return Err(DaemonError::Execution("Task has ended or requires explicit recovery".into()));
+                        if matches!(
+                            r.task.state,
+                            TaskState::Stopped | TaskState::Completed | TaskState::NeedsAttention
+                        ) {
+                            return Err(DaemonError::Execution(
+                                "Task has ended or requires explicit recovery".into(),
+                            ));
                         }
                         r.task.paused = true;
                         if r.task.state != TaskState::Active {
@@ -194,10 +210,12 @@ impl DaemonService {
             .map_err(to_status)?;
         if input.action == "stop" {
             ws.jobs.kill_task(input.id);
-            if let Some(run)=self.state.running.read().await.get(ws.root()) {
-                if run.continuation_task==Some(input.id) {
-                    run.cancel_requested.store(true,std::sync::atomic::Ordering::SeqCst);
-                    if let Some(broker)=&run.approvals {broker.close();}
+            if let Some(run) = self.state.running.read().await.get(ws.root()) {
+                if run.continuation_task == Some(input.id) {
+                    run.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                    if let Some(broker) = &run.approvals {
+                        broker.close();
+                    }
                 }
             }
 
@@ -232,15 +250,28 @@ pub(super) async fn start_monitor(state: Arc<AppState>, root: PathBuf) {
         }
         workers.insert(root.clone(), token);
     }
+    let Some(workspace) = state.workspaces.get(&root).await else {
+        return;
+    };
+    let mut changes = workspace.db.subscribe_changes();
+    drop(workspace);
     tokio::spawn(async move {
         let mut relative_clocks: std::collections::HashMap<
             Uuid,
             (u64, std::time::Instant, std::time::Duration),
         > = std::collections::HashMap::new();
-        let mut timer = tokio::time::interval(std::time::Duration::from_millis(500));
-        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut next_deadline = Some(now_ms());
         loop {
-            timer.tick().await;
+            tokio::select! {
+                changed = changes.changed() => if changed.is_err() { break; },
+                _ = async {
+                    if let Some(deadline) = next_deadline {
+                        tokio::time::sleep(std::time::Duration::from_millis(deadline.saturating_sub(now_ms()))).await;
+                    } else { std::future::pending::<()>().await; }
+                } => {},
+            }
+            changes.borrow_and_update();
+            next_deadline = None;
             if state.continuation_workers.lock().await.get(&root) != Some(&token) {
                 break;
             }
@@ -265,6 +296,20 @@ pub(super) async fn start_monitor(state: Arc<AppState>, root: PathBuf) {
                 }
                 for record in page {
                     after = Some(record.task.id);
+                    let now = now_ms();
+                    let candidates = record
+                        .policy
+                        .iter()
+                        .map(|p| p.expires_ms)
+                        .chain(record.task.wait.iter().map(|w| w.deadline_ms))
+                        .chain(record.schedules.iter().filter_map(|s| {
+                            s.next_due.map(|d| d.timestamp_millis().max(0) as u64)
+                        }));
+                    for deadline in candidates.filter(|deadline| *deadline > now) {
+                        next_deadline = Some(
+                            next_deadline.map_or(deadline, |previous: u64| previous.min(deadline)),
+                        );
+                    }
                     if record.task.state == TaskState::Stopped {
                         ws.jobs.kill_task(record.task.id);
                         continue;
@@ -275,7 +320,14 @@ pub(super) async fn start_monitor(state: Arc<AppState>, root: PathBuf) {
                     ) {
                         continue;
                     }
-                    match super::launches::poll_launch(&state,&ws,&record).await {Ok(true)=>continue,Err(error)=>{tracing::warn!("Launch reconciliation failed: {error}");continue;},Ok(false)=>{}}
+                    match super::launches::poll_launch(&state, &ws, &record).await {
+                        Ok(true) => continue,
+                        Err(error) => {
+                            tracing::warn!("Launch reconciliation failed: {error}");
+                            continue;
+                        }
+                        Ok(false) => {}
+                    }
                     let result=store.update(record.task.id,record.revision,|r|{
       if r.task.budget.unknown_usage || r.task.budget.used_turns >= r.task.budget.max_turns || r.task.budget.consumed_tokens.saturating_add(r.task.budget.reserved_tokens) >= r.task.budget.token_limit {r.task.state=TaskState::NeedsAttention;r.task.attention=Some("Continuation budget exhausted or usage requires reconciliation".into());return Ok(());}
       if r.policy.as_ref().is_none_or(|p|p.expires_ms<=now_ms()) {r.task.state=TaskState::NeedsAttention;r.task.attention=Some("Continuation policy expired".into());return Ok(());}
@@ -386,7 +438,7 @@ impl DaemonService {
             .get(Path::new(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace is not open"))?;
-        let _gate = ws.activity_gate.lock().await;
+        let _gate = ws.admit().await.map_err(to_status)?;
         if self.state.chats.read().await.contains_key(ws.root())
             || self.state.running.read().await.contains_key(ws.root())
         {
@@ -469,7 +521,9 @@ impl DaemonService {
                         "Only one active schedule per task is supported".into(),
                     ));
                 }
-                r.task.cancel_timer_sources("schedule_replaced", now_ms()).map_err(|e|DaemonError::Execution(e.into()))?;
+                r.task
+                    .cancel_timer_sources("schedule_replaced", now_ms())
+                    .map_err(|e| DaemonError::Execution(e.into()))?;
                 r.schedules.retain(|s| s.id != input.id);
                 r.schedules.push(schedule.clone());
                 let id = format!(
