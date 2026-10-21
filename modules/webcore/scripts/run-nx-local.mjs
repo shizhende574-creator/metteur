@@ -11,6 +11,10 @@ import { resolve as resolvePath, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { assertLiveIdentity } from './live-identity.mjs'
+import { createClient } from '@connectrpc/connect'
+import { createGrpcWebTransport } from '@connectrpc/connect-web'
+import { fromJson } from '@bufbuild/protobuf'
+import { Daemon, SaveBlueprintRequestSchema } from '../src/gen/metteur_pb.ts'
 
 if (!process.argv.includes('--serve-only')) throw Error('Use --serve-only; this helper never launches a broad browser suite.');
 const webcore = resolvePath(dirname(fileURLToPath(import.meta.url)), '..')
@@ -291,18 +295,14 @@ try {
     daemonPid: daemon.pid,
     webPid: web.pid,
   }
-  await writeFile(join(root, 'ready.json'), JSON.stringify(ready, null, 2))
-  if (process.env.METTEUR_LIVE_READY_FILE)
-    await writeFile(process.env.METTEUR_LIVE_READY_FILE, JSON.stringify(ready, null, 2))
-  const { createClient } = await import('@connectrpc/connect')
-  const { createGrpcWebTransport } = await import('@connectrpc/connect-web')
-  const { fromJson } = await import('@bufbuild/protobuf')
-  const { Daemon, SaveBlueprintRequestSchema } = await import('../src/gen/metteur_pb.ts')
   const client = createClient(Daemon, createGrpcWebTransport({ baseUrl: baseURL }))
   await client.openWorkspace({ path: workspace })
   const payload = JSON.parse(await readFile(join(webcore, 'scripts/fixtures/nx-local-review-request.json'), 'utf8'))
   payload.workspace_path = workspace
   await client.saveBlueprint(fromJson(SaveBlueprintRequestSchema, payload))
+  await writeFile(join(root, 'ready.json'), JSON.stringify(ready, null, 2))
+  if (process.env.METTEUR_LIVE_READY_FILE)
+    await writeFile(process.env.METTEUR_LIVE_READY_FILE, JSON.stringify(ready, null, 2))
   console.log(`Deterministic live fixture ready; evidence: ${root}`)
   await Promise.race([
     once(process, 'SIGTERM'), once(process, 'SIGINT'),
