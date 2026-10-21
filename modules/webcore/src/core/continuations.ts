@@ -1,3 +1,6 @@
+export const CONTINUATION_WAITING_MESSAGE =
+  'Task is waiting. Automatic continuation follows its saved policy; manage it in Tasks.'
+
 export interface TaskSource {
   id: string
   kind: string

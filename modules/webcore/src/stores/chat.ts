@@ -13,7 +13,7 @@ import type {
 } from '@/core'
 import type { ChatPhase } from '@/lib/chat/liveness'
 import { useWorkspaceStore } from './workspace'
-import type { TaskRecord } from '@/core/continuations'
+import { CONTINUATION_WAITING_MESSAGE, type TaskRecord } from '@/core/continuations'
 import { usePromptResourcesStore } from './prompt-resources'
 import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 
@@ -131,8 +131,7 @@ export const useChatStore = defineStore('chat', () => {
       const state = record.task.state
       if (state !== 'completed') {
         const status: Record<string, string> = {
-          waiting:
-            'Task is waiting. Automatic continuation follows its saved policy; manage it in Tasks.',
+          waiting: CONTINUATION_WAITING_MESSAGE,
           wait_preparing: 'Task is preparing its saved wait.',
           ready: 'Task is ready for its authorized continuation.',
           dispatching: 'Task is continuing from its owned result.',

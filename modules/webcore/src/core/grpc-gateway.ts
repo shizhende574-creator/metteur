@@ -2,6 +2,7 @@ import type { OversightReports } from './oversight'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
+import { CONTINUATION_WAITING_MESSAGE } from './continuations'
 import { createClient, type Client } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
 import { ref, type Ref } from 'vue'
@@ -902,8 +903,7 @@ export class GrpcGateway implements DaemonGateway {
               onMessage({
                 id: `waiting-${Date.now()}-${seq++}`,
                 role: 'notice',
-                content:
-                  'Task is waiting. Automatic continuation follows its saved policy; manage it in Task continuation.',
+                content: CONTINUATION_WAITING_MESSAGE,
                 createdAt: Date.now(),
                 detail:
                   typeof detail.task_id === 'string'
