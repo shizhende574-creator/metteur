@@ -47,22 +47,22 @@ async function decide(allow:boolean){
 </script>
 <template>
 <div v-dialog-focus class="launch-review glass" role="dialog" aria-modal="true" aria-labelledby="launch-review-title">
- <header><div><h1 id="launch-review-title">Review a blueprint run <InlineHelp text="This approval applies to one version and one run." /></h1></div><button class="btn-icon" aria-label="Decline launch" :disabled="busy" @click="decide(false)"><X :size="18"/></button></header>
+ <header><div><h1 id="launch-review-title">Review a Blueprint Run <InlineHelp text="This approval applies to one version and one run." /></h1></div><button class="btn-icon" aria-label="Decline launch" :disabled="busy" @click="decide(false)"><X :size="18"/></button></header>
  <nav aria-label="Run review sections"><button v-for="tab in tabs" :key="tab.id" class="btn" :class="{'btn-primary':section===tab.id}" :aria-pressed="section===tab.id" @click="section=tab.id"><component :is="tab.icon" :size="16"/>{{tab.label}}</button></nav>
  <div class="launch-body">
   <template v-if="section==='overview'">
    <div class="launch-title"><Workflow :size="24"/><h2>{{payload.blueprint_name}}</h2></div>
-   <div class="launch-columns"><div><h3>What this run will do</h3><p>{{payload.handoff.goal}}</p><dl><dt>Source boundary</dt><dd>Original conversation · through message {{payload.handoff.message_end}}</dd><dt>Execution scope</dt><dd>Current workspace · existing permission checks</dd><dt>Version binding</dt><dd><code>{{payload.digest}}</code></dd></dl></div>
-   <aside><ShieldCheck :size="20"/><h3>Completion policy</h3><label><input v-model="resume" type="checkbox" :disabled="busy"/>Resume this conversation when the run finishes</label><p v-if="resume">Shared task limits: {{payload.policy.max_turns}} continuation turns · {{payload.policy.token_limit.toLocaleString()}} tokens.</p><p v-else>Keep the result for review without an automatic model turn.</p><p>Expires {{new Date(payload.policy.expires_ms).toLocaleString(undefined,{timeZoneName:'short'})}}. Stopping the run waits for your decision; it never restarts automatically.</p></aside></div>
+   <div class="launch-columns"><div><h3>What This Run Will Do</h3><p>{{payload.handoff.goal}}</p><dl><dt>Source boundary</dt><dd>Original conversation · through message {{payload.handoff.message_end}}</dd><dt>Execution scope</dt><dd>Current workspace · existing permission checks</dd><dt>Version binding</dt><dd><code>{{payload.digest}}</code></dd></dl></div>
+   <aside><ShieldCheck :size="20"/><h3>Completion Policy</h3><label><input v-model="resume" type="checkbox" :disabled="busy"/>Resume this conversation when the run finishes</label><p v-if="resume">Shared task limits: {{payload.policy.max_turns}} continuation turns · {{payload.policy.token_limit.toLocaleString()}} tokens.</p><p v-else>Keep the result for review without an automatic model turn.</p><p>Expires {{new Date(payload.policy.expires_ms).toLocaleString(undefined,{timeZoneName:'short'})}}. Stopping the run waits for your decision; it never restarts automatically.</p></aside></div>
   </template>
   <template v-else-if="section==='resources'">
-   <h2>Versions you are approving <InlineHelp text="Changes invalidate this proposal." /></h2>
+   <h2>Versions You Are Approving <InlineHelp text="Changes invalidate this proposal." /></h2>
    <div class="versions-table"><table><thead><tr><th>Resource</th><th>Scope / version</th><th>Binding</th></tr></thead><tbody><tr v-for="row in resourceRows" :key="row.scope+row.name"><td>{{row.name}}</td><td>{{row.scope}}</td><td><code :title="row.digest">{{row.digest.slice(0,12)}}…</code></td></tr></tbody></table></div>
    <details><summary>Complete binding manifest</summary><pre>{{display(payload.manifest)}}</pre></details>
   </template>
   <template v-else>
-   <h2>What crosses into execution</h2>
-   <div class="launch-columns"><div><h3>Goal and constraints</h3><p>{{payload.handoff.goal}}</p><ul><li v-for="item in payload.handoff.constraints" :key="item">{{item}}</li></ul><h3>Model summary <InlineHelp text="Model-authored context does not grant permissions." /></h3><p>{{payload.handoff.model_summary || 'No model summary supplied.'}}</p></div><aside><h3>Source access</h3><label><input v-model="source" type="checkbox" :disabled="busy"/>Allow bounded reading through message {{payload.handoff.message_end}}</label><p>Original roles remain visible. Later messages and other conversations are excluded.</p></aside></div>
+   <h2>What Crosses into Execution</h2>
+   <div class="launch-columns"><div><h3>Goal and Constraints</h3><p>{{payload.handoff.goal}}</p><ul><li v-for="item in payload.handoff.constraints" :key="item">{{item}}</li></ul><h3>Model Summary <InlineHelp text="Model-authored context does not grant permissions." /></h3><p>{{payload.handoff.model_summary || 'No model summary supplied.'}}</p></div><aside><h3>Source Access</h3><label><input v-model="source" type="checkbox" :disabled="busy"/>Allow bounded reading through message {{payload.handoff.message_end}}</label><p>Original roles remain visible. Later messages and other conversations are excluded.</p></aside></div>
   </template>
  </div>
  <footer><p v-if="error" class="text-danger" role="alert">{{error}}</p><label><input v-model="confirmed" type="checkbox" :disabled="busy||!gateway.connected.value"/>I approve this version, handoff scope and completion policy</label><div class="footer-actions"><div><button class="btn" :disabled="busy" @click="decide(false)">Decline</button><button class="btn btn-primary" :disabled="busy||!confirmed||!gateway.connected.value" @click="decide(true)">{{busy?'Recording decision…':'Confirm and run'}}</button></div></div></footer>

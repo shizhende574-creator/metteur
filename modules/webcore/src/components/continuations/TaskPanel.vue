@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import InlineHelp from '@/components/resources/InlineHelp.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
-import {useExecutionStore} from '@/stores/execution'
+import { useExecutionStore } from '@/stores/execution'
 import TaskStartDialog from './TaskStartDialog.vue'
 import { useConfigStore } from '@/stores/config'
 import { Pause, Play, Square, Terminal, ArrowUpRight, RefreshCw, Plus } from '@lucide/vue'
@@ -13,6 +13,8 @@ import { vDialogFocus } from '@/components/resources/dialog-focus'
 import type { TaskRecord, TaskPage } from '@/core/continuations'
 import { stateLabel } from '@/core/continuations'
 import './continuations.css'
+import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
+defineProps<{ embedded?: boolean }>()
 const chat = useChatStore(),
   workspace = useWorkspaceStore(),
   { openSurface } = useSurfaceNavigation(),
@@ -24,31 +26,68 @@ const chat = useChatStore(),
   confirm = ref(false),
   next = ref<string | null>(null)
 const entry = computed(() => rows.value.find((r) => r.task.id === selected.value) ?? rows.value[0])
-interface LaunchReceipt { id:string; state:string; blueprint_name:string; run_id:string|null; attention:string|null; resume_on_completion:boolean; result:unknown }
-const launchReceipt=ref<LaunchReceipt|null>(null),launchError=ref(''),execution=useExecutionStore()
-let launchQuery=0
-async function loadLaunch(){
- const id=entry.value?.launch_intent,root=workspace.active?.path,ticket=++launchQuery
- if(!id||!root){launchReceipt.value=null;launchError.value='';return}
- const response=await gateway.resourceRequest('queryBlueprintLaunch',root,{id})
- if(ticket!==launchQuery||entry.value?.launch_intent!==id||workspace.active?.path!==root)return
- if(response.ok){launchReceipt.value=response.data as LaunchReceipt;launchError.value=''}else launchError.value=response.error
+interface LaunchReceipt {
+  id: string
+  state: string
+  blueprint_name: string
+  run_id: string | null
+  attention: string | null
+  resume_on_completion: boolean
+  result: unknown
 }
-watch(()=>entry.value?.launch_intent,()=>{launchReceipt.value=null;void loadLaunch()})
-async function openRun(){if(!launchReceipt.value?.run_id)return;const target=launchReceipt.value.run_id;await execution.reconcile(target);if(execution.current?.runId===target)openSurface('execution');else launchError.value=execution.error||'The requested run is unavailable.'}
+const launchReceipt = ref<LaunchReceipt | null>(null),
+  launchError = ref(''),
+  execution = useExecutionStore()
+let launchQuery = 0
+async function loadLaunch() {
+  const id = entry.value?.launch_intent,
+    root = workspace.active?.path,
+    ticket = ++launchQuery
+  if (!id || !root) {
+    launchReceipt.value = null
+    launchError.value = ''
+    return
+  }
+  const response = await gateway.resourceRequest('queryBlueprintLaunch', root, { id })
+  if (
+    ticket !== launchQuery ||
+    entry.value?.launch_intent !== id ||
+    workspace.active?.path !== root
+  )
+    return
+  if (response.ok) {
+    launchReceipt.value = response.data as LaunchReceipt
+    launchError.value = ''
+  } else launchError.value = response.error
+}
+watch(
+  () => entry.value?.launch_intent,
+  () => {
+    launchReceipt.value = null
+    void loadLaunch()
+  },
+)
+async function openRun() {
+  if (!launchReceipt.value?.run_id) return
+  const target = launchReceipt.value.run_id
+  await execution.reconcile(target)
+  if (execution.current?.runId === target) openSurface('execution')
+  else launchError.value = execution.error || 'The requested run is unavailable.'
+}
 const starting = ref(false),
   launching = ref(false),
   config = useConfigStore()
 const models = computed(() => Object.keys(config.effective.llm?.models ?? {}))
 let preferredSession = ''
-let generation = 0,
-  refreshing = false
+let generation = 0
 const available = computed(() => gateway.connected.value && !busy.value)
-async function load(append = false) {
+function load(append = false) {
+  return updates.run(() => loadSnapshot(append))
+}
+async function loadSnapshot(append = false) {
   const root = workspace.active?.path
-  if (!root || refreshing) return
+  if (!root) return
   const ticket = generation
-  refreshing = true
   if (!rows.value.length) loading.value = true
   try {
     const collected: TaskRecord[] = append ? [...rows.value] : []
@@ -89,7 +128,6 @@ async function load(append = false) {
     error.value = ''
     void loadLaunch()
   } finally {
-    refreshing = false
     if (ticket === generation) loading.value = false
   }
 }
@@ -103,16 +141,12 @@ watch(
     confirm.value = false
     starting.value = false
     launching.value = false
-    void load()
   },
   { immediate: true },
 )
-const timer = setInterval(() => {
-  if (!busy.value && !confirm.value) void load()
-}, 2000)
+const updates = useWorkspaceRefresh(() => loadSnapshot())
 onUnmounted(() => {
   generation++
-  clearInterval(timer)
   launchQuery++
 })
 async function control(action: string) {
@@ -210,9 +244,17 @@ function reviewApproval(request: { request_id: string; detail: string }) {
 </script>
 <template>
   <section class="nx-live">
-    <header class="nx-live-heading">
-      <div>
-        <h1>Task continuation <InlineHelp text="Saved waits and bounded automatic turns. Current permissions are rechecked for every turn." /></h1>
+    <p v-if="updates.error" class="nx-live-alert" role="status">
+      Live Updates Disconnected. {{ updates.error }}
+    </p>
+    <header class="surface-header">
+      <div v-if="!embedded">
+        <h1 class="surface-title">
+          Tasks
+          <InlineHelp
+            text="Saved waits and bounded automatic turns. Current permissions are rechecked for every turn."
+          />
+        </h1>
       </div>
       <div class="nx-live-actions" style="margin: 0">
         <button
@@ -221,7 +263,12 @@ function reviewApproval(request: { request_id: string; detail: string }) {
           @click="starting = true"
         >
           <Plus :size="15" />New task</button
-        ><button class="btn" :disabled="!available" aria-label="Refresh tasks" @click="load()">
+        ><button
+          class="btn btn-outline"
+          :disabled="!available"
+          aria-label="Refresh tasks"
+          @click="load()"
+        >
           <RefreshCw :size="16" />
         </button>
       </div>
@@ -231,9 +278,7 @@ function reviewApproval(request: { request_id: string; detail: string }) {
     </p>
     <p v-if="error" role="alert" class="nx-live-alert">{{ error }}</p>
     <div v-if="loading" class="nx-live-empty" role="status">Loading tasks…</div>
-    <div v-else-if="!entry" class="nx-live-empty">
-      No tasks yet. Choose New task to begin.
-    </div>
+    <div v-else-if="!entry" class="nx-live-empty">No tasks yet. Choose New task to begin.</div>
     <div v-else class="nx-live-layout">
       <aside>
         <button
@@ -245,21 +290,42 @@ function reviewApproval(request: { request_id: string; detail: string }) {
         >
           <strong>{{ r.policy?.purpose ?? 'Task' }}</strong
           ><span>{{ stateLabel(r.task.state) }}</span></button
-        ><button v-if="next" class="btn" @click="load(true)">Load more</button>
+        ><button v-if="next" class="btn btn-outline" @click="load(true)">Load more</button>
       </aside>
       <div class="nx-live-detail">
         <div class="nx-live-between">
           <h2>{{ entry.policy?.purpose ?? 'Task' }}</h2>
-          <button class="btn" @click="openSession">Open session <ArrowUpRight :size="14" /></button>
+          <button class="btn btn-outline" @click="openSession">
+            Open session <ArrowUpRight :size="14" />
+          </button>
         </div>
         <span class="nx-live-badge">{{ stateLabel(entry.task.state) }}</span>
-        <p v-if="launchError" class="nx-live-alert" role="alert">{{launchError}}</p>
-        <section v-if="launchReceipt" class="nx-live-source" style="display:block">
-          <div class="nx-live-between"><strong>{{launchReceipt.blueprint_name}}</strong><span>{{stateLabel(launchReceipt.state)}}</span></div>
-          <p v-if="launchReceipt.attention" class="nx-live-alert">{{launchReceipt.attention}}</p>
-          <p class="text-muted" style="margin:12px 0">{{launchReceipt.resume_on_completion ? 'Completion returns to this conversation within its authorized limits.' : 'Result retained for review; no automatic conversation turn.'}}</p>
-          <button v-if="launchReceipt.run_id" class="btn" :disabled="!available" @click="openRun">Open execution <ArrowUpRight :size="14"/></button>
-          <details v-if="launchReceipt.result" class="nx-live-disclosure"><summary>Recorded run result</summary><pre>{{JSON.stringify(launchReceipt.result,null,2)}}</pre></details>
+        <p v-if="launchError" class="nx-live-alert" role="alert">{{ launchError }}</p>
+        <section v-if="launchReceipt" class="nx-live-source" style="display: block">
+          <div class="nx-live-between">
+            <strong>{{ launchReceipt.blueprint_name }}</strong
+            ><span>{{ stateLabel(launchReceipt.state) }}</span>
+          </div>
+          <p v-if="launchReceipt.attention" class="nx-live-alert">{{ launchReceipt.attention }}</p>
+          <p class="text-muted" style="margin: 12px 0">
+            {{
+              launchReceipt.resume_on_completion
+                ? 'Completion returns to this conversation within its authorized limits.'
+                : 'Result retained for review; no automatic conversation turn.'
+            }}
+          </p>
+          <button
+            v-if="launchReceipt.run_id"
+            class="btn btn-outline"
+            :disabled="!available"
+            @click="openRun"
+          >
+            Open execution <ArrowUpRight :size="14" />
+          </button>
+          <details v-if="launchReceipt.result" class="nx-live-disclosure">
+            <summary>Recorded run result</summary>
+            <pre>{{ JSON.stringify(launchReceipt.result, null, 2) }}</pre>
+          </details>
         </section>
         <p v-if="entry.task.attention" class="nx-live-alert">{{ entry.task.attention }}</p>
         <div
@@ -304,10 +370,10 @@ function reviewApproval(request: { request_id: string; detail: string }) {
               · usage unknown, continuation blocked</span
             >
           </dd>
-
         </dl>
         <details class="nx-live-disclosure">
-          <summary>Task details and source results</summary><p>Session {{ entry.task.session }} · generation {{ entry.task.generation }}</p>
+          <summary>Task details and source results</summary>
+          <p>Session {{ entry.task.session }} · generation {{ entry.task.generation }}</p>
           <pre>{{
             JSON.stringify(
               { params: entry.task.wait?.params, sources: entry.task.sources },
@@ -322,13 +388,17 @@ function reviewApproval(request: { request_id: string; detail: string }) {
           class="nx-live-alert"
         >
           This task needs your approval.
-          <button class="btn" :disabled="!!chat.approval" @click="reviewApproval(request)">
+          <button
+            class="btn btn-outline"
+            :disabled="!!chat.approval"
+            @click="reviewApproval(request)"
+          >
             Review requested action
           </button>
         </div>
         <div class="nx-live-actions">
           <button
-            class="btn"
+            class="btn btn-outline"
             :disabled="
               !available || ['stopped', 'completed', 'needs_attention'].includes(entry.task.state)
             "
@@ -360,13 +430,13 @@ function reviewApproval(request: { request_id: string; detail: string }) {
         aria-label="Stop task"
         class="nx-live-modal"
       >
-        <h2>Stop this task?</h2>
+        <h2>Stop This Task?</h2>
         <p>
           Invalidate future triggers and request cancellation of this task’s sources. Other tasks
           are unaffected. Unknown write effects remain blocked for review.
         </p>
         <div class="nx-live-actions">
-          <button class="btn" @click="confirm = false">Keep task</button
+          <button class="btn btn-outline" @click="confirm = false">Keep task</button
           ><button class="btn nx-live-danger" :disabled="busy" @click="control('stop')">
             Stop task
           </button>

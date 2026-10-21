@@ -44,7 +44,16 @@ import { err, ok } from './types'
 import { readSse } from './sse'
 import { Daemon } from '@/gen/metteur_pb'
 import { categoryFor } from '@/lib/blueprint'
-import { fromWireCatalog, fromWirePin, parseDefault, pinType, valueText, inlineValue, nodeConfiguration, type WirePin } from './node-catalog'
+import {
+  fromWireCatalog,
+  fromWirePin,
+  parseDefault,
+  pinType,
+  valueText,
+  inlineValue,
+  nodeConfiguration,
+  type WirePin,
+} from './node-catalog'
 import { configScopeOf, configToToml, isConfigDoc, tryParseToml } from '@/lib/toml'
 
 /** Reads a context-stats payload, tolerating a partial or unexpected shape. */
@@ -95,9 +104,19 @@ function parseTranscript(raw: string): ChatMessage[] {
         createdAt: at,
       }
     }
-    if (role === 'notice') return { id: `n-${index}`, role: 'notice' as const, content, createdAt: at,
-      detail: typeof entry.continuation_task === 'string' ? { continuation_task: entry.continuation_task } : undefined }
-    if (role === 'error') return { id: `e-${index}`, role: 'error' as const, content, createdAt: at }
+    if (role === 'notice')
+      return {
+        id: `n-${index}`,
+        role: 'notice' as const,
+        content,
+        createdAt: at,
+        detail:
+          typeof entry.continuation_task === 'string'
+            ? { continuation_task: entry.continuation_task }
+            : undefined,
+      }
+    if (role === 'error')
+      return { id: `e-${index}`, role: 'error' as const, content, createdAt: at }
     if (role === 'assistant') {
       return {
         id: `a-${index}`,
@@ -109,7 +128,13 @@ function parseTranscript(raw: string): ChatMessage[] {
         createdAt: at,
       }
     }
-    return { id: `u-${index}`, role: 'user' as const, content, createdAt: at, checkpoint: String(entry.checkpoint ?? '') || undefined }
+    return {
+      id: `u-${index}`,
+      role: 'user' as const,
+      content,
+      createdAt: at,
+      checkpoint: String(entry.checkpoint ?? '') || undefined,
+    }
   })
 }
 
@@ -193,8 +218,16 @@ function coerceValue(type: string | undefined, raw: string): unknown {
     return Number.isFinite(n) ? n : raw
   }
   if (type === 'bool') return raw === 'true'
-  if (['any', 'json'].includes(type ?? '') || type?.startsWith('list') || type?.startsWith('object')) {
-    try { return JSON.parse(raw) } catch { return raw }
+  if (
+    ['any', 'json'].includes(type ?? '') ||
+    type?.startsWith('list') ||
+    type?.startsWith('object')
+  ) {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return raw
+    }
   }
   return raw
 }
@@ -223,7 +256,7 @@ export function toProtoBlueprint(bp: Blueprint): object {
   // The daemon resolves the entry against the (FileReference-filtered) node
   // list, so fall back to the first kept node when the canvas entry was dropped.
   const entryNodeId =
-    bp.entryNodeId && keptIds.has(bp.entryNodeId) ? bp.entryNodeId : kept[0]?.id ?? ''
+    bp.entryNodeId && keptIds.has(bp.entryNodeId) ? bp.entryNodeId : (kept[0]?.id ?? '')
   return {
     id: bp.id,
     name: bp.name,
@@ -239,11 +272,13 @@ export function toProtoBlueprint(bp: Blueprint): object {
         pins: [...n.inputs, ...n.outputs].map((p) => ({
           id: p.id,
           key: p.key ?? '',
-          name: p.name || (p.kind === 'data-out' ? p.key ?? 'Result' : p.key ?? ''),
+          name: p.name || (p.kind === 'data-out' ? (p.key ?? 'Result') : (p.key ?? '')),
           pinType: pinTypeOf(p.kind),
           dataType: pinType(p.type ?? (p.kind.startsWith('exec') ? 'void' : 'any')),
           defaultJson: p.default === undefined ? '' : JSON.stringify(p.default),
-          optional: p.optional ?? false, choices: p.choices ?? [], description: p.description ?? '',
+          optional: p.optional ?? false,
+          choices: p.choices ?? [],
+          description: p.description ?? '',
         })),
         dataJson: JSON.stringify(nodeData(n)),
       }
@@ -354,12 +389,26 @@ function fromProtoEvent(ev: {
  * never depend on generated code.
  */
 export class GrpcGateway implements DaemonGateway {
-  async resourceRequest(method: import('./resources').ResourceMethod, workspacePath: string, payload: unknown, expectedRevision = 0, requestId = crypto.randomUUID()): Promise<Result<unknown>> {
+  async resourceRequest(
+    method: import('./resources').ResourceMethod,
+    workspacePath: string,
+    payload: unknown,
+    expectedRevision = 0,
+    requestId = crypto.randomUUID(),
+  ): Promise<Result<unknown>> {
     try {
-      const response = await this.client[method]({ schemaVersion: 1, requestId, workspacePath, expectedRevision: BigInt(expectedRevision), payloadJson: JSON.stringify(payload) })
+      const response = await this.client[method]({
+        schemaVersion: 1,
+        requestId,
+        workspacePath,
+        expectedRevision: BigInt(expectedRevision),
+        payloadJson: JSON.stringify(payload),
+      })
       if (response.errorJson) return err(response.errorJson)
       return ok(JSON.parse(response.payloadJson))
-    } catch (error) { return err(String(error)) }
+    } catch (error) {
+      return err(String(error))
+    }
   }
   /** Live connection state, driven by a heartbeat ping; reactive so the UI
    *  flips to offline when the daemon (or the proxy) goes away. */
@@ -424,9 +473,20 @@ export class GrpcGateway implements DaemonGateway {
     try {
       const resp = await this.client.getConfig({ workspacePath })
       if (!resp.effectiveJson) return err('Update the daemon before editing configuration')
-      if (!resp.overridesJson) return err('Automatic configuration migration cannot preserve the current effective values. Open Settings TOML to review and explicitly migrate or save the original format.')
-      return ok({ defaults: JSON.parse(resp.defaultsJson), raw: JSON.parse(resp.configJson), overrides: JSON.parse(resp.overridesJson), effective: JSON.parse(resp.effectiveJson), legacy: resp.legacyFormat })
-    } catch (e) { return toErr(e) }
+      if (!resp.overridesJson)
+        return err(
+          'Automatic configuration migration cannot preserve the current effective values. Open Settings TOML to review and explicitly migrate or save the original format.',
+        )
+      return ok({
+        defaults: JSON.parse(resp.defaultsJson),
+        raw: JSON.parse(resp.configJson),
+        overrides: JSON.parse(resp.overridesJson),
+        effective: JSON.parse(resp.effectiveJson),
+        legacy: resp.legacyFormat,
+      })
+    } catch (e) {
+      return toErr(e)
+    }
   }
 
   async getConfig(workspacePath = ''): Promise<Result<DaemonConfig>> {
@@ -488,7 +548,12 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async writeFile(workspacePath: string, filePath: string, content: string): Promise<Result<void>> {
+  async writeFile(
+    workspacePath: string,
+    filePath: string,
+    content: string,
+    options?: { expectedContent?: string; createOnly?: boolean },
+  ): Promise<Result<void>> {
     if (isConfigDoc(filePath)) {
       const parsed = tryParseToml(content)
       if (!parsed) return err('Saved content is not valid TOML')
@@ -496,7 +561,7 @@ export class GrpcGateway implements DaemonGateway {
       return this.setConfig(parsed, scopePath)
     }
     try {
-      await this.client.writeFile({ workspacePath, path: filePath, content })
+      await this.client.writeFile({ workspacePath, path: filePath, content, ...options })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -564,6 +629,20 @@ export class GrpcGateway implements DaemonGateway {
       // Aborting the subscription is not a failure.
       if (signal?.aborted) return ok(undefined)
       return toErr(e)
+    }
+  }
+
+  async watchWorkspaceChanges(
+    workspacePath: string,
+    onChange: () => void,
+    signal?: AbortSignal,
+  ): Promise<Result<void>> {
+    try {
+      for await (const _ of this.client.watchWorkspaceChanges({ workspacePath }, { signal }))
+        onChange()
+      return ok(undefined)
+    } catch (cause) {
+      return signal?.aborted ? ok(undefined) : toErr(cause)
     }
   }
 
@@ -697,7 +776,9 @@ export class GrpcGateway implements DaemonGateway {
       // A failure before the stream starts is a real HTTP error: it says the
       // request never reached the daemon, which is a different problem from a
       // stream that broke halfway.
-      return err((await response.text().catch(() => '')) || `chat request failed (${response.status})`)
+      return err(
+        (await response.text().catch(() => '')) || `chat request failed (${response.status})`,
+      )
     }
 
     try {
@@ -713,9 +794,9 @@ export class GrpcGateway implements DaemonGateway {
           case 'session': {
             const reported = String(detail.session_id ?? '')
             if (reported) onSession?.(reported, String(detail.checkpoint_id ?? '') || undefined)
-          // The session event carries the context it starts from, so the meter
-          // has a size immediately (and after switching conversations).
-          if (detail.context) onContext?.(parseContextStats(detail.context))
+            // The session event carries the context it starts from, so the meter
+            // has a size immediately (and after switching conversations).
+            if (detail.context) onContext?.(parseContextStats(detail.context))
             break
           }
           case 'assistant_delta':
@@ -750,8 +831,10 @@ export class GrpcGateway implements DaemonGateway {
               reasoningPending: false,
               createdAt: Date.now(),
             })
+            turnId = null
             break
           case 'tool_start':
+            turnId = null
             onMessage({
               id: `t-${String(detail.call_id ?? seq++)}`,
               role: 'tool',
@@ -815,8 +898,18 @@ export class GrpcGateway implements DaemonGateway {
             break
           case 'waiting':
           case 'done': {
-            if(event.kind === 'waiting') onMessage({id:`waiting-${Date.now()}-${seq++}`,role:'notice',content:'Task is waiting. Automatic continuation follows its saved policy; manage it in Task continuation.',createdAt:Date.now(),
-              detail: typeof detail.task_id === 'string' ? { continuation_task: detail.task_id } : undefined })
+            if (event.kind === 'waiting')
+              onMessage({
+                id: `waiting-${Date.now()}-${seq++}`,
+                role: 'notice',
+                content:
+                  'Task is waiting. Automatic continuation follows its saved policy; manage it in Task continuation.',
+                createdAt: Date.now(),
+                detail:
+                  typeof detail.task_id === 'string'
+                    ? { continuation_task: detail.task_id }
+                    : undefined,
+              })
             if (detail.context) onContext?.(parseContextStats(detail.context))
             const usage = (detail.usage ?? {}) as Record<string, unknown>
             onUsage?.({
@@ -833,8 +926,11 @@ export class GrpcGateway implements DaemonGateway {
             if (parseReasoningDuration(detail.turn_elapsed_ms) !== undefined) {
               onUsage?.({
                 turnElapsedMs: parseReasoningDuration(detail.turn_elapsed_ms),
-                inputTokens: 0, outputTokens: 0, totalTokens: 0,
-                cachedInputTokens: 0, cacheWriteInputTokens: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                cachedInputTokens: 0,
+                cacheWriteInputTokens: 0,
               })
             }
             return err(event.content || 'The turn failed.')
@@ -899,7 +995,10 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async getChatSession(workspacePath: string, sessionId?: string): Promise<Result<ChatSessionSnapshot>> {
+  async getChatSession(
+    workspacePath: string,
+    sessionId?: string,
+  ): Promise<Result<ChatSessionSnapshot>> {
     try {
       const res = await this.client.getChatSession({ workspacePath, sessionId: sessionId ?? '' })
       let history: ChatMessage[] = []
@@ -941,15 +1040,28 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async rewindChat(workspacePath: string, sessionId: string, snapshotId: string): Promise<Result<ChatSessionSnapshot>> {
+  async rewindChat(
+    workspacePath: string,
+    sessionId: string,
+    snapshotId: string,
+  ): Promise<Result<ChatSessionSnapshot>> {
     try {
       const res = await this.client.rewindChat({ workspacePath, sessionId, snapshotId })
-      const history = (JSON.parse(res.historyJson || '[]') as Array<{ role: string; content: string }>).map((entry, index) => ({
-        id: `restored-${index}`, role: entry.role === 'user' ? 'user' as const : 'assistant' as const,
-        content: entry.content, createdAt: Number(res.createdAt),
+      const history = (
+        JSON.parse(res.historyJson || '[]') as Array<{ role: string; content: string }>
+      ).map((entry, index) => ({
+        id: `restored-${index}`,
+        role: entry.role === 'user' ? ('user' as const) : ('assistant' as const),
+        content: entry.content,
+        createdAt: Number(res.createdAt),
       }))
-      return ok({ sessionId: res.sessionId, createdAt: Number(res.createdAt), history,
-        transcript: parseTranscript(res.transcriptJson), todos: JSON.parse(res.todosJson || '[]') })
+      return ok({
+        sessionId: res.sessionId,
+        createdAt: Number(res.createdAt),
+        history,
+        transcript: parseTranscript(res.transcriptJson),
+        todos: JSON.parse(res.todosJson || '[]'),
+      })
     } catch (e) {
       return toErr(e)
     }
@@ -975,8 +1087,20 @@ export class GrpcGateway implements DaemonGateway {
         source: f.source,
         addonBinding: parseDefault(f.addonBindingJson) as Record<string, unknown> | undefined,
         filePath: f.filePath,
-        inputs: (f.inputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
-        outputs: (f.outputs ?? []).map((p) => ({ name: p.name, type: pinType(p.dataType), default: parseDefault(p.defaultJson), optional: p.optional, description: p.description })),
+        inputs: (f.inputs ?? []).map((p) => ({
+          name: p.name,
+          type: pinType(p.dataType),
+          default: parseDefault(p.defaultJson),
+          optional: p.optional,
+          description: p.description,
+        })),
+        outputs: (f.outputs ?? []).map((p) => ({
+          name: p.name,
+          type: pinType(p.dataType),
+          default: parseDefault(p.defaultJson),
+          optional: p.optional,
+          description: p.description,
+        })),
       }))
       return ok(items)
     } catch (e) {
@@ -993,12 +1117,25 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async importFunction(workspacePath: string, source: FunctionItem, name: string, filePath: string): Promise<Result<{ name: string; filePath: string }>> {
+  async importFunction(
+    workspacePath: string,
+    source: FunctionItem,
+    name: string,
+    filePath: string,
+  ): Promise<Result<{ name: string; filePath: string }>> {
     try {
-      const result = await this.client.saveFunction({ workspacePath, importFrom: source.name, info: { name }, filePath, expectedAddonBindingJson: JSON.stringify(source.addonBinding) })
+      const result = await this.client.saveFunction({
+        workspacePath,
+        importFrom: source.name,
+        info: { name },
+        filePath,
+        expectedAddonBindingJson: JSON.stringify(source.addonBinding),
+      })
       if (!result.info) return err('Import result unavailable')
       return ok({ name: result.info.name, filePath: result.info.filePath })
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      return toErr(e)
+    }
   }
 
   async decompileBlueprint(
@@ -1020,9 +1157,18 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath = ''): Promise<Result<void>> {
+  async saveBlueprint(
+    workspacePath: string,
+    blueprint: Blueprint,
+    filePath = '',
+  ): Promise<Result<void>> {
     try {
-      await this.client.saveBlueprint({ workspacePath, blueprint: toProtoBlueprint(blueprint), filePath, fileJson: JSON.stringify(blueprint, null, 2) })
+      await this.client.saveBlueprint({
+        workspacePath,
+        blueprint: toProtoBlueprint(blueprint),
+        filePath,
+        fileJson: JSON.stringify(blueprint, null, 2),
+      })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -1145,9 +1291,17 @@ export class GrpcGateway implements DaemonGateway {
   }
 
   // Approvals -----------------------------------------------------------------
-  async respondApproval(workspacePath: string, requestId: string, allow: boolean): Promise<Result<void>> {
+  async respondApproval(
+    workspacePath: string,
+    requestId: string,
+    allow: boolean,
+  ): Promise<Result<void>> {
     try {
-      await this.client.respondApproval({ workspacePath, requestId, decision: allow ? 'AllowOnce' : 'DenyOnce' })
+      await this.client.respondApproval({
+        workspacePath,
+        requestId,
+        decision: allow ? 'AllowOnce' : 'DenyOnce',
+      })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -1234,7 +1388,11 @@ export class GrpcGateway implements DaemonGateway {
           error: a.error,
           requiredPermissions: a.requiredPermissions,
           grantedPermissions: a.grantedPermissions,
-          hooks: a.hooks.map((hook) => ({ ...hook, completed: Number(hook.completed), failed: Number(hook.failed) })),
+          hooks: a.hooks.map((hook) => ({
+            ...hook,
+            completed: Number(hook.completed),
+            failed: Number(hook.failed),
+          })),
         })),
       )
     } catch (e) {
@@ -1242,11 +1400,7 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async setAddonEnabled(
-    id: string,
-    enabled: boolean,
-    workspacePath = '',
-  ): Promise<Result<void>> {
+  async setAddonEnabled(id: string, enabled: boolean, workspacePath = ''): Promise<Result<void>> {
     try {
       await this.client.setAddonEnabled({ id, workspacePath, enabled })
       return ok(undefined)
@@ -1258,47 +1412,100 @@ export class GrpcGateway implements DaemonGateway {
   async listMcpServers(workspacePath?: string): Promise<Result<McpServerInfo[]>> {
     try {
       const list = await this.client.listMcpServers({ workspacePath: workspacePath ?? '' })
-      return ok(list.servers.map((s) => ({ owner: s.owner, scopeRoot: s.scopeRoot, name: s.name, status: s.status, toolCount: s.toolCount, error: s.error })))
+      return ok(
+        list.servers.map((s) => ({
+          owner: s.owner,
+          scopeRoot: s.scopeRoot,
+          name: s.name,
+          status: s.status,
+          toolCount: s.toolCount,
+          error: s.error,
+        })),
+      )
     } catch (e) {
       return toErr(e)
     }
   }
 
-  async getBlackboard(workspacePath: string, runId: string, query: BoardQuery = {}): Promise<Result<Blackboard>> {
+  async getBlackboard(
+    workspacePath: string,
+    runId: string,
+    query: BoardQuery = {},
+  ): Promise<Result<Blackboard>> {
     try {
-      const response = await this.client.getBlackboard({ workspacePath, runId, queryJson: JSON.stringify(query) })
+      const response = await this.client.getBlackboard({
+        workspacePath,
+        runId,
+        queryJson: JSON.stringify(query),
+      })
       const value = JSON.parse(response.projectionJson) as Blackboard
-      if (value.run_id !== runId || !Array.isArray(value.entries)) throw new Error('Invalid blackboard response')
+      if (value.run_id !== runId || !Array.isArray(value.entries))
+        throw new Error('Invalid blackboard response')
       return ok(value)
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      return toErr(e)
+    }
   }
 
-  async listOversightReports(workspacePath: string, runId: string): Promise<Result<OversightReports>> {
+  async listOversightReports(
+    workspacePath: string,
+    runId: string,
+  ): Promise<Result<OversightReports>> {
     try {
       const response = await this.client.listOversightReports({ workspacePath, runId })
       const data = JSON.parse(response.reportsJson) as OversightReports
-      if (data.run_id !== runId || !Array.isArray(data.reports)) throw new Error('Invalid oversight reports')
+      if (data.run_id !== runId || !Array.isArray(data.reports))
+        throw new Error('Invalid oversight reports')
       return ok(data)
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      return toErr(e)
+    }
   }
-  async getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>> {
+  async getConciergeState(
+    workspacePath: string,
+    runId: string,
+    conversationId: string,
+  ): Promise<Result<ConciergeState>> {
     try {
       const response = await this.client.getConciergeState({ workspacePath, runId, conversationId })
       const value = JSON.parse(response.stateJson) as ConciergeState
-      if (value.run_id !== runId || value.conversation_id !== conversationId || !Array.isArray(value.messages) || !Array.isArray(value.requests)) throw new Error('Invalid concierge state')
+      if (
+        value.run_id !== runId ||
+        value.conversation_id !== conversationId ||
+        !Array.isArray(value.messages) ||
+        !Array.isArray(value.requests)
+      )
+        throw new Error('Invalid concierge state')
       return ok(value)
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      return toErr(e)
+    }
   }
-  async sendConciergeMessage(workspacePath: string, runId: string, conversationId: string, messageId: string, message: string, onEvent: (event: ConciergeEvent) => void, signal?: AbortSignal): Promise<Result<void>> {
+  async sendConciergeMessage(
+    workspacePath: string,
+    runId: string,
+    conversationId: string,
+    messageId: string,
+    message: string,
+    onEvent: (event: ConciergeEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<Result<void>> {
     try {
-      for await (const event of this.client.sendConciergeMessage({ workspacePath, runId, conversationId, messageId, message }, { signal })) {
-        if (event.runId !== runId || event.messageId !== messageId) throw new Error('Mismatched concierge event')
+      for await (const event of this.client.sendConciergeMessage(
+        { workspacePath, runId, conversationId, messageId, message },
+        { signal },
+      )) {
+        if (event.runId !== runId || event.messageId !== messageId)
+          throw new Error('Mismatched concierge event')
         const turn = event.kind === 'processing' ? undefined : JSON.parse(event.detailJson)
-        if (turn && (turn.id !== messageId || turn.conversation_id !== conversationId)) throw new Error('Mismatched concierge turn')
+        if (turn && (turn.id !== messageId || turn.conversation_id !== conversationId))
+          throw new Error('Mismatched concierge turn')
         onEvent({ runId, messageId, kind: event.kind, turn })
       }
       return ok(undefined)
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      return toErr(e)
+    }
   }
   async getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>> {
     try {

@@ -58,6 +58,7 @@ function syncUndoState() {
 function monacoLanguage(lang: string): string {
   if (lang === 'mbp') return 'mbp'
   if (lang === 'json') return 'json'
+  if (lang === 'markdown' || lang === 'toml') return lang
   if (lang.startsWith('ts')) return 'typescript'
   if (lang === 'js' || lang === 'jsx' || lang === 'mjs' || lang === 'cjs') return 'javascript'
   if (lang === 'html' || lang === 'htm') return 'html'
@@ -111,7 +112,11 @@ async function setupMonaco() {
   syncUndoState()
 }
 
-let cmView: { dispatch(t: unknown): void; destroy(): void; state: { doc: { toString(): string } } } | null = null
+let cmView: {
+  dispatch(t: unknown): void
+  destroy(): void
+  state: { doc: { toString(): string } }
+} | null = null
 let cmUndo: ((v: unknown) => boolean) | null = null
 let cmRedo: ((v: unknown) => boolean) | null = null
 let applyCmTheme: (() => void) | null = null
@@ -166,8 +171,8 @@ async function setupCm() {
   const stateMod = await import('@codemirror/state')
   const langMod = await import('@codemirror/language')
   const cmdsMod = await import('@codemirror/commands')
-  cmUndo = (v) => (cmdsMod.undo(v as never) ?? true)
-  cmRedo = (v) => (cmdsMod.redo(v as never) ?? true)
+  cmUndo = (v) => cmdsMod.undo(v as never) ?? true
+  cmRedo = (v) => cmdsMod.redo(v as never) ?? true
 
   const stateSupport = (await cmLanguage()) as unknown
   if (disposed || initializationFailed || !container.value) return
@@ -185,13 +190,17 @@ async function setupCm() {
     langMod.syntaxHighlighting(langMod.defaultHighlightStyle, { fallback: true }),
     cmdsMod.history(),
     viewMod.keymap.of([...cmdsMod.defaultKeymap, ...cmdsMod.historyKeymap, cmdsMod.indentWithTab]),
-    themeCompartment.of(viewMod.EditorView.theme(cmBaseTheme(), { dark: themeStore.mode === 'dark' })),
-    viewMod.EditorView.updateListener.of((update: { docChanged: boolean; state: { doc: { toString(): string } } }) => {
-      if (update.docChanged) {
-        const text = update.state.doc.toString()
-        if (text !== props.modelValue) emit('update:modelValue', text)
-      }
-    }),
+    themeCompartment.of(
+      viewMod.EditorView.theme(cmBaseTheme(), { dark: themeStore.mode === 'dark' }),
+    ),
+    viewMod.EditorView.updateListener.of(
+      (update: { docChanged: boolean; state: { doc: { toString(): string } } }) => {
+        if (update.docChanged) {
+          const text = update.state.doc.toString()
+          if (text !== props.modelValue) emit('update:modelValue', text)
+        }
+      },
+    ),
   ]
   if (stateSupport) extensions.push(stateSupport as never)
 
@@ -201,9 +210,12 @@ async function setupCm() {
     extensions,
   })
   cmView = view
-  applyCmTheme = () => view.dispatch({
-    effects: themeCompartment.reconfigure(viewMod.EditorView.theme(cmBaseTheme(), { dark: themeStore.mode === 'dark' })),
-  })
+  applyCmTheme = () =>
+    view.dispatch({
+      effects: themeCompartment.reconfigure(
+        viewMod.EditorView.theme(cmBaseTheme(), { dark: themeStore.mode === 'dark' }),
+      ),
+    })
 }
 
 const isCoarsePointer = () => window.matchMedia?.('(pointer: coarse)').matches ?? false
@@ -215,7 +227,10 @@ onMounted(async () => {
     await Promise.race([
       nextMode === 'cm' ? setupCm() : setupMonaco(),
       new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error('Editor loading timed out. Reload to retry.')), 15_000)
+        timeout = setTimeout(
+          () => reject(new Error('Editor loading timed out. Reload to retry.')),
+          15_000,
+        )
       }),
     ])
     if (!disposed) mode.value = nextMode
@@ -281,15 +296,30 @@ defineExpose({
 
 <template>
   <div class="relative flex h-full w-full min-h-0 flex-col overflow-hidden bg-background">
-    <div v-if="mode === 'loading'" class="absolute inset-0 z-10 flex min-h-0 flex-col bg-background">
-      <p class="px-3 py-2 text-[12px] text-muted-foreground" role="status">Loading editor… Source is available below.</p>
-      <textarea class="min-h-0 flex-1 resize-none bg-background p-3 font-mono text-[13px] text-foreground" aria-label="Loading file source" readonly :value="modelValue" />
+    <div
+      v-if="mode === 'loading'"
+      class="absolute inset-0 z-10 flex min-h-0 flex-col bg-background"
+    >
+      <p class="px-3 py-2 text-[12px] text-muted-foreground" role="status">
+        Loading editor… Source is available below.
+      </p>
+      <textarea
+        class="min-h-0 flex-1 resize-none bg-background p-3 font-mono text-[13px] text-foreground"
+        aria-label="Loading file source"
+        readonly
+        :value="modelValue"
+      />
     </div>
     <template v-if="mode === 'error'">
       <p class="shrink-0 px-3 py-2 text-[12px] text-danger" role="alert">
         Editor could not load. Showing read-only source. {{ loadError }}
       </p>
-      <textarea class="min-h-0 flex-1 resize-none bg-background p-3 font-mono text-[13px] text-foreground" aria-label="Read-only file source" readonly :value="modelValue" />
+      <textarea
+        class="min-h-0 flex-1 resize-none bg-background p-3 font-mono text-[13px] text-foreground"
+        aria-label="Read-only file source"
+        readonly
+        :value="modelValue"
+      />
     </template>
     <div v-show="mode !== 'error'" ref="container" class="min-h-0 w-full flex-1" />
   </div>

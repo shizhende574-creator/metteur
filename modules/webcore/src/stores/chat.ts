@@ -15,6 +15,7 @@ import type { ChatPhase } from '@/lib/chat/liveness'
 import { useWorkspaceStore } from './workspace'
 import type { TaskRecord } from '@/core/continuations'
 import { usePromptResourcesStore } from './prompt-resources'
+import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -83,12 +84,10 @@ export const useChatStore = defineStore('chat', () => {
   /** Files queued in the composer (chips) but not yet sent as a turn. */
   const pendingFiles = ref<FileTreeNode[]>([])
   const following = ref<{ workspace: string; session: string; task: string } | null>(null)
-  let followTimer: ReturnType<typeof setTimeout> | undefined
-  let followEpoch = 0, conversationEpoch = 0
-  function cancelFollowTimer() {
+  let followEpoch = 0,
+    conversationEpoch = 0
+  function cancelFollow() {
     followEpoch++
-    clearTimeout(followTimer)
-    followTimer = undefined
   }
   function followTask(task: unknown) {
     if (typeof task === 'string' && task && workspace.active?.path && sessionId.value)
@@ -97,18 +96,34 @@ export const useChatStore = defineStore('chat', () => {
   async function refreshContinuation(epoch: number) {
     const target = following.value
     if (!target) return
-    const current = () => epoch === followEpoch && following.value === target &&
-      workspace.active?.path === target.workspace && sessionId.value === target.session &&
-      !streaming.value && !busy.value && !rewinding.value && !retrying.value && !queued.value.length
-    try {
-      const result = await gateway.resourceRequest('queryContinuations', target.workspace, { operation: 'read', id: target.task })
+    const current = () =>
+      epoch === followEpoch &&
+      following.value === target &&
+      workspace.active?.path === target.workspace &&
+      sessionId.value === target.session &&
+      !streaming.value &&
+      !busy.value &&
+      !rewinding.value &&
+      !retrying.value &&
+      !queued.value.length
+    if (!current()) return
+    {
+      const result = await gateway.resourceRequest('queryContinuations', target.workspace, {
+        operation: 'read',
+        id: target.task,
+      })
       if (!current() || !result.ok) return
       const record = result.data as TaskRecord
-      if (record.task.id !== target.task || record.task.session !== target.session) { following.value = null; return }
+      if (record.task.id !== target.task || record.task.session !== target.session) {
+        following.value = null
+        return
+      }
       const snapshot = await gateway.getChatSession(target.workspace, target.session)
       if (!current() || !snapshot.ok || snapshot.data.sessionId !== target.session) return
-      const remote = snapshot.data.transcript.length ? snapshot.data.transcript : snapshot.data.history
-      messages.value = remote.filter(message => message.detail?.continuation_task !== target.task)
+      const remote = snapshot.data.transcript.length
+        ? snapshot.data.transcript
+        : snapshot.data.history
+      messages.value = remote.filter((message) => message.detail?.continuation_task !== target.task)
       todos.value = snapshot.data.todos ?? []
       // Session snapshots do not carry the resumed turn's usage/context receipt.
       lastUsage.value = null
@@ -116,35 +131,52 @@ export const useChatStore = defineStore('chat', () => {
       const state = record.task.state
       if (state !== 'completed') {
         const status: Record<string, string> = {
-          waiting: 'Task is waiting. Automatic continuation follows its saved policy; manage it in Task continuation.',
+          waiting:
+            'Task is waiting. Automatic continuation follows its saved policy; manage it in Tasks.',
           wait_preparing: 'Task is preparing its saved wait.',
           ready: 'Task is ready for its authorized continuation.',
           dispatching: 'Task is continuing from its owned result.',
           active: 'Task is continuing from its owned result.',
-          paused: 'Task is paused. Manage it in Task continuation.',
+          paused: 'Task is paused. Manage it in Tasks.',
           stopped: 'Task is stopped. No automatic replay will occur.',
-          needs_attention: 'Task needs attention. Review it in Task continuation.',
+          needs_attention: 'Task needs attention. Review it in Tasks.',
         }
-        messages.value.push({ id: `waiting-${target.task}`, role: 'notice', createdAt: Date.now(),
-          content: status[state] ?? 'Task status requires review in Task continuation.', detail: { continuation_task: target.task } })
+        messages.value.push({
+          id: `waiting-${target.task}`,
+          role: 'notice',
+          createdAt: Date.now(),
+          content: status[state] ?? 'Task status requires review in Tasks.',
+          detail: { continuation_task: target.task },
+        })
       }
-      if (!['waiting', 'wait_preparing', 'ready', 'dispatching', 'active', 'paused', 'needs_attention'].includes(state)) following.value = null
-    } finally {
-      if (current()) followTimer = setTimeout(() => { void refreshContinuation(epoch) }, 2000)
+      if (
+        ![
+          'waiting',
+          'wait_preparing',
+          'ready',
+          'dispatching',
+          'active',
+          'paused',
+          'needs_attention',
+        ].includes(state)
+      )
+        following.value = null
     }
   }
-  watch([following, streaming, busy, rewinding, retrying, () => queued.value.length,
-    () => workspace.active?.path, sessionId, () => gateway.connected.value], () => {
-    cancelFollowTimer()
-    const target = following.value
-    if (target && target.workspace === workspace.active?.path && target.session === sessionId.value &&
-      gateway.connected.value && !streaming.value && !busy.value && !rewinding.value && !retrying.value && !queued.value.length) {
-      const epoch = followEpoch
-      followTimer = setTimeout(() => { void refreshContinuation(epoch) }, 1000)
-    }
-  }, { flush: 'sync' })
-  onScopeDispose(cancelFollowTimer)
-
+  onScopeDispose(cancelFollow)
+  useWorkspaceRefresh(
+    () => refreshContinuation(followEpoch),
+    [
+      following,
+      streaming,
+      busy,
+      rewinding,
+      retrying,
+      () => queued.value.length,
+      sessionId,
+      () => gateway.connected.value,
+    ],
+  )
   // Switching workspaces resets the surface and restores the new session.
   // Immediate so a store created after the workspace was already opened still
   // loads the persisted conversation (otherwise restore would never run).
@@ -219,7 +251,10 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = snap.data.transcript.length ? snap.data.transcript : snap.data.history
       sessionId.value = snap.data.sessionId
       todos.value = snap.data.todos ?? []
-      followTask(messages.value.findLast(message => typeof message.detail?.continuation_task === 'string')?.detail?.continuation_task)
+      followTask(
+        messages.value.findLast((message) => typeof message.detail?.continuation_task === 'string')
+          ?.detail?.continuation_task,
+      )
     } else {
       messages.value = []
       todos.value = []
@@ -248,7 +283,10 @@ export const useChatStore = defineStore('chat', () => {
     addonsLoading.value = true
     try {
       const r = await gateway.listAddons()
-      if (r.ok) addons.value = r.data.filter((a) => a.scope === 'global' || a.scopeRoot === workspace.active?.path)
+      if (r.ok)
+        addons.value = r.data.filter(
+          (a) => a.scope === 'global' || a.scopeRoot === workspace.active?.path,
+        )
     } finally {
       addonsLoading.value = false
     }
@@ -280,20 +318,35 @@ export const useChatStore = defineStore('chat', () => {
    * it is what the transcript's "Restore" action rolls back to, and without it
    * an agent's edits cannot be undone from the conversation.
    */
-  async function send(content: string, options?: ChatOptions, mode: 'normal' | 'retry' = 'normal'): Promise<boolean> {
-    const prompts=usePromptResourcesStore()
-    const selected=mode==='retry'?[]:prompts.selections.map(item=>item.snapshot.id)
-    if(mode!=='retry') {
-      if(!(await prompts.validateChat())) return false
-      if(selected.length!==prompts.selections.length||selected.some((id,index)=>prompts.selections[index]?.snapshot.id!==id)) {
-        prompts.error='Prompt selections changed. Review them and send again.'
+  async function send(
+    content: string,
+    options?: ChatOptions,
+    mode: 'normal' | 'retry' = 'normal',
+  ): Promise<boolean> {
+    const prompts = usePromptResourcesStore()
+    const selected = mode === 'retry' ? [] : prompts.selections.map((item) => item.snapshot.id)
+    if (mode !== 'retry') {
+      if (!(await prompts.validateChat())) return false
+      if (
+        selected.length !== prompts.selections.length ||
+        selected.some((id, index) => prompts.selections[index]?.snapshot.id !== id)
+      ) {
+        prompts.error = 'Prompt selections changed. Review them and send again.'
         return false
       }
     }
-    options={...options,prompt_snapshots:selected}
+    options = { ...options, prompt_snapshots: selected }
     const ws = workspace.active
     const text = content.trim()
-    if (!ws || !text || streaming.value || busy.value || rewinding.value || (retrying.value && mode !== 'retry')) return false
+    if (
+      !ws ||
+      !text ||
+      streaming.value ||
+      busy.value ||
+      rewinding.value ||
+      (retrying.value && mode !== 'retry')
+    )
+      return false
     conversationEpoch++
     following.value = null
     // File references travel with the turn: the daemon learns about the
@@ -320,7 +373,9 @@ export const useChatStore = defineStore('chat', () => {
     lastEventAt.value = Date.now()
     phase.value = 'thinking'
     let resolveFinished!: () => void
-    const finished = new Promise<void>((resolve) => { resolveFinished = resolve })
+    const finished = new Promise<void>((resolve) => {
+      resolveFinished = resolve
+    })
     pendingSend = finished
     try {
       // The new turn is sent as the message itself; including it in the
@@ -376,7 +431,10 @@ export const useChatStore = defineStore('chat', () => {
           createdAt: Date.now(),
         })
       }
-      if(r.ok && mode!=='retry') prompts.selections=prompts.selections.filter(item=>!selected.includes(item.snapshot.id))
+      if (r.ok && mode !== 'retry')
+        prompts.selections = prompts.selections.filter(
+          (item) => !selected.includes(item.snapshot.id),
+        )
       return r.ok
     } finally {
       streamAbort = null
@@ -434,16 +492,23 @@ export const useChatStore = defineStore('chat', () => {
 
   /** Restore the selected answer's starting state, then regenerate automatically. */
   async function retry(assistantId: string, options?: ChatOptions): Promise<string | null> {
-    if (retrying.value || rewinding.value || busy.value) return 'Wait for the current operation to finish before retrying.'
+    if (retrying.value || rewinding.value || busy.value)
+      return 'Wait for the current operation to finish before retrying.'
     const targetWorkspace = workspace.active?.path
     const targetSession = sessionId.value
-    const index = messages.value.findIndex((message) => message.id === assistantId && message.role === 'assistant')
+    const index = messages.value.findIndex(
+      (message) => message.id === assistantId && message.role === 'assistant',
+    )
     if (index < 0) return 'The answer is no longer in this conversation.'
     let original: ChatMessage | undefined
     for (let i = index - 1; i >= 0; i--) {
-      if (messages.value[i].role === 'user') { original = messages.value[i]; break }
+      if (messages.value[i].role === 'user') {
+        original = messages.value[i]
+        break
+      }
     }
-    if (!original?.checkpoint) return 'This turn has no paired context checkpoint. It cannot be retried safely without retaining the old answer.'
+    if (!original?.checkpoint)
+      return 'This turn has no paired context checkpoint. It cannot be retried safely without retaining the old answer.'
     const prompt = original.content
     const checkpoint = original.checkpoint
     retrying.value = true
@@ -458,7 +523,7 @@ export const useChatStore = defineStore('chat', () => {
       // Mark this as a session-bound retry. The daemon will reject a retry
       // without a restored session instead of seeding a new context from the
       // display history (which could reintroduce the discarded answer).
-      return await send(prompt, { ...options, retry: true }, 'retry')
+      return (await send(prompt, { ...options, retry: true }, 'retry'))
         ? null
         : 'The old turn was restored, but the new reply failed.'
     } finally {
@@ -507,7 +572,10 @@ export const useChatStore = defineStore('chat', () => {
     const id = `q-${Date.now()}`
     const r = await gateway.sendInterrupt(ws.path, content, 'Normal')
     if (!r.ok) return false
-    queued.value = [...queued.value, { id, text: content, files: attachments, createdAt: Date.now() }]
+    queued.value = [
+      ...queued.value,
+      { id, text: content, files: attachments, createdAt: Date.now() },
+    ]
     messages.value.push({
       id,
       role: 'user',
@@ -537,7 +605,14 @@ export const useChatStore = defineStore('chat', () => {
 
   /** Collapse the reasoning content without stopping the answer's timer. */
   function settleReasoningStream() {
-    for (const message of messages.value) message.reasoningPending = false
+    for (const message of messages.value) {
+      message.reasoningPending = false
+      if (message.reasoningStartedAt !== undefined) {
+        message.reasoningElapsedMs =
+          (message.reasoningElapsedMs ?? 0) + Math.max(0, Date.now() - message.reasoningStartedAt)
+        message.reasoningStartedAt = undefined
+      }
+    }
   }
 
   /** The timer includes text generation and tools; stop only at completion. */
@@ -548,8 +623,8 @@ export const useChatStore = defineStore('chat', () => {
         message.turnStartedAt = undefined
       }
       if (message.reasoningStartedAt !== undefined) {
-        message.reasoningElapsedMs = (message.reasoningElapsedMs ?? 0)
-          + Math.max(0, Date.now() - message.reasoningStartedAt)
+        message.reasoningElapsedMs =
+          (message.reasoningElapsedMs ?? 0) + Math.max(0, Date.now() - message.reasoningStartedAt)
         message.reasoningStartedAt = undefined
       }
       message.reasoningPending = false
@@ -600,9 +675,10 @@ export const useChatStore = defineStore('chat', () => {
     // terminal bookkeeping may still follow. Only done/error/abort freezes it.
     m.turnStartedAt = existing.turnStartedAt
     m.turnElapsedMs ??= existing.turnElapsedMs
-    m.reasoningElapsedMs ??= existing.reasoningStartedAt === undefined
-      ? existing.reasoningElapsedMs
-      : (existing.reasoningElapsedMs ?? 0) + Math.max(0, Date.now() - existing.reasoningStartedAt)
+    m.reasoningElapsedMs ??=
+      existing.reasoningStartedAt === undefined
+        ? existing.reasoningElapsedMs
+        : (existing.reasoningElapsedMs ?? 0) + Math.max(0, Date.now() - existing.reasoningStartedAt)
     messages.value[idx] = m
   }
 

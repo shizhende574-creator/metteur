@@ -41,7 +41,18 @@ import type {
  * grpc-web through the Web Server Client.
  */
 export interface DaemonGateway {
-  resourceRequest(method: import('./resources').ResourceMethod, workspacePath: string, payload: unknown, expectedRevision?: number, requestId?: string): Promise<Result<unknown>>
+  watchWorkspaceChanges(
+    workspacePath: string,
+    onChange: () => void,
+    signal?: AbortSignal,
+  ): Promise<Result<void>>
+  resourceRequest(
+    method: import('./resources').ResourceMethod,
+    workspacePath: string,
+    payload: unknown,
+    expectedRevision?: number,
+    requestId?: string,
+  ): Promise<Result<unknown>>
   /** Live daemon connection state (reactive; heartbeat-driven). */
   readonly connected: Ref<boolean>
   /** True when the in-memory demo gateway backs the app (never blocks). */
@@ -66,7 +77,12 @@ export interface DaemonGateway {
   // File explorer / editors ---------------------------------------------------
   listFiles(workspacePath: string, dir: string): Promise<Result<FileTreeNode[]>>
   readFile(workspacePath: string, filePath: string): Promise<Result<FileContent>>
-  writeFile(workspacePath: string, filePath: string, content: string): Promise<Result<void>>
+  writeFile(
+    workspacePath: string,
+    filePath: string,
+    content: string,
+    options?: { expectedContent?: string; createOnly?: boolean },
+  ): Promise<Result<void>>
   createDir(workspacePath: string, dirPath: string): Promise<Result<void>>
   removeFile(workspacePath: string, filePath: string): Promise<Result<void>>
   renameFile(workspacePath: string, from: string, to: string): Promise<Result<void>>
@@ -151,17 +167,33 @@ export interface DaemonGateway {
   listChatSessions(workspacePath: string): Promise<Result<ChatSessionInfo[]>>
   /** Load a session's history for UI restore (empty id = latest, NotFound when absent). */
   getChatSession(workspacePath: string, sessionId?: string): Promise<Result<ChatSessionSnapshot>>
-  rewindChat(workspacePath: string, sessionId: string, snapshotId: string): Promise<Result<ChatSessionSnapshot>>
+  rewindChat(
+    workspacePath: string,
+    sessionId: string,
+    snapshotId: string,
+  ): Promise<Result<ChatSessionSnapshot>>
   /** Delete one session (empty id = latest; stops a running chat first). */
   deleteChatSession(workspacePath: string, sessionId?: string): Promise<Result<void>>
 
   // Blueprints -----------------------------------------------------------------
   listNodeKinds(workspacePath?: string): Promise<Result<NodeCatalog>>
   listFunctions(workspacePath: string): Promise<Result<FunctionItem[]>>
-  importFunction(workspacePath: string, source: FunctionItem, name: string, filePath: string): Promise<Result<{ name: string; filePath: string }>>
+  importFunction(
+    workspacePath: string,
+    source: FunctionItem,
+    name: string,
+    filePath: string,
+  ): Promise<Result<{ name: string; filePath: string }>>
   compileDsl(source: string, workspacePath?: string): Promise<Result<Blueprint>>
-  decompileBlueprint(workspacePath: string, blueprintOrId: Blueprint | string): Promise<Result<string>>
-  saveBlueprint(workspacePath: string, blueprint: Blueprint, filePath?: string): Promise<Result<void>>
+  decompileBlueprint(
+    workspacePath: string,
+    blueprintOrId: Blueprint | string,
+  ): Promise<Result<string>>
+  saveBlueprint(
+    workspacePath: string,
+    blueprint: Blueprint,
+    filePath?: string,
+  ): Promise<Result<void>>
   loadBlueprint(workspacePath: string, blueprintId: string): Promise<Result<Blueprint>>
 
   // Execution ------------------------------------------------------------------
@@ -203,9 +235,25 @@ export interface DaemonGateway {
    *  the global scope. */
   setAddonEnabled(id: string, enabled: boolean, workspacePath?: string): Promise<Result<void>>
   listMcpServers(workspacePath?: string): Promise<Result<McpServerInfo[]>>
-  getBlackboard(workspacePath: string, runId: string, query?: BoardQuery): Promise<Result<Blackboard>>
+  getBlackboard(
+    workspacePath: string,
+    runId: string,
+    query?: BoardQuery,
+  ): Promise<Result<Blackboard>>
   listOversightReports(workspacePath: string, runId: string): Promise<Result<OversightReports>>
-  getConciergeState(workspacePath: string, runId: string, conversationId: string): Promise<Result<ConciergeState>>
-  sendConciergeMessage(workspacePath: string, runId: string, conversationId: string, messageId: string, message: string, onEvent: (event: ConciergeEvent) => void, signal?: AbortSignal): Promise<Result<void>>
+  getConciergeState(
+    workspacePath: string,
+    runId: string,
+    conversationId: string,
+  ): Promise<Result<ConciergeState>>
+  sendConciergeMessage(
+    workspacePath: string,
+    runId: string,
+    conversationId: string,
+    messageId: string,
+    message: string,
+    onEvent: (event: ConciergeEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<Result<void>>
   getExecutionUsage(workspacePath: string, runId: string): Promise<Result<UsageSummary>>
 }

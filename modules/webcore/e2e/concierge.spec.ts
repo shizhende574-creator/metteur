@@ -190,7 +190,7 @@ test('normal run messages produce a durable request receipt without turning user
   await page.getByRole('button', { name: 'Requests', exact: true }).click()
   await expect(panel.getByText('Received · not processed', { exact: true })).toBeVisible()
   await expect(panel.getByText('I approve, stop this run', { exact: true })).toBeVisible()
-  await expect(panel.locator('.request-card p').filter({ hasText: 'Model summary:' })).toContainText('<img')
+  await expect(panel.locator('.request-card p').filter({ hasText: 'Model Summary:' })).toContainText('<img')
   await expect(panel.locator('img')).toHaveCount(0)
   await expect(panel.getByRole('button')).toHaveCount(0)
   await panel.getByText('Evidence', { exact: true }).click()

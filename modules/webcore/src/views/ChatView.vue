@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bug, Compass, ListChecks } from '@lucide/vue'
 import ConciergePanel from '@/components/execution/ConciergePanel.vue'
@@ -18,6 +18,7 @@ import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatStatusBar from '@/components/chat/ChatStatusBar.vue'
 import PlanBar from '@/components/chat/PlanBar.vue'
 import type { ChatOptions, FileTreeNode, LlmModelConfig } from '@/core'
+import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 
 /**
  * The ReAct chat surface.
@@ -29,13 +30,7 @@ import type { ChatOptions, FileTreeNode, LlmModelConfig } from '@/core'
  */
 const chat = useChatStore()
 const execution = useExecutionStore()
-let runtimeTimer: ReturnType<typeof setTimeout> | undefined, runtimeDisposed = false
-async function pollRuntime() {
-  await execution.reconcile()
-  if (!runtimeDisposed) runtimeTimer = setTimeout(pollRuntime, 1000)
-}
-onMounted(() => { void pollRuntime() })
-onBeforeUnmount(() => { runtimeDisposed = true; clearTimeout(runtimeTimer) })
+useWorkspaceRefresh(() => execution.reconcile())
 const config = useConfigStore()
 const tabs = useTabsStore()
 const feedback = useFeedbackStore()
@@ -54,9 +49,16 @@ const modelKeys = computed(() => {
   if (fallback && keys.includes(fallback)) return [fallback, ...keys.filter((k) => k !== fallback)]
   return keys
 })
-const hasModel = computed(() => modelKeys.value.length > 0)
+const hasModel = computed(() => config.loaded && modelKeys.value.length > 0)
 
 const model = ref('')
+watch(
+  modelKeys,
+  (keys) => {
+    if (!keys.includes(model.value)) model.value = keys[0] ?? ''
+  },
+  { immediate: true },
+)
 const reasoning = ref<NonNullable<ChatOptions['reasoning_effort']>>('medium')
 const temperature = ref(0.7)
 const topP = ref(0.9)
@@ -67,7 +69,7 @@ const chatOptions = computed<ChatOptions>(() => ({
   // The selection can lag the configuration (a workspace that just opened, a
   // model removed from settings); the first configured key is what the
   // selector would show anyway.
-  model: model.value || modelKeys.value[0] || '',
+  model: modelKeys.value.includes(model.value) ? model.value : modelKeys.value[0] || '',
   reasoning_effort: reasoning.value,
   temperature: temperature.value,
   top_p: topP.value,
@@ -93,7 +95,8 @@ async function send(text: string): Promise<void> {
 async function queue(text: string): Promise<void> {
   const ok = await chat.queue(text, chat.pendingFiles ?? [])
   if (!ok) feedback.toast('error', 'Could not queue the message', 'The turn may have just ended.')
-  if (chat.pendingFiles.length) for (const file of [...chat.pendingFiles]) chat.removeQueuedFile(file.path)
+  if (chat.pendingFiles.length)
+    for (const file of [...chat.pendingFiles]) chat.removeQueuedFile(file.path)
 }
 
 /** Sends a message into the running turn before the next model call. */
@@ -117,12 +120,17 @@ function edit(text: string): void {
 
 /** Regenerates against the original pre-turn context, not the old answer. */
 async function retry(assistantId: string): Promise<void> {
-  if (!hasModel.value) { openSettings(); return }
+  if (!hasModel.value) {
+    openSettings()
+    return
+  }
   if (chat.busy || chat.rewinding || chat.retrying) return
   const confirmed = await feedback.confirm({
     header: 'Retry this turn?',
-    message: 'Restore files and context to before the original request, discard this answer and all later turns, then generate a new answer automatically. Your input draft will be kept.',
-    acceptLabel: 'Retry', danger: true,
+    message:
+      'Restore files and context to before the original request, discard this answer and all later turns, then generate a new answer automatically. Your input draft will be kept.',
+    acceptLabel: 'Retry',
+    danger: true,
   })
   if (!confirmed) return
   const error = await chat.retry(assistantId, chatOptions.value)
@@ -155,7 +163,12 @@ async function restore(snapshotId: string): Promise<void> {
   })
   if (!confirmed) return
   const error = await chat.rewind(snapshotId)
-  if (error === null) feedback.toast('success', 'Conversation restored', 'Files and model context are back to the state before that turn.')
+  if (error === null)
+    feedback.toast(
+      'success',
+      'Conversation restored',
+      'Files and model context are back to the state before that turn.',
+    )
   else feedback.toast('error', 'Restore failed', error)
 }
 
@@ -228,14 +241,34 @@ onMounted(() => {
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 const starterPrompts = [
-  { label: 'Explain this workspace', description: 'Find your way around the code.', icon: Compass, text: 'Explain how this workspace is organised and what the main entry points are.' },
-  { label: 'Find and fix a bug', description: 'Turn a problem into a solution.', icon: Bug, text: 'Find the most likely bug in the modified files and fix it.' },
-  { label: 'Plan a change', description: 'Make the next step a clear one.', icon: ListChecks, text: 'Plan how to add a new feature end to end, then implement the first step.' },
+  {
+    label: 'Explain this workspace',
+    description: 'Find your way around the code.',
+    icon: Compass,
+    text: 'Explain how this workspace is organised and what the main entry points are.',
+  },
+  {
+    label: 'Find and fix a bug',
+    description: 'Turn a problem into a solution.',
+    icon: Bug,
+    text: 'Find the most likely bug in the modified files and fix it.',
+  },
+  {
+    label: 'Plan a change',
+    description: 'Make the next step a clear one.',
+    icon: ListChecks,
+    text: 'Plan how to add a new feature end to end, then implement the first step.',
+  },
 ]
 </script>
 
 <template>
-  <div v-if="execution.active" class="chat-surface flex h-full min-w-0 flex-col bg-background"><ConciergePanel :run-id="execution.runId" :connected="execution.connected && gateway.connected.value" /></div>
+  <div v-if="execution.active" class="chat-surface flex h-full min-w-0 flex-col bg-background">
+    <ConciergePanel
+      :run-id="execution.runId"
+      :connected="execution.connected && gateway.connected.value"
+    />
+  </div>
   <div v-else class="chat-surface flex h-full min-w-0 flex-col bg-background">
     <ChatHeader
       :threads="chat.threads"
@@ -261,7 +294,7 @@ const starterPrompts = [
     >
       <template #empty>
         <div class="chat-welcome">
-          <h2>What should we work on?</h2>
+          <h2>What Should We Work On?</h2>
           <p class="chat-welcome-description">
             Ask about your code, fix a bug, or build something new.
           </p>
@@ -330,7 +363,12 @@ const starterPrompts = [
     </div>
 
     <!-- Generation parameters -->
-    <div v-if="parametersOpen" class="fixed inset-0 z-50 grid place-items-center" style="background: var(--overlay)" @mousedown.self="parametersOpen = false">
+    <div
+      v-if="parametersOpen"
+      class="fixed inset-0 z-50 grid place-items-center"
+      style="background: var(--overlay)"
+      @mousedown.self="parametersOpen = false"
+    >
       <div class="chat-menu w-80 p-3!">
         <p class="mb-2 text-[13px] font-semibold">Generation parameters</p>
         <div class="space-y-2">
@@ -345,19 +383,43 @@ const starterPrompts = [
           </label>
           <label class="flex items-center justify-between text-[12px] text-muted-foreground">
             Temperature
-            <input v-model.number="temperature" type="number" step="0.1" min="0" max="2" class="input h-6 w-28! px-1.5! text-[11px]!" />
+            <input
+              v-model.number="temperature"
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              class="input h-6 w-28! px-1.5! text-[11px]!"
+            />
           </label>
           <label class="flex items-center justify-between text-[12px] text-muted-foreground">
             Top P
-            <input v-model.number="topP" type="number" step="0.05" min="0" max="1" class="input h-6 w-28! px-1.5! text-[11px]!" />
+            <input
+              v-model.number="topP"
+              type="number"
+              step="0.05"
+              min="0"
+              max="1"
+              class="input h-6 w-28! px-1.5! text-[11px]!"
+            />
           </label>
           <label class="flex items-center justify-between text-[12px] text-muted-foreground">
             Max tokens
-            <input v-model.number="maxTokens" type="number" step="256" min="256" class="input h-6 w-28! px-1.5! text-[11px]!" />
+            <input
+              v-model.number="maxTokens"
+              type="number"
+              step="256"
+              min="256"
+              class="input h-6 w-28! px-1.5! text-[11px]!"
+            />
           </label>
         </div>
         <div class="mt-3 flex justify-end">
-          <button class="btn btn-primary h-7! px-3! text-[12px]" type="button" @click="parametersOpen = false">
+          <button
+            class="btn btn-primary h-7! px-3! text-[12px]"
+            type="button"
+            @click="parametersOpen = false"
+          >
             Done
           </button>
         </div>

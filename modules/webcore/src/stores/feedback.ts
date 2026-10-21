@@ -36,8 +36,9 @@ export const useFeedbackStore = defineStore('feedback', () => {
   const pending = ref<PendingConfirm | null>(null)
 
   function toast(kind: ToastKind, summary: string, detail?: string) {
-    toasts.value = [...toasts.value, { id: toastSeq++, kind, summary, detail }]
-    setTimeout(() => dismiss(toastSeq - 1), 4000)
+    const id = toastSeq++
+    toasts.value = [...toasts.value, { id, kind, summary, detail }]
+    setTimeout(() => dismiss(id), 4000)
   }
 
   function dismiss(id: number) {
