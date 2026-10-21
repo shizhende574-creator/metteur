@@ -1,3 +1,5 @@
+> 2026-10-21 用户验收启动复核：旧 2ada184 包的便携启动存在缺依赖与过早 ready 的缺陷，原 portable-demo-smoke-uu8r3mis 结论撤回。已由现有锁定依赖生成独立 Node bundle，并用无源码/node_modules 的目录完成实际蓝图读取、文件工具两轮调用和会话历史验证。新证据：portable-bundled-runtime-rpc-proof-bz4l8brs / portable-demo-smoke-ajwsusqm。原包保持不变，新包另存；付费评测及生产二进制未改变。分批发布准备见 PUBLISH_BATCHES_20261021.md。
+
 # Metteur 本地收尾验收 · 2026-10-21
 
 已补齐本轮授权范围内的剩余工程实现、质量修复、真实 DeepSeek 验收和本地交付准备。45 个 NX 任务及 SPEC §8.3 的 88 个场景全部更新到 `LOCAL_ACCEPTANCE_MATRIX.json`。最终视觉定稿保留为用户事项，未以技术测试或模型意见代替。
@@ -25,7 +27,7 @@
 | 签名 Addon 安装页闭环 | 4 项通过，0 pageerror；真实模型意见与人工测试验收分离 | installed-addon-browser-LE6lCJ |
 | 当前生产页面/排序 | 7 页面 × 2 主题 × 2 宽度，共 28 次通过，0 页面/控制台错误 | native-surface-browser-qEhSvO |
 | 原生等待 Job 强制崩溃与重开 | 同 task/session、无新模型调用、无重放通过 | actual-pending-job-restart-xbuq51_e |
-| 无依赖的交付启动器 | 复制后的 Windows 二进制+生产 Web+Node 24 启动；模型调用 0 | portable-demo-smoke-uu8r3mis |
+| 无依赖的交付启动器 | 复制后的 Windows 二进制+生产 Web+Node 24 启动；模型调用 0 | portable-demo-smoke-ajwsusqm |
 
 测试数字为程序报告执行次数（含可能的辅助入口），不是需求数。Linux 为本机 WSL，Windows 结果来自 MSVC 原生构建，二者分别记录。原始首次失败、真实退出码及修复复核均保留。
 

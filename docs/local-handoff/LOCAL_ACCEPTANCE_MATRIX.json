@@ -787,12 +787,14 @@
       "evidence": [
         "native-full-rust-layout-fixed-gwgv_txm",
         "linux-final-frozen/first-gpw6sw0x",
-        "portable-demo-smoke-uu8r3mis",
-        "package root STATE.json and history/restore-verify.log"
+        "package root STATE.json and history/restore-verify.log",
+        "portable-bundled-runtime-rpc-proof-bz4l8brs",
+        "portable-demo-smoke-ajwsusqm"
       ],
       "pre_completion_status": "LOCAL_CANDIDATE_PACKAGE_RESTORE_VERIFIED_FINAL_ACCEPTANCE_PENDING",
       "engineering_status": "COMPLETE_IN_DECLARED_LOCAL_SCOPE",
-      "owner_final_visual_signoff": "PENDING_OWNER"
+      "owner_final_visual_signoff": "PENDING_OWNER",
+      "delivery_correction": "Standalone RPC bundle and deferred ready; new package supersedes old 2ada184 launcher. Prior smoke invalidated."
     }
   ],
   "scenarios": [
@@ -2276,6 +2278,15 @@
       "evidence": [
         "completion-model-report-20261021.json"
       ]
+    },
+    "portable_launcher": {
+      "status": "PASS_BUNDLED_RUNTIME_SAVED_GRAPH_AND_REAL_TOOL_RPC",
+      "evidence": [
+        "portable-bundled-runtime-rpc-proof-bz4l8brs",
+        "portable-demo-smoke-ajwsusqm"
+      ],
+      "paid_calls": 0,
+      "invalidated_prior_smoke": "portable-demo-smoke-uu8r3mis: ready was published before loading RPC dependencies; HTTP-only smoke was a false positive"
     }
   },
   "scoped_backend_coverage": [

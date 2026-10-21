@@ -109,3 +109,7 @@ py -3.12 -X utf8 F:/space/06_Projects/Agent/workspace-review-2026-10-20/run_nati
 包根 `Start-demo.ps1` 使用包内 runtime/windows 和 runtime/web；只需 Node 24，不需要 node_modules 或重新编译。此入口为免费合成演示。实际启动可显式运行 `metteurd --config <本机安全TOML> --data-dir <自己的数据目录> --listen-addr 127.0.0.1:<端口>`，再以 metteur-web 指向该 daemon 和生产 static-dir。不要从演示配置继承 synthetic provider，也不要把测试费用授权扩大为真实数据调用。
 
 Addon 模型意见默认关闭。可信操作员需同时设置绝对路径 `METTEUR_PREVIEW_MODEL_PYTHON`、`METTEUR_PREVIEW_MODEL_REVIEWER`（source/scripts/nx_preview_model.py）、`METTEUR_PREVIEW_MODEL_SETTINGS`。settings 只引用 credential_config/credential_alias、允许模型 ID、同一 ledger_path、spending_limit_usd=5 和原 smoke imported_nano_usd=261900；不在 settings 放密钥。不要重建账本以绕过原 US$5 总额。renderer 仍需原有 Node/Chromium 绝对路径配置，保留沙箱。缺配置如实显示 not_configured；模型意见不是浏览器事实、人工验收或权限批准。
+
+## 2026-10-21 便携启动更正
+
+旧 2ada184 包启动器漏装 RPC 依赖，原仅 HTTP/ready smoke 不足，已撤回其无依赖启动结论。新包入口改用 runtime/fixture/scripts/run-nx-local.mjs（既有锁定 RPC/protobuf 依赖已打包，附许可证），仅需 Node 24。ready 只在依赖、工作区与蓝图初始化后写入。实际蓝图读取、ReadFile 两轮及历史恢复通过，无付费调用。不要继续使用旧包 Start-demo.ps1；原 zip 保留用于追溯。
