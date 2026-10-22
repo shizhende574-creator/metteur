@@ -238,8 +238,19 @@ async function startTask(input: {
     await load()
   }
 }
-function reviewApproval(request: { request_id: string; detail: string }) {
-  if (!chat.approval) chat.approval = { requestId: request.request_id, detail: request.detail }
+function reviewApproval(request: {
+  request_id: string
+  detail: string
+  content_digest?: string
+  target?: import('@/core/approval-decision').ApprovalTarget
+}) {
+  if (!chat.approval)
+    chat.approval = {
+      requestId: request.request_id,
+      detail: request.detail,
+      contentDigest: request.content_digest,
+      target: request.target,
+    }
 }
 </script>
 <template>

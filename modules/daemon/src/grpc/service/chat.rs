@@ -664,10 +664,14 @@ impl DaemonService {
                         } => {
                             approval_details.lock().insert(request_id.clone(), detail.clone());
                             bridge_db.notify_changes();
+                            let content_digest =
+                                crate::storage::approval_delivery::ApprovalDelivery::content_digest(
+                                    &detail,
+                                );
                             ChatEvent {
                                 kind: "approval".into(),
                                 content: detail,
-                                detail_json: serde_json::json!({"request_id":request_id})
+                                detail_json: serde_json::json!({"request_id":request_id,"content_digest":content_digest})
                                     .to_string(),
                             }
                         }

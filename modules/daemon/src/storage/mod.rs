@@ -1,8 +1,9 @@
 //! Storage: persistence layer and versioning.
 
-pub mod persistence;
+pub mod approval_delivery;
 pub mod blueprint_files;
-pub mod versioning;
-pub mod resources;
-pub mod recovery;
 pub mod delivery;
+pub mod persistence;
+pub mod recovery;
+pub mod resources;
+pub mod versioning;

@@ -22,6 +22,9 @@ import type { DeliverySnapshot } from '@/core/delivery'
 import { useForegroundStore } from './foreground'
 import { useWorkspaceViewStore } from './workspace-view'
 import { isSessionId } from '@/core/workspace-view'
+import { useApprovalDecisionsStore } from './approval-decisions'
+import { approvalDigest, type ApprovalTarget } from '@/core/approval-decision'
+import { useFeedbackStore } from './feedback'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -50,6 +53,8 @@ export const useChatStore = defineStore('chat', () => {
   const workspace = useWorkspaceStore()
   const foreground = useForegroundStore()
   const views = useWorkspaceViewStore()
+  const decisions = useApprovalDecisionsStore()
+  const feedback = useFeedbackStore()
   const inputs = useComposerInputsStore(),
     prompts = usePromptResourcesStore()
   const messages = ref<ChatMessage[]>([])
@@ -75,7 +80,19 @@ export const useChatStore = defineStore('chat', () => {
   /** Who answers authorization questions for this conversation. */
   const permissionMode = ref<'ask' | 'sandbox' | 'full'>('sandbox')
   /** A sandbox approval the running turn is waiting for. */
-  const approval = ref<{ requestId: string; detail: string } | null>(null)
+  const approval = ref<{
+    requestId: string
+    detail: string
+    contentDigest?: string
+    target?: ApprovalTarget
+  } | null>(null)
+  const approvalSubmitting = ref(false),
+    approvalError = ref('')
+  const approvalDecision = computed(() =>
+    approval.value && workspace.active?.path
+      ? decisions.read(workspace.active.path, approval.value.requestId)
+      : null,
+  )
   /** The agent's task list for the open conversation. */
   const todos = ref<TodoItem[]>([])
   /** What the agent is doing right now, derived from the event stream. */
@@ -249,6 +266,8 @@ export const useChatStore = defineStore('chat', () => {
       activeTurn.value = ''
       permissionMode.value = 'sandbox'
       approval.value = null
+      approvalSubmitting.value = false
+      approvalError.value = ''
       sendError.value = ''
       lastUsage.value = null
       contextStats.value = null
@@ -321,6 +340,9 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
     const epoch = ++conversationEpoch
+    approval.value = null
+    approvalError.value = ''
+    approvalSubmitting.value = false
     following.value = null
     streamAbort?.abort()
     streamAbort = null
@@ -719,13 +741,123 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /** Answers the pending approval and clears it. */
+  /** Clear only a receipt for this exact pending approval; failures remain visible. */
   async function respondApproval(allow: boolean): Promise<void> {
-    const ws = workspace.active
-    const pending = approval.value
+    const ws = workspace.active?.path,
+      pending = approval.value,
+      session = sessionId.value,
+      turn = activeTurn.value,
+      epoch = conversationEpoch
+    if (!ws || !pending || approvalSubmitting.value) return
+    approvalSubmitting.value = true
+    approvalError.value = ''
+    const current = () =>
+      workspace.active?.path === ws &&
+      conversationEpoch === epoch &&
+      sessionId.value === session &&
+      activeTurn.value === turn &&
+      approval.value?.requestId === pending.requestId
+    try {
+      if (gateway.demo) {
+        const result = await gateway.respondApproval(ws, pending.requestId, allow)
+        if (!current()) return
+        if (result.ok) approval.value = null
+        else approvalError.value = result.error
+        return
+      }
+      const digest = pending.contentDigest || (await approvalDigest(pending.detail))
+      if (!current()) return
+      const entry = decisions.entry({
+        workspace: ws,
+        id: pending.requestId,
+        target: pending.target ?? { kind: 'chat', session, turn },
+        content_digest: digest,
+      })
+      const accepted = await entry.respond(allow)
+      if (!current()) return
+      approvalError.value = entry.error
+      if (accepted || entry.state === 'retired') {
+        approval.value = null
+        if (entry.error) {
+          sendError.value = entry.error
+          feedback.toast('error', 'Decision Receipt', entry.error)
+        }
+      }
+    } catch (error) {
+      if (current()) approvalError.value = String(error)
+    } finally {
+      if (workspace.active?.path === ws && conversationEpoch === epoch)
+        approvalSubmitting.value = false
+    }
+  }
+  async function reconcileApproval() {
+    const ws = workspace.active?.path,
+      pending = approval.value,
+      epoch = conversationEpoch,
+      session = sessionId.value,
+      turn = activeTurn.value
+    if (!ws || !pending || approvalSubmitting.value) return
+    approvalSubmitting.value = true
+    try {
+      const digest = pending.contentDigest || (await approvalDigest(pending.detail))
+      if (
+        workspace.active?.path !== ws ||
+        epoch !== conversationEpoch ||
+        sessionId.value !== session ||
+        activeTurn.value !== turn ||
+        approval.value?.requestId !== pending.requestId
+      )
+        return
+      const entry = decisions.entry({
+        workspace: ws,
+        id: pending.requestId,
+        target: pending.target ?? { kind: 'chat', session, turn },
+        content_digest: digest,
+      })
+      const accepted = await entry.reconcile()
+      if (
+        workspace.active?.path !== ws ||
+        epoch !== conversationEpoch ||
+        approval.value?.requestId !== pending.requestId
+      )
+        return
+      approvalError.value = entry.error
+      if (accepted || entry.state === 'retired') {
+        approval.value = null
+        if (entry.error) {
+          sendError.value = entry.error
+          feedback.toast('error', 'Decision Receipt', entry.error)
+        }
+      }
+    } catch (error) {
+      if (workspace.active?.path === ws && epoch === conversationEpoch)
+        approvalError.value = String(error)
+    } finally {
+      if (workspace.active?.path === ws && epoch === conversationEpoch)
+        approvalSubmitting.value = false
+    }
+  }
+  async function stopApproval() {
+    const ws = workspace.active?.path,
+      pending = approval.value
+    const target = pending?.target
+    if (
+      !target ||
+      target.kind !== 'chat' ||
+      !target.session ||
+      !target.turn ||
+      (target.session === sessionId.value && target.turn === activeTurn.value)
+    )
+      return abort()
     if (!ws || !pending) return
-    approval.value = null
-    await gateway.respondApproval(ws.path, pending.requestId, allow)
+    const result = await gateway.abortChat(ws, {
+      kind: 'chat',
+      sessionId: target.session,
+      turnId: target.turn,
+    })
+    if (workspace.active?.path !== ws || approval.value?.requestId !== pending.requestId) return
+    if (result.ok) approval.value = null
+    else approvalError.value = result.error
   }
 
   async function abort() {
@@ -748,6 +880,7 @@ export const useChatStore = defineStore('chat', () => {
           }
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return
     if (!result.ok) sendError.value = result.error
+    else approval.value = null
     for (const m of messages.value) m.pending = false
     streaming.value = false
     busy.value = false
@@ -1031,6 +1164,9 @@ export const useChatStore = defineStore('chat', () => {
     sessionId.value = ''
     sessionUnavailable.value = false
     sendError.value = ''
+    approval.value = null
+    approvalError.value = ''
+    approvalSubmitting.value = false
     if (workspace.active?.path) views.edit(workspace.active.path, { session: '' })
     rotateDraft()
     lastUsage.value = null
@@ -1090,6 +1226,9 @@ export const useChatStore = defineStore('chat', () => {
     contextStats,
     permissionMode,
     approval,
+    approvalSubmitting,
+    approvalDecision,
+    approvalError,
     phase,
     turnStartedAt,
     lastEventAt,
@@ -1114,6 +1253,8 @@ export const useChatStore = defineStore('chat', () => {
     queue,
     steer,
     respondApproval,
+    reconcileApproval,
+    stopApproval,
     abort,
     clear,
     deleteThread,

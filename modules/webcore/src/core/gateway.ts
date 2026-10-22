@@ -143,7 +143,7 @@ export interface DaemonGateway {
     /** Reports what the conversation occupies once the turn ends. */
     onContext?: (stats: ChatContextStats) => void,
     /** Asks the client to decide on a sandbox approval, mid-turn. */
-    onApproval?: (request: { requestId: string; detail: string }) => void,
+    onApproval?: (request: { requestId: string; detail: string; contentDigest?: string }) => void,
     /** Durable input acceptance, separate from the eventual model outcome. */
     onDelivery?: (receipt: ChatDeliveryReceipt) => void,
   ): Promise<Result<void>>
@@ -224,7 +224,12 @@ export interface DaemonGateway {
   resume(workspacePath: string, runId?: string): Promise<Result<void>>
 
   // Approvals ------------------------------------------------------------------
-  respondApproval(workspacePath: string, requestId: string, allow: boolean): Promise<Result<void>>
+  respondApproval(
+    workspacePath: string,
+    requestId: string,
+    allow: boolean,
+    binding?: import('./approval-decision').ApprovalBinding,
+  ): Promise<Result<void>>
 
   // Versioning -----------------------------------------------------------------
   listSnapshots(workspacePath: string): Promise<Result<SnapshotInfo[]>>

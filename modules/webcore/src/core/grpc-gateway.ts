@@ -752,7 +752,7 @@ export class GrpcGateway implements DaemonGateway {
     onProgress?: (progress: { name: string; bytes: number }) => void,
     onContext?: (stats: ChatContextStats) => void,
     /** Asks the client to decide on a sandbox approval, mid-turn. */
-    onApproval?: (request: { requestId: string; detail: string }) => void,
+    onApproval?: (request: { requestId: string; detail: string; contentDigest?: string }) => void,
     onDelivery?: (receipt: ChatDeliveryReceipt) => void,
   ): Promise<Result<void>> {
     let seq = 0
@@ -907,6 +907,8 @@ export class GrpcGateway implements DaemonGateway {
             onApproval?.({
               requestId: String(detail.request_id ?? ''),
               detail: event.content ?? '',
+              contentDigest:
+                typeof detail.content_digest === 'string' ? detail.content_digest : undefined,
             })
             break
           case 'notice':
@@ -1355,12 +1357,15 @@ export class GrpcGateway implements DaemonGateway {
     workspacePath: string,
     requestId: string,
     allow: boolean,
+    binding?: import('./approval-decision').ApprovalBinding,
   ): Promise<Result<void>> {
     try {
       await this.client.respondApproval({
         workspacePath,
         requestId,
         decision: allow ? 'AllowOnce' : 'DenyOnce',
+        targetJson: binding ? JSON.stringify(binding.target) : '',
+        contentDigest: binding?.content_digest ?? '',
       })
       return ok(undefined)
     } catch (e) {

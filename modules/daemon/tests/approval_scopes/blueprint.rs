@@ -91,6 +91,7 @@ async fn disconnecting_a_blueprint_stream_withdraws_its_pending_approval() {
                 workspace_path: root.to_string_lossy().into(),
                 request_id: id,
                 decision: "AllowWorkspace".into(),
+                ..Default::default()
             })
         )
         .await

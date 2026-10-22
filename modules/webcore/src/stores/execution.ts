@@ -14,6 +14,8 @@ import type {
   ExecutionInfo,
 } from '@/core'
 import { useWorkspaceStore } from './workspace'
+import { useApprovalDecisionsStore } from './approval-decisions'
+import { useFeedbackStore } from './feedback'
 
 /** App-facing actions derived from an execution event. */
 export interface EventLine {
@@ -33,6 +35,8 @@ export interface EventLine {
  */
 export const useExecutionStore = defineStore('execution', () => {
   const workspace = useWorkspaceStore()
+  const decisions = useApprovalDecisionsStore()
+  const feedback = useFeedbackStore()
   const blueprint = ref<Blueprint | null>(null)
   const sourcePath = ref('')
   const error = ref('')
@@ -92,9 +96,18 @@ export const useExecutionStore = defineStore('execution', () => {
   const status = ref<ExecStatus>('idle')
   const events = ref<EventLine[]>([])
   const approval = ref<ApprovalRequest | null>(null)
+  const approvalSubmitting = ref(false),
+    approvalError = ref('')
+  const approvalDecision = computed(() =>
+    approval.value && workspace.active?.path
+      ? decisions.read(workspace.active.path, approval.value.id)
+      : null,
+  )
   const approvalQueue: ApprovalRequest[] = []
   let approvalRevision = 0
   function clearApprovals() {
+    approvalSubmitting.value = false
+    approvalError.value = ''
     approval.value = null
     approvalQueue.length = 0
     approvalRevision++
@@ -167,6 +180,8 @@ export const useExecutionStore = defineStore('execution', () => {
         command: plan?.command ?? ev.message,
         detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
         requestType,
+        contentDigest:
+          typeof detail.approval_digest === 'string' ? detail.approval_digest : undefined,
       })
     }
     events.value.push(ev)
@@ -271,7 +286,11 @@ export const useExecutionStore = defineStore('execution', () => {
               nodeId: '',
               kind: 'approval_request',
               message: pending.request_id,
-              detail: { ...detail, requestId: pending.request_id },
+              detail: {
+                ...detail,
+                requestId: pending.request_id,
+                approval_digest: pending.content_digest,
+              },
             })
           }
         }
@@ -363,19 +382,86 @@ export const useExecutionStore = defineStore('execution', () => {
   async function respond(allow: boolean) {
     const ws = workspace.active?.path,
       request = approval.value,
-      generation = epoch
-    if (!ws || !request || controlBusy.value) return
-    const finishControl = beginControl()
+      generation = epoch,
+      targetRun = runId.value
+    if (!ws || !request || approvalSubmitting.value) return
+    approvalSubmitting.value = true
+    approvalError.value = ''
     try {
-      const result = await gateway.respondApproval(ws, request.id, allow)
-      if (generation !== epoch) return
-      if (!result.ok) throw new Error(result.error)
-      approvalRevision++
-      if (approval.value?.id === request.id) approval.value = approvalQueue.shift() ?? null
+      const entry = !gateway.demo
+        ? decisions.entry({
+            workspace: ws,
+            id: request.id,
+            target: { kind: 'blueprint', run: targetRun },
+            content_digest: request.contentDigest ?? '',
+          })
+        : null
+      const result = entry
+        ? { ok: await entry.respond(allow), error: entry.error }
+        : await gateway.respondApproval(ws, request.id, allow)
+      if (
+        generation !== epoch ||
+        workspace.active?.path !== ws ||
+        runId.value !== targetRun ||
+        approval.value?.id !== request.id
+      )
+        return
+      approvalError.value = result.ok ? '' : result.error
+      if (entry?.error) {
+        error.value = entry.error
+        if (entry.state === 'accepted' || entry.state === 'retired')
+          feedback.toast('error', 'Decision Receipt', entry.error)
+      }
+      if (result.ok || entry?.state === 'retired') {
+        approvalRevision++
+        approval.value = approvalQueue.shift() ?? null
+      }
     } catch (e) {
-      if (generation === epoch) error.value = String(e)
+      if (
+        generation === epoch &&
+        workspace.active?.path === ws &&
+        approval.value?.id === request.id
+      )
+        approvalError.value = String(e)
     } finally {
-      finishControl()
+      if (generation === epoch) approvalSubmitting.value = false
+    }
+  }
+  async function reconcileApproval() {
+    const ws = workspace.active?.path,
+      request = approval.value,
+      targetRun = runId.value,
+      generation = epoch
+    if (!ws || !request || approvalSubmitting.value) return
+    approvalSubmitting.value = true
+    try {
+      const entry = decisions.entry({
+        workspace: ws,
+        id: request.id,
+        target: { kind: 'blueprint', run: targetRun },
+        content_digest: request.contentDigest ?? '',
+      })
+      const accepted = await entry.reconcile()
+      if (
+        generation !== epoch ||
+        workspace.active?.path !== ws ||
+        runId.value !== targetRun ||
+        approval.value?.id !== request.id
+      )
+        return
+      approvalError.value = entry.error
+      if (accepted || entry.state === 'retired') {
+        approvalRevision++
+        approval.value = approvalQueue.shift() ?? null
+        if (entry.error) {
+          error.value = entry.error
+          feedback.toast('error', 'Decision Receipt', entry.error)
+        }
+      }
+    } catch (cause) {
+      if (generation === epoch && workspace.active?.path === ws) approvalError.value = String(cause)
+    } finally {
+      if (generation === epoch) approvalSubmitting.value = false
     }
   }
   async function control(action: 'pause' | 'resume' | 'cancel', targetRun?: string) {
@@ -439,6 +525,10 @@ export const useExecutionStore = defineStore('execution', () => {
     status,
     events,
     approval,
+    approvalSubmitting,
+    approvalDecision,
+    approvalError,
+    reconcileApproval,
     contextUsage,
     contextNode,
     contextByNode,

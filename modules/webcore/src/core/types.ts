@@ -363,6 +363,7 @@ export interface ExecutionEvent {
 
 /** A pending sandbox approval surfaced during execution. */
 export interface ApprovalRequest {
+  contentDigest?: string
   id: string
   title: string
   tool: string

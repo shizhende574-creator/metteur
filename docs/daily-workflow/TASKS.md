@@ -31,7 +31,7 @@
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
 | DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（草稿/位置入口已接入，生产链/完整验收待完成） |
-| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | IN_PROGRESS（Send/Queue/Steer/监督正常输入已接入，临时插入/控制待完成） |
+| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | IN_PROGRESS（Send/Queue/Steer/监督/审批已接入，临时插入/控制待完成） |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
 | DW-06 | 交接、可读结果与分类处置 | DW-03/05 | PLANNED |
@@ -111,7 +111,7 @@
 
 **验收**：AC-04/05/06/15/23/26/27/29。**证据交付**：接收崩溃窗口与兼容矩阵、定向 daemon/CLI/browser 检查。
 
-**实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机完整提交 9aa23cc；已备份未决身份启动前对账增量亦已完成定向验证；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/主聊天草稿及IME已接入并完成定向检查；主聊天Queue/Steer持久接收/消费回执和聊天Stop固定目标现已接入；监督正常消息原子接收/原ID对账亦已完成定向验证。蓝图临时插入、控制/审批Unknown与整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
+**实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机完整提交 9aa23cc；已备份未决身份启动前对账增量亦已完成定向验证；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/主聊天草稿及IME已接入并完成定向检查；主聊天Queue/Steer持久接收/消费回执和聊天Stop固定目标现已接入；监督正常消息原子接收/原ID对账亦已完成定向验证。审批决定现已接入固定目标/内容、持久Claim/Accepted/Unknown/Retired及Web/CLI；首轮存储5/RPC7/grant3/旧权限21/客户端8、L2新增7通过，失败及窄复测见APPROVAL_DECISIONS.md/交接。蓝图临时插入、Stop/Pause/Resume回执、跨重启未决清单和整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
 
 ### DW-04 · 文件引用、冲突和回退
 
@@ -240,7 +240,7 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 | AC-12 | 自动续聊与只保留结果策略正确，人工停止不重跑 | 05/06/08 | L1/L3 | NOT_RUN |
 | AC-13 | 预算/过期/撤权/未知副作用有准确分类，不能通用继续 | 06 | L1/L3 | NOT_RUN |
 | AC-14 | 新消息使旧自动续跑失效，显式接收结果和新绑定保留账本 | 06/08 | L1/L3 | NOT_RUN |
-| AC-15 | 停止/审批失败、未知、晚到事件不伪成功或换目标 | 03/05/06 | L1/L3 | PARTIAL：run/session/turn固定目标及Stop优先级L1/L2；持久回执/L3待验 |
+| AC-15 | 停止/审批失败、未知、晚到事件不伪成功或换目标 | 03/05/06 | L1/L3 | PARTIAL：固定目标/Stop优先级及审批决定持久回执L1/L2；其他控制/未决清单/L3待验 |
 | AC-16 | 历史深链/最近位置/已删源会话不偷换身份 | 02/05 | L2/L3 | PARTIAL：位置/会话深链/缺失源L2；L3/历史run全链待验 |
 | AC-17 | Prompt/约定/模型笔记/证据的 scope、版本和可信等级 | 02/04/06/08 | L1/L3 | NOT_RUN |
 | AC-18 | 去除 1s/1.5s 业务轮询，重连/重复通知不丢终态 | 07 | L1/L3 | NOT_RUN |
@@ -250,7 +250,7 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 | AC-22 | 候选/旧数据/迁移/文档/产物一致与可恢复 | 09 | L1/L5 | NOT_RUN |
 | AC-23 | IME 候选确认、换行、快捷键、长按不误发/重复/绕过禁用 | 03/05 | L2/L3/用户 | PARTIAL：共享Composer L2合成序列通过；L3/真实IME待验 |
 | AC-24 | 无效原始草稿、rename/孤立稿、清理和丢弃晚到竞态 | 02/04 | L1/L3 | PARTIAL：文档/聊天/监督L1/L2；L3待验 |
-| AC-25 | 恢复记录 durable/容量/损坏/旧 schema 与 rewind 隔离 | 02/09 | L1/L5 | PARTIAL：L1 存储；rewind/L5 待验 |
+| AC-25 | 恢复记录 durable/容量/损坏/旧 schema 与 rewind 隔离 | 02/09 | L1/L5 | PARTIAL：L1存储/三类dw记录与checkpoint隔离；rewind/L5待验 |
 | AC-26 | 其他客户端/session 及旧版本不能绕过准入，新能力不静默降级 | 03/05/06/09 | L1/L3 | PARTIAL：能力拒绝降级/旧无目标控制拒绝；完整准入待验 |
 | AC-27 | 普通断流/detached/关闭页面/工作区/daemon/睡眠语义分开 | 03/05/08/09 | L1/L3/L5 | NOT_RUN |
 | AC-28 | 持续编辑记录有界且不触发全页状态刷新风暴 | 02/07/09 | L1/L3 | PARTIAL：L1 1000 次有界/零通知；L3 待验 |

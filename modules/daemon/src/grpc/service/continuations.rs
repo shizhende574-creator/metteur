@@ -76,7 +76,7 @@ impl DaemonService {
                                 .pending_ids()
                                 .into_iter()
                                 .filter_map(|id| details.get(&id).map(
-                                    |detail| serde_json::json!({"request_id":id,"detail":detail})
+                                    |detail| serde_json::json!({"request_id":id,"detail":detail,"content_digest":crate::storage::approval_delivery::ApprovalDelivery::content_digest(detail),"target":{"kind":"chat","session":chat.session_id,"turn":chat.turn_id,"run":null}})
                                 ))
                                 .collect::<Vec<_>>()
                         );

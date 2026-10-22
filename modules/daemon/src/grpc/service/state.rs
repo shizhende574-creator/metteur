@@ -615,6 +615,13 @@ pub(crate) async fn spawn_execution(
             if !detail.is_object() {
                 detail = serde_json::json!({ "payload": detail });
             }
+            if event.kind == "approval_request" {
+                detail["approval_digest"] = serde_json::json!(
+                    crate::storage::approval_delivery::ApprovalDelivery::content_digest(
+                        &event.detail_json
+                    )
+                );
+            }
             detail["run_id"] = serde_json::json!(run_id);
             detail["stream_id"] = serde_json::json!(stream_id);
             detail["sequence"] = serde_json::json!(sequence);

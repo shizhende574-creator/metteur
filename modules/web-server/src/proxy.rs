@@ -60,6 +60,12 @@ fn pump_stream<T: Send + 'static>(
 
 #[tonic::async_trait]
 impl Daemon for ForwardService {
+    async fn approval_delivery(
+        &self,
+        request: Request<metteur_proto::proto::ResourceRequest>,
+    ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
+        self.client.clone().approval_delivery(request).await
+    }
     async fn concierge_delivery(
         &self,
         request: Request<metteur_proto::proto::ResourceRequest>,
@@ -630,6 +636,12 @@ mod tests {
 
     #[tonic::async_trait]
     impl Daemon for TestBackend {
+        async fn approval_delivery(
+            &self,
+            _: Request<metteur_proto::proto::ResourceRequest>,
+        ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
+            Err(Status::unimplemented("not used"))
+        }
         async fn concierge_delivery(
             &self,
             _: Request<metteur_proto::proto::ResourceRequest>,

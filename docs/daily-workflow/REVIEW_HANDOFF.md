@@ -4,6 +4,10 @@
 
 ## 当前进展
 
+- 最新完整功能（基线9273f92，摘要approval-source-before-commit.json）：具体审批决定的Claim/Accepted/Unknown/Retired回执、固定目标/内容、旧ID关闭和现有broker去重；ApprovalDelivery增量RPC/代理/TS生成物及Web/CLI手工/自动/TUI配套。普通聊天失败不再提前清审批，Tasks审批和直接Stop绑定原turn，不换当前会话。契约和边界见APPROVAL_DECISIONS.md；Stop/Pause/Resume durable回执、跨重启未决清单/分类入口及蓝图临时输入继续后续DW。
+- 首轮集中：Windows存储5、实际审批RPC7、grant存储3、原approval_scopes21、客户端8通过；workspace/all-targets clippy exit0，新增4个可合并if告警已修正，最终daemon lib clippy exit0仅既有27告警。app/node类型和lint exit0，变量遮蔽2告警改名后最终app/lint exit0。L2首轮16中14通过/2失败（新增审批7和前台6均通过），另6项监督/审批受影响检查通过；两个旧续聊夹具未等恢复就发送、误把所有资源RPC计为续聊，修复后仅失败2项窄复测通过。日志approval-batch-*及approval-narrow-*保留，未重跑已过场景。
+- 首轮R-batch真实RPC/本地provider失败暴露checkpoint列表误读dw回执，实际也影响dw草稿/聊天投递；补命名空间过滤及实际三类存储共存/UUID边界/损坏checkpoint检查1通过，仅失败R-batch窄复测1通过。首轮source摘要和trace保留；native窄复测source摘要另存。正式前端构建exit0，产物approval-production-final显式grpc，未更新运行版/不计L3。完整AC仍未关闭，模型费用0，无push/合并。
+
 - 最新完整功能（基线773810b，摘要view-source-before-commit.json）：宿主位置副本接入标签/选中会话/分栏/文本选区滚动/画布视口；latest_view一次有界读取，窗口独立副本，sessionStorage只存ACK ID。深链优先、缺失源不偷换最新会话，删除失败保持原会话，关联草稿先备份并保留孤立恢复。位置记录不恢复正文/模型/权限，见VIEW_STATE.md。
 - 集中检查：Windows存储11、RPC4、客户端34通过（view-batch-{ledger,rpc,controllers}.log）；workspace/all-targets clippy exit0，仅既有27 lib与1旧测试警告。app/node类型exit0；lint首轮控制字符正则/命名遮蔽已修正，最终exit0。L2首轮60中52通过/8失败，view-batch-source.json和全部截图/trace保留；旧计时夹具缺session回调6处、旧非UUID目标1处、新测试inactive-tab误计数1处。修复并补恢复读取不可用守卫后，仅失败/受影响9项窄复测通过，未重跑已通过52项；位置控制器仅窄复测7项通过（view-narrow-*.log）。
 - 正式前端构建exit0（view-production-final-build.log），HTML显式grpc网关；原IDE标签/分栏/选区截图已检查，没有更新运行版、不计L3。DW-02仍有生产链/跨平台/迁移/完整验收，AC-01～30不关闭。下一继续控制/审批及其余DW；模型费用0，无push/合并。

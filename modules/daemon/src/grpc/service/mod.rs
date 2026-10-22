@@ -14,16 +14,16 @@ mod concierge;
 mod concierge_delivery;
 mod config;
 mod continuations;
+mod delivery;
 mod files;
 mod foreground;
 mod jobs;
 mod launches;
+mod live_input;
 mod prompts;
+mod recovery;
 mod registry;
 mod reports;
-mod recovery;
-mod delivery;
-mod live_input;
 mod resources;
 mod sandbox;
 mod state;
@@ -33,8 +33,6 @@ mod workspace;
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-
-use crate::sandbox::approval::ApprovalBroker;
 
 use super::proto::daemon_server::Daemon;
 use super::proto::{
@@ -73,24 +71,21 @@ impl DaemonService {
             state,
         }
     }
-
-    /// Returns the approval broker of the active run (execution or chat) for a
-    /// workspace, if any.
-    pub(crate) async fn approval_broker_for(
-        &self,
-        ws_key: &std::path::Path,
-    ) -> Option<Arc<ApprovalBroker>> {
-        if let Some(entry) = self.state.running.read().await.get(ws_key) {
-            return entry.approvals.clone();
-        }
-        self.state.chats.read().await.get(ws_key).and_then(|c| c.approvals.clone())
-    }
 }
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
-    async fn concierge_delivery(&self,request:Request<super::proto::ResourceRequest>)->Result<Response<super::proto::ResourceResponse>,Status> {
-        Self::concierge_delivery(self,request).await
+    async fn approval_delivery(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.approval_delivery(request).await
+    }
+    async fn concierge_delivery(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        Self::concierge_delivery(self, request).await
     }
     async fn chat_delivery(
         &self,

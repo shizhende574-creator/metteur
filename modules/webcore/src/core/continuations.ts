@@ -25,7 +25,7 @@ export interface Schedule {
 }
 export interface TaskRecord {
   launch_intent?: string | null;
-  pending_approvals?: { request_id: string; detail: string }[]
+  pending_approvals?: { request_id: string; detail: string; content_digest?: string; target?: import('./approval-decision').ApprovalTarget }[]
   revision: number
   policy: { purpose: string; expires_ms: number } | null
   schedules: Schedule[]

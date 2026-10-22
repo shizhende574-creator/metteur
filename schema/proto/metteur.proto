@@ -81,6 +81,8 @@ service Daemon {
 
   // Sandbox approvals.
   rpc RespondApproval(ApprovalDecisionRequest) returns (Empty);
+  // Inspect/fence an original approval decision; never grants or replays it.
+  rpc ApprovalDelivery(ResourceRequest) returns (ResourceResponse);
 
   // Usage and cost.
   rpc GetExecutionUsage(GetExecutionUsageRequest) returns (UsageSummary);
@@ -363,6 +365,9 @@ message ApprovalDecisionRequest {
   // AllowOnce | AllowRun | AllowWorkspace | AllowGlobal |
   // DenyOnce | DenyRun | DenyWorkspace | DenyGlobal
   string decision = 3;
+  // New clients probe ApprovalDelivery before using this protected contract.
+  string target_json = 4;
+  string content_digest = 5;
 }
 
 message GetExecutionUsageRequest {

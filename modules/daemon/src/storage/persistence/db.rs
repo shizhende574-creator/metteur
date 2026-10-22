@@ -275,6 +275,13 @@ impl Db {
         }
         self.resource_batch(values)
     }
+    pub(crate) fn approval_receipt_batch(&self, values: &[(Vec<u8>, Vec<u8>)]) -> DaemonResult<()> {
+        #[cfg(test)]
+        if self.fail_delivery_write.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(DaemonError::Persistence("injected approval WAL failure".into()));
+        }
+        self.resource_batch(values)
+    }
 
     /// Recovery input is not an execution/resource change. Backups must not
     /// wake every workspace subscriber or the continuation dispatcher.

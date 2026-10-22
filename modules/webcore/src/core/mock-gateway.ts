@@ -929,7 +929,7 @@ export class MockGateway implements DaemonGateway {
     signal?: AbortSignal,
     onProgress?: (progress: { name: string; bytes: number }) => void,
     onContext?: (stats: ChatContextStats) => void,
-    onApproval?: (request: { requestId: string; detail: string }) => void,
+    onApproval?: (request: { requestId: string; detail: string; contentDigest?: string }) => void,
   ): Promise<Result<void>> {
     this.chatAbort.delete(ws)
     if(options?.delivery)return err('Unimplemented: mock turns do not provide durable delivery receipts.')
