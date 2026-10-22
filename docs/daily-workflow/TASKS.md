@@ -1,13 +1,13 @@
 # 日常核心工作流任务表
 
-更新：2026-10-22。实施准备版 v1。当前没有产品实现任务完成，也没有本阶段测试 PASS。
+更新：2026-10-22。实施中 v2。DW-00 基线已核对，三组隔离预览 r1 已构建并定向验证；产品 AC 尚未关闭。
 
 ## 1. 当前接续点
 
 - 已完成准备 PREP-01：确认 D-WF-01/02/03，二次核对设计与源码，更新范围计划、实施设计和本任务表。
 - 三项决策及完整契约见 [DESIGN.md](DESIGN.md)；本地范围/AC 原文见 [NEXT_STAGE_PLAN.md](../../../../../NEXT_STAGE_PLAN.md)。
 - 活动基线：codex/workspace-reliability-20261021，HEAD 6b19ffa36ea1013c8cd4eb14f49e5e32590081b1。此次只新增/修改规划交接文档，不是新的产品候选。
-- 下一可进入任务：DW-00。READY 仅表示前置决策满足，尚未执行复现、创建实施分支或启动代码修改。
+- 当前实施分支 `codex/daily-workflow-20261022`；DW-00 记录见 BASELINE.md。三组 r1 见 PREVIEWS.md，等待具体用户反馈；继续独立宿主恢复协议。
 - 原 SPEC/TASKS、NX 编号和 R8 审计保持历史；本表 DW 编号承接本次增量，不将旧 DONE 改成未完成。
 - 用户已要求新对话开始实施与完整验收；原规划对话保留快速复核和后续讨论职责。完整启动指令见工作区根 NEXT_CHAT_PROMPT.md。实际任务尚未开始；首轮按 DW-00 → DW-01 → DW-02/03 的依赖推进，随后持续完成余下工作包。默认单代理串行，斜线不是并行授权。
 - 实施开始后维护本目录 REVIEW_HANDOFF.md，记录具体候选、改动、检查/失败/未测、预览与运行入口及待复核问题，供原对话快速复核；该文件当前尚未创建。
@@ -26,9 +26,9 @@
 
 | ID | 工作包 | 前置概要 | 当前状态 |
 |---|---|---|---|
-| DW-00 | 冻结实施起点并复现缺口 | 无 | READY（未开始） |
-| DW-01 | 三组隔离交互预览 | DW-00 | PLANNED |
-| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | PLANNED |
+| DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
+| DW-01 | 三组隔离交互预览 | DW-00 | WAITING_PREVIEW（r1 已呈现） |
+| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（独立宿主部分） |
 | DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | PLANNED |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | PLANNED |
@@ -41,7 +41,7 @@
 
 ### DW-00 · 冻结实施起点并复现缺口
 
-**状态**：READY（未开始）。**依赖**：无；三项产品决策已确认。
+**状态**：VERIFIED（基线，非产品 AC）。**依赖**：无；三项产品决策已确认。
 
 **实现定位**：Git/PR；schema/proto/metteur.proto；modules/daemon/src/grpc/service/chat.rs、continuations.rs；storage/resources.rs；现有 browser/live 夹具。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -59,7 +59,7 @@
 
 ### DW-01 · 三组隔离交互预览
 
-**状态**：PLANNED。**依赖**：DW-00；当前产品 UI 接入前需要对应预览 revision 确认。
+**状态**：WAITING_PREVIEW，WF-PV-01/02/03 r1 已构建、定向检查并呈现，尚无批准。**依赖**：DW-00；当前产品 UI 接入前需要对应预览 revision 确认。
 
 **实现定位**：modules/webcore/src/previews/next（复用现有预览机制）；现有 chat/execution/continuations、EditorPane 与统一 UI 组件。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -261,9 +261,9 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 
 | 预览 | 范围 | revision | 当前状态 |
 |---|---|---|---|
-| WF-PV-01 | 主聊天、独立监督、提交与控制状态 | 未创建 | NOT_CREATED / NOT_PRESENTED |
-| WF-PV-02 | 草稿、文件引用、冲突和回退 | 未创建 | NOT_CREATED / NOT_PRESENTED |
-| WF-PV-03 | 交接、任务结果与分类处置 | 未创建 | NOT_CREATED / NOT_PRESENTED |
+| WF-PV-01 | 主聊天、独立监督、提交与控制状态 | r1 | PREVIEW_READY / PENDING_USER |
+| WF-PV-02 | 草稿、文件引用、冲突和回退 | r1 | PREVIEW_READY / PENDING_USER |
+| WF-PV-03 | 交接、任务结果与分类处置 | r1 | PREVIEW_READY / PENDING_USER |
 
 预览批准是 SPEC C14 规定的产品接入前置；当前已授权的文档工作不等待它。可先完成具体可操作预览、契约和已授权的独立后端工作，再针对真实 revision 收集反馈。
 
