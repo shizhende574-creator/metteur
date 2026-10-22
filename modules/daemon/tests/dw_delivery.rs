@@ -61,6 +61,51 @@ async fn admission(service: &DaemonService, root: &Path) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn targeted_stop_capability_does_not_wait_behind_workspace_admission() {
+    let (service, state, root) = setup().await;
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let _writer = ws.activity_gate.lock().await;
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        Daemon::chat_delivery(
+            &service,
+            Request::new(ResourceRequest {
+                workspace_path: root.to_string_lossy().into(),
+                schema_version: 1,
+                payload_json: r#"{"operation":"capabilities"}"#.into(),
+                ..Default::default()
+            }),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .into_inner();
+    assert!(result.error_json.is_empty());
+    let data: serde_json::Value = serde_json::from_str(&result.payload_json).unwrap();
+    assert_eq!(data["targeted_controls"], true);
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        Daemon::chat_delivery(
+            &service,
+            Request::new(ResourceRequest {
+                workspace_path: root.to_string_lossy().into(),
+                schema_version: 1,
+                payload_json: r#"{"operation":"control_target"}"#.into(),
+                ..Default::default()
+            }),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .into_inner();
+    assert!(result.error_json.is_empty());
+    let data: serde_json::Value = serde_json::from_str(&result.payload_json).unwrap();
+    assert_eq!(data["state"], "idle");
+}
+
+#[tokio::test]
 async fn foreground_snapshot_uses_the_running_chat_identity_and_releases_only_when_finished() {
     let (service, _state, root) = setup().await;
     assert_eq!(admission(&service, &root).await["state"], "idle");
@@ -85,6 +130,90 @@ async fn foreground_snapshot_uses_the_running_chat_identity_and_releases_only_wh
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn old_or_unqualified_chat_controls_never_target_a_later_turn_of_the_same_session() {
+    let (service, state, root) = setup().await;
+    let id = Uuid::new_v4();
+    let mut first = Daemon::send_chat(&service, Request::new(command(&root, id, "", 0)))
+        .await
+        .unwrap()
+        .into_inner();
+    let original = receipt(&service, &root, id).await;
+    let session = original["session"].as_str().unwrap().to_owned();
+    let turn = original["turn"].as_str().unwrap().to_owned();
+    let unqualified = metteur_proto::proto::AbortChatRequest {
+        workspace_path: root.to_string_lossy().into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        Daemon::abort_chat(&service, Request::new(unqualified)).await.err().unwrap().code(),
+        tonic::Code::FailedPrecondition
+    );
+    while let Some(event) = first.next().await {
+        event.unwrap();
+    }
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let revision = ws.db.chat_revision(Uuid::parse_str(&session).unwrap().as_bytes()).unwrap();
+    let second_id = Uuid::new_v4();
+    let mut request = command(&root, second_id, &session, revision);
+    let mut options: serde_json::Value = serde_json::from_str(&request.options_json).unwrap();
+    options["mock_delay_ms"] = 1000.into();
+    request.options_json = options.to_string();
+    let mut second = Daemon::send_chat(&service, Request::new(request)).await.unwrap().into_inner();
+    let current = receipt(&service, &root, second_id).await;
+    assert_ne!(current["turn"], original["turn"]);
+    assert_eq!(
+        Daemon::abort_chat(
+            &service,
+            Request::new(metteur_proto::proto::AbortChatRequest {
+                workspace_path: root.to_string_lossy().into(),
+                session_id: session.clone(),
+                turn_id: turn.clone()
+            })
+        )
+        .await
+        .err()
+        .unwrap()
+        .code(),
+        tonic::Code::FailedPrecondition
+    );
+    for priority in ["Normal", "Urgent", "Emergency"] {
+        assert_eq!(
+            Daemon::send_interrupt(
+                &service,
+                Request::new(metteur_proto::proto::InterruptRequest {
+                    workspace_path: root.to_string_lossy().into(),
+                    priority: priority.into(),
+                    message: "must not reach B".into(),
+                    target_kind: "chat".into(),
+                    session_id: session.clone(),
+                    turn_id: turn.clone(),
+                    run_id: String::new()
+                })
+            )
+            .await
+            .err()
+            .unwrap()
+            .code(),
+            tonic::Code::FailedPrecondition
+        );
+    }
+    let unqualified = metteur_proto::proto::InterruptRequest {
+        workspace_path: root.to_string_lossy().into(),
+        priority: "Urgent".into(),
+        message: "ambiguous".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        Daemon::send_interrupt(&service, Request::new(unqualified)).await.err().unwrap().code(),
+        tonic::Code::FailedPrecondition
+    );
+    while let Some(event) = second.next().await {
+        assert_ne!(event.unwrap().kind, "error", "The stale Stop must not cancel B");
+    }
+    assert_eq!(receipt(&service, &root, second_id).await["outcome"], "done");
 }
 
 #[tokio::test]
@@ -119,6 +248,30 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
     let owner = admission(&service, &root).await;
     assert_eq!(owner["state"], "blueprint");
     let run = owner["run"].as_str().unwrap().to_owned();
+    let wrong_channel = metteur_proto::proto::InterruptRequest {
+        workspace_path: root.to_string_lossy().into(),
+        priority: "Urgent".into(),
+        message: "Main chat must not enter supervision".into(),
+        target_kind: "chat".into(),
+        session_id: Uuid::new_v4().to_string(),
+        turn_id: Uuid::new_v4().to_string(),
+        run_id: String::new(),
+    };
+    assert!(Daemon::send_interrupt(&service, Request::new(wrong_channel)).await.is_err());
+    assert_eq!(
+        Daemon::pause_execution(
+            &service,
+            Request::new(metteur_proto::proto::PauseRequest {
+                workspace_path: root.to_string_lossy().into(),
+                run_id: String::new()
+            })
+        )
+        .await
+        .err()
+        .unwrap()
+        .code(),
+        tonic::Code::FailedPrecondition
+    );
     Daemon::pause_execution(
         &service,
         Request::new(metteur_proto::proto::PauseRequest {
@@ -139,12 +292,28 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
         &service,
         Request::new(metteur_proto::proto::CancelRequest {
             workspace_path: root.to_string_lossy().into(),
-            run_id: run,
+            run_id: run.clone(),
         }),
     )
     .await
     .unwrap();
     assert_eq!(admission(&service, &root).await["state"], "blueprint");
+    assert!(
+        Daemon::send_interrupt(
+            &service,
+            Request::new(metteur_proto::proto::InterruptRequest {
+                workspace_path: root.to_string_lossy().into(),
+                priority: "Urgent".into(),
+                message: "late input after Stop".into(),
+                target_kind: "blueprint".into(),
+                run_id: run,
+                session_id: String::new(),
+                turn_id: String::new()
+            })
+        )
+        .await
+        .is_err()
+    );
     let mut aborted = false;
     while let Some(event) = stream.next().await {
         if let Err(error) = event {

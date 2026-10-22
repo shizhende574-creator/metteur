@@ -212,6 +212,11 @@ message InterruptRequest {
   string workspace_path = 1;
   string priority = 2; // Normal | Urgent | Emergency
   string message = 3;
+  // Required for live control. Unqualified requests never follow a new owner.
+  string target_kind = 4; // chat | blueprint
+  string session_id = 5;
+  string turn_id = 6;
+  string run_id = 7;
 }
 
 message ToolInfo {
@@ -729,6 +734,8 @@ message ChatEvent {
 
 message AbortChatRequest {
   string workspace_path = 1;
+  string session_id = 2;
+  string turn_id = 3;
 }
 
 message ListChatSessionsRequest {

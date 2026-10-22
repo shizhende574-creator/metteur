@@ -1,5 +1,7 @@
 # 手工发送的持久接收协议
 
+固定实时输入/控制目标增量见LIVE_TARGETS.md；该增量不提供Queue/Steer的durable消费回执。
+
 2026-10-22 Composer 接入增量（源码基线 f60b614）：正式主聊天使用持久输入控制器与 DeliveryAttempt。发送前分别 ACK 固定原稿和当前编辑稿的 pending ID；Host Received 和执行结果分开，拒绝/未知/晚到回执不覆盖新输入。重开选取副本后只读/retire 原 ID，不自动发送；同窗口跨会话回调按 workspace/epoch 隔离。共享 Composer 覆盖 composition/229、候选确认后的 Enter、长按、键盘/菜单/按钮的共同守卫。监督调用仅同步修复 ACK 清理和失败覆盖，独立恢复与其协议后续完成。Queue/Steer 仍是原 Interrupt 协议，不能据此声称有持久固定目标回执；控制/审批亦待后续。
 
 Read/Retire 返回当前 source_available（当前 GetChatSession ACL 与直接存储读取），不恢复来源、不进行 load_thread 迁移。已接收但来源缺失的恢复输入保持原文与 ID，允许手工复制；回执存在不等于当前可读或重新获权。Windows RPC7、客户端27、L2聊天9及受影响回归18通过；首轮失败、命令和边界见 REVIEW_HANDOFF.md。无 L3/L4/L5 替代、模型调用0。

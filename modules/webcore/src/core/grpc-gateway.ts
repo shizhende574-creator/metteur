@@ -142,9 +142,9 @@ function parseTranscript(raw: string): ChatMessage[] {
 
 /** Legacy transcripts have no timing; never coerce missing values to zero. */
 function reportedTokens(value: unknown): number | null {
-  if(value===null||value===undefined||value==='')return null
-  const count=Number(value)
-  return Number.isSafeInteger(count)&&count>=0?count:null
+  if (value === null || value === undefined || value === '') return null
+  const count = Number(value)
+  return Number.isSafeInteger(count) && count >= 0 ? count : null
 }
 function parseReasoningDuration(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
@@ -753,7 +753,7 @@ export class GrpcGateway implements DaemonGateway {
     onContext?: (stats: ChatContextStats) => void,
     /** Asks the client to decide on a sandbox approval, mid-turn. */
     onApproval?: (request: { requestId: string; detail: string }) => void,
-    onDelivery?: (receipt:ChatDeliveryReceipt) => void,
+    onDelivery?: (receipt: ChatDeliveryReceipt) => void,
   ): Promise<Result<void>> {
     let seq = 0
     let turnId: string | null = null
@@ -763,7 +763,7 @@ export class GrpcGateway implements DaemonGateway {
         .map((m) => ({ role: m.role, content: m.content })),
     )
     const turn = () => (turnId ??= `a-${Date.now()}-${seq++}`)
-    let terminalConfirmed=false
+    let terminalConfirmed = false
     let response: Response
     try {
       response = await fetch(`${this.baseUrl}/api/chat/stream`, {
@@ -804,7 +804,13 @@ export class GrpcGateway implements DaemonGateway {
             onDelivery?.(detail as unknown as ChatDeliveryReceipt)
             break
           case 'delivery_replay':
-            onMessage({id:`receipt-${String(detail.id)}`,role:'notice',content:event.content||'Input already accepted. Its original turn was not replayed.',createdAt:Date.now()})
+            onMessage({
+              id: `receipt-${String(detail.id)}`,
+              role: 'notice',
+              content:
+                event.content || 'Input already accepted. Its original turn was not replayed.',
+              createdAt: Date.now(),
+            })
             return ok(undefined)
           case 'session': {
             const reported = String(detail.session_id ?? '')
@@ -913,7 +919,7 @@ export class GrpcGateway implements DaemonGateway {
             break
           case 'waiting':
           case 'done': {
-            terminalConfirmed=true
+            terminalConfirmed = true
             if (event.kind === 'waiting')
               onMessage({
                 id: `waiting-${Date.now()}-${seq++}`,
@@ -953,7 +959,10 @@ export class GrpcGateway implements DaemonGateway {
             break
         }
       }
-      if(options?.delivery && !terminalConfirmed) return err('Chat stream ended before the execution outcome was confirmed. Reconcile the accepted input; do not send it again.')
+      if (options?.delivery && !terminalConfirmed)
+        return err(
+          'Chat stream ended before the execution outcome was confirmed. Reconcile the accepted input; do not send it again.',
+        )
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -964,9 +973,22 @@ export class GrpcGateway implements DaemonGateway {
     workspacePath: string,
     message: string,
     priority: 'Normal' | 'Urgent' | 'Emergency' = 'Normal',
+    target?: import('./types').LiveTarget,
   ): Promise<Result<void>> {
     try {
-      await this.client.sendInterrupt({ workspacePath, message, priority })
+      if (!target) return err('A concrete live target is required. Input was kept.')
+      const fixed = { ...target }
+      const supported = await this.targetedControls(workspacePath)
+      if (!supported.ok) return supported
+      await this.client.sendInterrupt({
+        workspacePath,
+        message,
+        priority,
+        targetKind: fixed.kind,
+        sessionId: fixed.kind === 'chat' ? fixed.sessionId : '',
+        turnId: fixed.kind === 'chat' ? fixed.turnId : '',
+        runId: fixed.kind === 'blueprint' ? fixed.runId : '',
+      })
       return ok(undefined)
     } catch (e) {
       return toErr(e)
@@ -984,9 +1006,31 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async abortChat(workspacePath: string): Promise<Result<void>> {
+  private async targetedControls(workspacePath: string): Promise<Result<void>> {
+    const result = await this.resourceRequest('chatDelivery', workspacePath, {
+      operation: 'capabilities',
+    })
+    if (!result.ok) return result
+    return (result.data as { targeted_controls?: boolean }).targeted_controls === true
+      ? ok(undefined)
+      : err(
+          'Host does not verify concrete control targets. Refresh the host before controlling this turn.',
+        )
+  }
+  async abortChat(
+    workspacePath: string,
+    target?: Extract<import('./types').LiveTarget, { kind: 'chat' }>,
+  ): Promise<Result<void>> {
     try {
-      await this.client.abortChat({ workspacePath })
+      if (!target) return err('A concrete chat turn is required. Stop was not redirected.')
+      const fixed = { ...target }
+      const supported = await this.targetedControls(workspacePath)
+      if (!supported.ok) return supported
+      await this.client.abortChat({
+        workspacePath,
+        sessionId: fixed.sessionId,
+        turnId: fixed.turnId,
+      })
       return ok(undefined)
     } catch (e) {
       return toErr(e)

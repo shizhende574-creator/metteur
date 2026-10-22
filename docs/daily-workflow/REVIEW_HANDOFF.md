@@ -4,6 +4,10 @@
 
 ## 当前进展
 
+- 最新完整功能候选（基线2a536f8）：固定live-control目标，见LIVE_TARGETS.md。InterruptRequest新增target_kind/session_id/turn_id/run_id，AbortChatRequest新增session_id/turn_id；无目标/过期/串目标/停止中拒绝，蓝图Pause/Resume/Cancel不接受空run_id。CLI通过不等admission的control_target取得所有者，Web在await前快照目标；旧host能力不足时明确失败。TS生成物、真实/Mock网关、实际调用方和必要检查同功能配套。Queue/Steer仍无durable接收/消费回执，审批失败仍待修，不能关闭DW-03。
+- 此功能检查：全workspace/all-targets check首轮两个旧smoke构造缺新字段失败，更新消费者后exit0（targets-workspace-check-first、targets-workspace-check-consumers-retest.log）；真实RPC最终11通过/exit0（targets-rpc-final.log），包括旧turn不能干扰同session新turn、错误chat通道不入蓝图、Stop后拒绝输入及控制查询不等admission。全workspace clippy首轮exit0，修正foreground测试模块位置新增警告后最终exit0，仅既有27项lib及1项旧diagnostics测试警告（targets-workspace-clippy-final.log）。
+- 原生聊天烟测8通过、approval scopes RPC3通过、R-batch本地HTTP/审批/版本/插件1通过；R-batch改用实际CLI pause再复测1通过，蓝图精确pause/resume/cancel烟测1通过，均exit0（targets-smoke-chat-first、targets-approval-scopes-first、targets-r-batch-first、targets-r-batch-cli-retest、targets-smoke-blueprint-first.log）。L2网关/原聊天10通过，增加目标对象在await期间修改的窄复测1通过；受影响聊天/监督26通过。各轮重叠，不加总作AC。app类型/定向lint、正式前端构建exit0（targets-final-app-types、targets-final-lint、targets-production-final-build.log）。未更新生产运行版、不计L3，模型调用0，无push或合并。
+
 - 最新增量为主聊天/监督分离与宿主前台占用快照，基线67e0578。主聊天不再按execution.active替换；状态/监督入口/直接Pause与Stop保持原IDE几何，Stop可越过在途Pause。实际契约与剩余旧Interrupt边界见FOREGROUND.md。新增只读检查不准备资源schema、不写checkpoint或业务通知；未知schema保守不可用。
 - 本功能证据：RPC首轮8通过/1失败，取消蓝图按真实语义返回Aborted，测试错误地unwrap；修正为断言Aborted并确认槽位移除后9通过（foreground-rpc-first、foreground-rpc-cancel-retest.log）。追加只读构造后真实DB测试1通过（foreground-read-host-first.log），RPC9复测通过/exit0（foreground-rpc-read-retest.log）。daemon首次及只读构造最终clippy均仅既有27项lib警告/exit0（foreground-clippy-first、foreground-clippy-read-final.log）。app/node类型与定向lint exit0（foreground-final-*.log），lint首轮两处测试参数shadow已改。L2初始13通过；菜单/rewind复测15通过；Stop优先级5通过；监督/提案/Execution受影响27通过；A/B追加6通过。各轮有重叠，不相加作AC通过。所有原始日志foreground-*.log保留。
 - 隔离预览适配构建、正式前端构建均exit0；foreground-isolated-build.log、foreground-production-final-build.log及对应目录。保留19082/19085冻结预览，没有将新产物冒充运行中的生产daemon。新Main截图在foreground-browser-ab-first内，已检查文字和布局，用户最终体验未代签。

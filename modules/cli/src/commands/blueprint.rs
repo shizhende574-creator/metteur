@@ -161,9 +161,11 @@ pub(crate) async fn handle_cancel(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
+    let target=live_target(client,&ws,false).await?;
+    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
     client
         .cancel_execution(CancelRequest {
-            run_id: String::new(),
+            run_id: target.run,
             workspace_path: ws,
         })
         .await
@@ -177,9 +179,11 @@ pub(crate) async fn handle_pause(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
+    let target=live_target(client,&ws,false).await?;
+    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
     client
         .pause_execution(PauseRequest {
-            run_id: String::new(),
+            run_id: target.run,
             workspace_path: ws,
         })
         .await
@@ -193,9 +197,11 @@ pub(crate) async fn handle_resume(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
+    let target=live_target(client,&ws,false).await?;
+    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
     client
         .resume_execution(ResumeRequest {
-            run_id: String::new(),
+            run_id: target.run,
             workspace_path: ws,
         })
         .await
@@ -211,11 +217,16 @@ pub(crate) async fn handle_say(
     message: String,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
+    let target=live_target(client,&ws,true).await?;
     client
         .send_interrupt(InterruptRequest {
             workspace_path: ws,
             priority: priority.clone(),
             message: message.clone(),
+            target_kind: target.kind,
+            session_id: target.session,
+            turn_id: target.turn,
+            run_id: target.run,
         })
         .await
         .map_err(status)?;

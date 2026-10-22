@@ -160,9 +160,10 @@ async function send(text: string, accepted?: () => void): Promise<boolean> {
 }
 async function urgent(text: string) {
   const ws = workspace.active?.path,
-    ticket = generation
-  if (!ws || !active.value) return false
-  const result = await gateway.sendInterrupt(ws, text, 'Urgent')
+    ticket = generation,
+    run = props.runId
+  if (!ws || !run || !active.value) return false
+  const result = await gateway.sendInterrupt(ws, text, 'Urgent', { kind: 'blueprint', runId: run })
   if (ticket !== generation) return false
   if (!result.ok) error.value = result.error
   return result.ok

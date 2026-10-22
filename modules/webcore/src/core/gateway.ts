@@ -145,9 +145,12 @@ export interface DaemonGateway {
     /** Asks the client to decide on a sandbox approval, mid-turn. */
     onApproval?: (request: { requestId: string; detail: string }) => void,
     /** Durable input acceptance, separate from the eventual model outcome. */
-    onDelivery?: (receipt:ChatDeliveryReceipt) => void,
+    onDelivery?: (receipt: ChatDeliveryReceipt) => void,
   ): Promise<Result<void>>
-  abortChat(workspacePath: string): Promise<Result<void>>
+  abortChat(
+    workspacePath: string,
+    target?: Extract<import('./types').LiveTarget, { kind: 'chat' }>,
+  ): Promise<Result<void>>
   /**
    * Injects a message into the running turn.
    *
@@ -158,6 +161,7 @@ export interface DaemonGateway {
     workspacePath: string,
     message: string,
     priority?: 'Normal' | 'Urgent' | 'Emergency',
+    target?: import('./types').LiveTarget,
   ): Promise<Result<void>>
   /**
    * Opens the host's folder dialog.

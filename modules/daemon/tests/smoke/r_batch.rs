@@ -172,13 +172,7 @@ async fn r_batch_real_rpc_combines_http_accounting_concierge_approval_versions_a
         .await
         .unwrap()
         .into_inner();
-    client
-        .pause_execution(proto::PauseRequest {
-            workspace_path: path.clone(),
-            run_id: String::new(),
-        })
-        .await
-        .unwrap();
+    dispatch(&mut client,&mut state,parse("pause").unwrap()).await.unwrap();
     let (run, initial) = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let f = facts(&mut client, &path).await;

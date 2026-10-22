@@ -146,8 +146,14 @@ export interface ChatUsage {
 
 /** Sampling parameters for a ReAct chat turn, adjustable from the chat panel. */
 export interface ChatOptions {
-  delivery?: {id:string;expected_revision:number;new_session?:string}
-  continuation_policy?: {detached:boolean;max_turns:number;token_limit:number;expires_ms:number;purpose:string}
+  delivery?: { id: string; expected_revision: number; new_session?: string }
+  continuation_policy?: {
+    detached: boolean
+    max_turns: number
+    token_limit: number
+    expires_ms: number
+    purpose: string
+  }
   prompt_snapshots?: string[]
   model?: string
   system?: string
@@ -170,18 +176,21 @@ export interface ChatOptions {
 export interface ChatDeliveryReceipt {
   /** Current read availability, supplied by reconciliation; never a permission grant. */
   source_available?: boolean
-  schema_version:1
-  id:string
-  input_digest:string
-  session:string
-  turn:string
-  checkpoint:string
-  accepted_revision:number
-  phase:'retired'|'accepted'|'started'|'finished'|'needs_attention'
-  outcome:string|null
-  accepted_ms:number
-  updated_ms:number
+  schema_version: 1
+  id: string
+  input_digest: string
+  session: string
+  turn: string
+  checkpoint: string
+  accepted_revision: number
+  phase: 'retired' | 'accepted' | 'started' | 'finished' | 'needs_attention'
+  outcome: string | null
+  accepted_ms: number
+  updated_ms: number
 }
+export type LiveTarget =
+  | { kind: 'chat'; sessionId: string; turnId: string }
+  | { kind: 'blueprint'; runId: string }
 
 /** What the conversation occupies in the model's window, as the daemon sees it. */
 export interface ChatContextStats {
@@ -306,7 +315,15 @@ export interface Blueprint {
 }
 
 /** Execution lifecycle observed by the UI. */
-export type ExecStatus = 'idle' | 'running' | 'paused' | 'finished' | 'cancelled' | 'failed' | 'unknown' | 'suspended'
+export type ExecStatus =
+  | 'idle'
+  | 'running'
+  | 'paused'
+  | 'finished'
+  | 'cancelled'
+  | 'failed'
+  | 'unknown'
+  | 'suspended'
 
 /** A region of the live LLM context, reported by a CallLLM node. */
 export interface ContextRegion {
@@ -377,7 +394,16 @@ export interface AddonInfo {
   error?: string
   requiredPermissions?: string[]
   grantedPermissions?: string[]
-  hooks?: Array<{ name: string; event: string; scopeRoot: string; eventId: string; status: string; completed: number; failed: number; error: string }>
+  hooks?: Array<{
+    name: string
+    event: string
+    scopeRoot: string
+    eventId: string
+    status: string
+    completed: number
+    failed: number
+    error: string
+  }>
 }
 
 /** Aggregated token/cost usage for an execution scope. Missing completeness fields are unknown. */
@@ -387,7 +413,14 @@ export interface OversightUsage {
   warning: boolean
   exhausted: boolean
   concierge_available: boolean
-  calls: Array<{ caller: 'supervisor' | 'concierge'; charged: number; state: string; cost_micros: number | null; currency: string; accounting_version?: number }>
+  calls: Array<{
+    caller: 'supervisor' | 'concierge'
+    charged: number
+    state: string
+    cost_micros: number | null
+    currency: string
+    accounting_version?: number
+  }>
 }
 export interface UsageSummary {
   oversight?: OversightUsage

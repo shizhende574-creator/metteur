@@ -247,7 +247,7 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
-        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+        if req.run_id != entry.run_id.to_string() {
             return Err(Status::failed_precondition(
                 "execution changed; refresh before controlling it",
             ));
@@ -279,7 +279,7 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
-        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+        if req.run_id != entry.run_id.to_string() {
             return Err(Status::failed_precondition(
                 "execution changed; refresh before controlling it",
             ));
@@ -305,7 +305,7 @@ impl DaemonService {
         let running = self.state.running.read().await;
         let entry =
             running.get(&ws_key).ok_or_else(|| Status::not_found("no running execution"))?;
-        if !req.run_id.is_empty() && req.run_id != entry.run_id.to_string() {
+        if req.run_id != entry.run_id.to_string() {
             return Err(Status::failed_precondition(
                 "execution changed; refresh before controlling it",
             ));
@@ -331,35 +331,39 @@ impl DaemonService {
         let priority = match req.priority.as_str() {
             "Urgent" => InterruptPriority::Urgent,
             "Emergency" => InterruptPriority::Emergency,
-            _ => InterruptPriority::Normal,
+            "Normal" => InterruptPriority::Normal,
+            _ => return Err(Status::invalid_argument("Unknown interrupt priority")),
         };
-        let running = self.state.running.read().await;
-        if let Some(entry) = running.get(&ws_key) {
+        if req.message.len() > 1024 * 1024 {return Err(Status::resource_exhausted("Interrupt input is too large; retain the draft"));}
+        if req.target_kind == "blueprint" {
+            let running = self.state.running.read().await;
+            let entry = running.get(&ws_key).ok_or_else(|| Status::not_found("The targeted blueprint is no longer running"))?;
+            if req.run_id != entry.run_id.to_string() || !req.session_id.is_empty() || !req.turn_id.is_empty() {
+                return Err(Status::failed_precondition("Blueprint target changed; input was not redirected"));
+            }
+            if entry.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(Status::failed_precondition("The targeted blueprint is stopping; retain the input"));
+            }
             if priority == InterruptPriority::Normal {
-                return Err(Status::failed_precondition(
-                    "Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model",
-                ));
+                return Err(Status::failed_precondition("Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model"));
             }
-            if let Some(bus) = &entry.interrupt_bus {
-                bus.send(Interrupt {
-                    priority,
-                    message: req.message,
-                });
-            }
+            let bus = entry.interrupt_bus.as_ref().ok_or_else(|| Status::failed_precondition("The targeted blueprint cannot receive input"))?;
+            bus.send(Interrupt {priority, message:req.message});
             return Ok(Response::new(Empty {}));
         }
-        drop(running);
-        // A ReAct chat runs in its own slot: without this fallback a message
-        // typed while the agent works could not reach it.
-        let chats = self.state.chats.read().await;
-        let entry =
-            chats.get(&ws_key).ok_or_else(|| Status::not_found("no running execution or chat"))?;
-        if let Some(bus) = &entry.interrupt_bus {
-            bus.send(Interrupt {
-                priority,
-                message: req.message,
-            });
+        if req.target_kind != "chat" || req.session_id.is_empty() || req.turn_id.is_empty() || !req.run_id.is_empty() {
+            return Err(Status::failed_precondition("A concrete chat or blueprint target is required"));
         }
+        let chats=self.state.chats.read().await;
+        let entry=chats.get(&ws_key).ok_or_else(|| Status::not_found("The targeted chat has ended"))?;
+        if req.session_id != entry.session_id.map(|id|id.to_string()).unwrap_or_default() || req.turn_id != entry.turn_id.to_string() {
+            return Err(Status::failed_precondition("Chat turn changed; input was not redirected"));
+        }
+        if entry.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(Status::failed_precondition("The targeted chat is stopping; retain the input"));
+        }
+        let bus=entry.interrupt_bus.as_ref().ok_or_else(|| Status::failed_precondition("The targeted chat cannot receive input"))?;
+        bus.send(Interrupt {priority,message:req.message});
         Ok(Response::new(Empty {}))
     }
 

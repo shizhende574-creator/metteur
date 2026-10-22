@@ -55,6 +55,7 @@ export const useChatStore = defineStore('chat', () => {
   const sendError = ref('')
   /** id of the persisted session, passed back on every turn. */
   const sessionId = ref('')
+  const activeTurn = ref('')
   /** Aborts the local event stream; the daemon is stopped separately. */
   let streamAbort: AbortController | null = null
   let pendingSend: Promise<void> | null = null
@@ -240,6 +241,7 @@ export const useChatStore = defineStore('chat', () => {
       streaming.value = false
       busy.value = false
       sessionId.value = ''
+      activeTurn.value = ''
       permissionMode.value = 'sandbox'
       approval.value = null
       sendError.value = ''
@@ -297,6 +299,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = false
     busy.value = false
     phase.value = 'idle'
+    activeTurn.value = ''
     const snap = await gateway.getChatSession(wsPath, id)
     // The user may have switched workspaces while loading; discard stale data.
     if (workspace.active?.path !== wsPath || epoch !== conversationEpoch) return
@@ -424,7 +427,10 @@ export const useChatStore = defineStore('chat', () => {
       received = true
       if (!current()) return
       following.value = null
-      if (receipt) sessionId.value = receipt.session
+      if (receipt) {
+        sessionId.value = receipt.session
+        activeTurn.value = receipt.turn
+      }
       const id = `u-${receipt?.id ?? crypto.randomUUID()}`
       if (!messages.value.some((message) => message.id === id))
         messages.value.push({
@@ -688,14 +694,23 @@ export const useChatStore = defineStore('chat', () => {
   async function abort() {
     const ws = workspace.active
     if (!ws) return
+    const target = { kind: 'chat' as const, sessionId: sessionId.value, turnId: activeTurn.value }
     const epoch = ++conversationEpoch
     // Stop reading locally first: the daemon's terminal event would otherwise
     // arrive after the user asked to stop and repaint the turn.
     streamAbort?.abort()
     finishReasoning()
     streamAbort = null
-    await gateway.abortChat(ws.path)
+    const result =
+      gateway.demo || (target.sessionId && target.turnId)
+        ? await gateway.abortChat(ws.path, target)
+        : {
+            ok: false as const,
+            error:
+              'The chat turn is unconfirmed. Reconcile the input receipt before issuing a targeted Stop.',
+          }
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return
+    if (!result.ok) sendError.value = result.error
     for (const m of messages.value) m.pending = false
     streaming.value = false
     busy.value = false
@@ -713,16 +728,22 @@ export const useChatStore = defineStore('chat', () => {
   async function queue(text: string, attachments: FileTreeNode[] = []): Promise<boolean> {
     const ws = workspace.active
     const epoch = conversationEpoch,
-      session = sessionId.value
-    const body = text.trim()
-    if (!ws || !body || !streaming.value) return false
+      session = sessionId.value,
+      turn = activeTurn.value
+    const body = text
+    if (!ws || !body.trim() || !streaming.value) return false
     if (!gateway.demo && !(await foreground.permits('queue', session))) return false
+    if (!gateway.demo && foreground.current.turn !== turn) return false
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
       return false
     const refs = attachments.map((f) => `@file ${f.path}`)
     const content = refs.length ? `${[...refs, body].join('\n')}` : body
     const id = `q-${Date.now()}`
-    const r = await gateway.sendInterrupt(ws.path, content, 'Normal')
+    const r = await gateway.sendInterrupt(ws.path, content, 'Normal', {
+      kind: 'chat',
+      sessionId: session,
+      turnId: turn,
+    })
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
     if (!r.ok) return false
     queued.value = [
@@ -743,13 +764,19 @@ export const useChatStore = defineStore('chat', () => {
   async function steer(text: string): Promise<boolean> {
     const ws = workspace.active
     const epoch = conversationEpoch,
-      session = sessionId.value
-    const body = text.trim()
-    if (!ws || !body || !streaming.value) return false
+      session = sessionId.value,
+      turn = activeTurn.value
+    const body = text
+    if (!ws || !body.trim() || !streaming.value) return false
     if (!gateway.demo && !(await foreground.permits('steer', session))) return false
+    if (!gateway.demo && foreground.current.turn !== turn) return false
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
       return false
-    const r = await gateway.sendInterrupt(ws.path, body, 'Urgent')
+    const r = await gateway.sendInterrupt(ws.path, body, 'Urgent', {
+      kind: 'chat',
+      sessionId: session,
+      turnId: turn,
+    })
     if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
     if (!r.ok) return false
     messages.value.push({
@@ -910,6 +937,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingTool,
     queued,
     sessionId,
+    activeTurn,
     threads,
     lastUsage,
     todos,

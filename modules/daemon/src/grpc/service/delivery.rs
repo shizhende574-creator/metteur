@@ -16,6 +16,7 @@ use uuid::Uuid;
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
     Admission,
+    ControlTarget,
     Capabilities,
     ReconcilePending,
     Read {
@@ -49,13 +50,30 @@ impl DaemonService {
             .get(std::path::Path::new(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace not open"))?;
-        let _guard = ws.admit().await.map_err(super::to_status)?;
         let query: Query = match serde_json::from_str(&req.payload_json) {
             Ok(query) => query,
             Err(_) => {
-                return Ok(response(Err(fault("invalid_request", "Invalid delivery query fields"))));
+                return Ok(response(Err(fault(
+                    "invalid_request",
+                    "Invalid delivery query fields",
+                ))));
             }
         };
+        // Feature discovery must not wait behind a file write/admission RPC
+        // before a concrete Stop can be sent. It reads no ledger or content.
+        if matches!(query, Query::Capabilities) {
+            return Ok(response(Ok(
+                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"targeted_controls":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
+            )));
+        }
+        if matches!(query, Query::ControlTarget) {
+            return Ok(response(
+                serde_json::to_value(self.control_target(ws.root()).await).map_err(|_| {
+                    fault("invalid_state", "Live control target could not be encoded")
+                }),
+            ));
+        }
+        let _guard = ws.admit().await.map_err(super::to_status)?;
         if matches!(query, Query::Admission) {
             return Ok(response(self.foreground(ws.root(), &ws.db).await.and_then(|value| {
                 serde_json::to_value(value)
@@ -87,10 +105,10 @@ impl DaemonService {
                 Ok(serde_json::json!({"receipt":receipt,"source_available":source_available}))
             };
             match query {
-                Query::Admission => unreachable!("Handled before synchronous receipt access"),
-                Query::Capabilities => Ok(
-                    serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
-                ),
+                Query::Admission | Query::ControlTarget => {
+                    unreachable!("Handled before synchronous receipt access")
+                }
+                Query::Capabilities => unreachable!("Handled without workspace admission"),
                 Query::ReconcilePending => {
                     let recovery = crate::storage::recovery::RecoveryStore::new(
                         ws.db.clone(),

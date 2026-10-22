@@ -1048,6 +1048,10 @@ impl DaemonService {
         let ws_key = ws.root().to_path_buf();
         let chats = self.state.chats.read().await;
         let entry = chats.get(&ws_key).ok_or_else(|| Status::not_found("no active chat"))?;
+        if req.session_id != entry.session_id.map(|id| id.to_string()).unwrap_or_default()
+            || req.turn_id != entry.turn_id.to_string() || req.session_id.is_empty() {
+            return Err(Status::failed_precondition("Chat target changed or is missing; stop was not redirected"));
+        }
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(broker) = &entry.approvals {
             broker.close();

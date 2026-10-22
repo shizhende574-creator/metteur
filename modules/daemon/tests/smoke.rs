@@ -24,6 +24,14 @@ use metteur_daemon::workspace::WorkspaceManager;
 use metteur_shared::config::AclRule;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, Server};
 
+async fn bound_chat_abort(client: &mut DaemonClient<Channel>, workspace: &str) -> AbortChatRequest {
+    let response=client.chat_delivery(proto::ResourceRequest{workspace_path:workspace.into(),schema_version:1,payload_json:r#"{"operation":"admission"}"#.into(),..Default::default()}).await.unwrap().into_inner();
+    assert!(response.error_json.is_empty());
+    let owner:serde_json::Value=serde_json::from_str(&response.payload_json).unwrap();
+    assert_eq!(owner["state"],"chat");
+    AbortChatRequest{workspace_path:workspace.into(),session_id:owner["session"].as_str().unwrap().into(),turn_id:owner["turn"].as_str().unwrap().into()}
+}
+
 /// A client certificate identity for mTLS tests.
 #[derive(Clone)]
 struct ClientIdentity {
@@ -2510,10 +2518,9 @@ async fn smoke_chat_single_slot_per_workspace() {
     assert_eq!(err.code(), tonic::Code::FailedPrecondition);
 
     // Drain the first chat so the slot is released.
+    let abort=bound_chat_abort(&mut client,&ws_path).await;
     client
-        .abort_chat(AbortChatRequest {
-            workspace_path: ws_path,
-        })
+        .abort_chat(abort)
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -2543,10 +2550,9 @@ async fn smoke_chat_abort_interrupts_and_releases_slot() {
         .into_inner();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
+    let abort=bound_chat_abort(&mut client,&ws_path).await;
     client
-        .abort_chat(AbortChatRequest {
-            workspace_path: ws_path.clone(),
-        })
+        .abort_chat(abort)
         .await
         .unwrap();
 

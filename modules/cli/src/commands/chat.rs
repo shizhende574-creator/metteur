@@ -57,9 +57,13 @@ pub(crate) async fn handle_abort(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
+    let target=live_target(client,&ws,true).await?;
+    if target.kind!="chat" {anyhow::bail!("The foreground owner is not a chat; abort was not redirected");}
     client
         .abort_chat(AbortChatRequest {
             workspace_path: ws,
+            session_id: target.session,
+            turn_id: target.turn,
         })
         .await
         .map_err(status)?;

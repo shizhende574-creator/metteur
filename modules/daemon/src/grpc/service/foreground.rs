@@ -44,6 +44,66 @@ pub(crate) fn unresolved_writes(
     }
 }
 
+impl DaemonService {
+    /// Owner lookup for a concrete control, without waiting for file writes.
+    /// Its idle result is not an authorization to start a new turn.
+    pub(crate) async fn control_target(&self, root: &Path) -> Foreground {
+        let mut state = Foreground {
+            state: "idle",
+            run: None,
+            session: None,
+            turn: None,
+            reason: "",
+        };
+        if let Some(run) = self.state.running.read().await.get(root) {
+            state.state = "blueprint";
+            state.run = Some(run.run_id);
+            state.reason = if run.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                "Blueprint is stopping"
+            } else if run.pause_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                "Blueprint is paused"
+            } else if !run.approval_details.lock().is_empty() {
+                "Blueprint is waiting for approval"
+            } else {
+                "Blueprint is running"
+            };
+            return state;
+        }
+        if let Some(chat) = self.state.chats.read().await.get(root) {
+            state.state = "chat";
+            state.session = chat.session_id;
+            state.turn = Some(chat.turn_id);
+            state.reason = if chat.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                "Chat is stopping"
+            } else if !chat.approval_details.lock().is_empty() {
+                "Chat is waiting for approval"
+            } else {
+                "Chat is running"
+            };
+            return state;
+        }
+        state
+    }
+    /// The caller holds admission to combine live ownership and write effects.
+    pub(crate) async fn foreground(
+        &self,
+        root: &Path,
+        db: &crate::storage::persistence::Db,
+    ) -> Result<Foreground> {
+        let mut state = self.control_target(root).await;
+        if state.state != "idle" {
+            return Ok(state);
+        }
+        if unresolved_writes(db, root).map_err(|_| {
+            fault("storage_unavailable", "Foreground write ownership could not be checked")
+        })? {
+            state.state = "blocked";
+            state.reason = "A background write effect needs reconciliation";
+        }
+        Ok(state)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,55 +125,5 @@ mod tests {
         )
         .unwrap();
         assert!(unresolved_writes(&db, &root).is_err());
-    }
-}
-impl DaemonService {
-    /// The caller holds workspace admission. Snapshot reads never claim a slot.
-    pub(crate) async fn foreground(
-        &self,
-        root: &Path,
-        db: &crate::storage::persistence::Db,
-    ) -> Result<Foreground> {
-        let mut state = Foreground {
-            state: "idle",
-            run: None,
-            session: None,
-            turn: None,
-            reason: "",
-        };
-        if let Some(run) = self.state.running.read().await.get(root) {
-            state.state = "blueprint";
-            state.run = Some(run.run_id);
-            state.reason = if run.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
-                "Blueprint is stopping"
-            } else if run.pause_requested.load(std::sync::atomic::Ordering::SeqCst) {
-                "Blueprint is paused"
-            } else if !run.approval_details.lock().is_empty() {
-                "Blueprint is waiting for approval"
-            } else {
-                "Blueprint is running"
-            };
-            return Ok(state);
-        }
-        if let Some(chat) = self.state.chats.read().await.get(root) {
-            state.state = "chat";
-            state.session = chat.session_id;
-            state.turn = Some(chat.turn_id);
-            state.reason = if chat.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
-                "Chat is stopping"
-            } else if !chat.approval_details.lock().is_empty() {
-                "Chat is waiting for approval"
-            } else {
-                "Chat is running"
-            };
-            return Ok(state);
-        }
-        if unresolved_writes(db, root).map_err(|_| {
-            fault("storage_unavailable", "Foreground write ownership could not be checked")
-        })? {
-            state.state = "blocked";
-            state.reason = "A background write effect needs reconciliation";
-        }
-        Ok(state)
     }
 }
