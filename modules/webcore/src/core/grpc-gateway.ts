@@ -17,6 +17,7 @@ import type {
   BlueprintPin,
   ChatMessage,
   ChatOptions,
+  ChatDeliveryReceipt,
   ChatSessionInfo,
   ChatContextStats,
   ChatSessionSnapshot,
@@ -140,6 +141,11 @@ function parseTranscript(raw: string): ChatMessage[] {
 }
 
 /** Legacy transcripts have no timing; never coerce missing values to zero. */
+function reportedTokens(value: unknown): number | null {
+  if(value===null||value===undefined||value==='')return null
+  const count=Number(value)
+  return Number.isSafeInteger(count)&&count>=0?count:null
+}
 function parseReasoningDuration(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
@@ -747,6 +753,7 @@ export class GrpcGateway implements DaemonGateway {
     onContext?: (stats: ChatContextStats) => void,
     /** Asks the client to decide on a sandbox approval, mid-turn. */
     onApproval?: (request: { requestId: string; detail: string }) => void,
+    onDelivery?: (receipt:ChatDeliveryReceipt) => void,
   ): Promise<Result<void>> {
     let seq = 0
     let turnId: string | null = null
@@ -756,6 +763,7 @@ export class GrpcGateway implements DaemonGateway {
         .map((m) => ({ role: m.role, content: m.content })),
     )
     const turn = () => (turnId ??= `a-${Date.now()}-${seq++}`)
+    let terminalConfirmed=false
     let response: Response
     try {
       response = await fetch(`${this.baseUrl}/api/chat/stream`, {
@@ -792,6 +800,12 @@ export class GrpcGateway implements DaemonGateway {
         }
         const detail = parseDetail(event.detail_json)
         switch (event.kind) {
+          case 'delivery':
+            onDelivery?.(detail as unknown as ChatDeliveryReceipt)
+            break
+          case 'delivery_replay':
+            onMessage({id:`receipt-${String(detail.id)}`,role:'notice',content:event.content||'Input already accepted. Its original turn was not replayed.',createdAt:Date.now()})
+            return ok(undefined)
           case 'session': {
             const reported = String(detail.session_id ?? '')
             if (reported) onSession?.(reported, String(detail.checkpoint_id ?? '') || undefined)
@@ -899,6 +913,7 @@ export class GrpcGateway implements DaemonGateway {
             break
           case 'waiting':
           case 'done': {
+            terminalConfirmed=true
             if (event.kind === 'waiting')
               onMessage({
                 id: `waiting-${Date.now()}-${seq++}`,
@@ -914,11 +929,11 @@ export class GrpcGateway implements DaemonGateway {
             const usage = (detail.usage ?? {}) as Record<string, unknown>
             onUsage?.({
               turnElapsedMs: parseReasoningDuration(detail.turn_elapsed_ms),
-              inputTokens: Number(usage.input_tokens) || 0,
-              outputTokens: Number(usage.output_tokens) || 0,
-              totalTokens: Number(usage.total_tokens) || 0,
-              cachedInputTokens: Number(usage.cached_input_tokens) || 0,
-              cacheWriteInputTokens: Number(usage.cache_write_input_tokens) || 0,
+              inputTokens: reportedTokens(usage.input_tokens),
+              outputTokens: reportedTokens(usage.output_tokens),
+              totalTokens: reportedTokens(usage.total_tokens),
+              cachedInputTokens: reportedTokens(usage.cached_input_tokens),
+              cacheWriteInputTokens: reportedTokens(usage.cache_write_input_tokens),
             })
             break
           }
@@ -926,11 +941,11 @@ export class GrpcGateway implements DaemonGateway {
             if (parseReasoningDuration(detail.turn_elapsed_ms) !== undefined) {
               onUsage?.({
                 turnElapsedMs: parseReasoningDuration(detail.turn_elapsed_ms),
-                inputTokens: 0,
-                outputTokens: 0,
-                totalTokens: 0,
-                cachedInputTokens: 0,
-                cacheWriteInputTokens: 0,
+                inputTokens: null,
+                outputTokens: null,
+                totalTokens: null,
+                cachedInputTokens: null,
+                cacheWriteInputTokens: null,
               })
             }
             return err(event.content || 'The turn failed.')
@@ -938,6 +953,7 @@ export class GrpcGateway implements DaemonGateway {
             break
         }
       }
+      if(options?.delivery && !terminalConfirmed) return err('Chat stream ended before the execution outcome was confirmed. Reconcile the accepted input; do not send it again.')
       return ok(undefined)
     } catch (e) {
       return toErr(e)

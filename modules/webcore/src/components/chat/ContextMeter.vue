@@ -35,7 +35,7 @@ const regions = computed(() =>
   })),
 )
 const cache = computed(() =>
-  props.usage?.inputTokens && props.usage.cachedInputTokens !== undefined
+  props.usage?.inputTokens && typeof props.usage.cachedInputTokens === 'number'
     ? Math.round((props.usage.cachedInputTokens / props.usage.inputTokens) * 100)
     : null,
 )

@@ -6,10 +6,16 @@
 
 - DW-00 基线完成，提交 1b39ce8；G01～19、接口/容量/性能判定及最小复现见 BASELINE.md。复现发送拒绝清空、IME synthetic Enter 提交、rollback 失败不呈现、蓝图替换主聊天。简单切页原有 KeepAlive 保留输入，没有伪造该项失败。
 - DW-01：r1 67f56d9 未批准。r2 5e40cbf 复用原 App/IDE，三组已获用户原文“批准三组 r2，保留现有 IDE 布局”。具体范围见 PREVIEWS.md。最终产品视觉签字尚未取得。
-- DW-02 宿主和文档恢复正在收尾验证；聊天、监督和位置恢复尚未接入。当前未提交差异属本实施对话。DW-03～09 未关闭，AC-01～30 尚未关闭。
+- DW-02 宿主和文档恢复完整功能已提交 97436a6；聊天、监督和位置恢复尚未接入。r3 低密度隔离修订已提交 a8653cf，19085，原 r2 保留19082。r3 尚未代填用户签字。当前未提交差异属 DW-03 手工发送接收协议。DW-02～09 未关闭，AC-01～30 尚未关闭。
 - 最新体验约束：“界面不要太多小字,信息量不要太大,要兼顾使用体验”。保留 IDE 几何；新增主要文字/操作约 13～14px，默认状态与必要操作，身份、revision、窗口和长诊断收进详情。已用于文档恢复栏和恢复弹窗，后续继续遵循。
 
 ## 当前功能与限制
+
+DW-03 当前未提交：增量 ChatDelivery RPC；SendChat.options.delivery 为可选精确 request ID/expected revision/新会话 UUID。普通旧请求保持原语义；新客户端先探测能力，不在旧服务静默回退受保护语义。接收把用户输入/session revision/receipt/关联新 task expected revision 一次 sync WAL 提交，再将 Started 持久化后进入原 runner。重复或重开只查询同一 ID，不新建执行；回执与模型结果分开。普通断流仍取消，获批 detached 沿用原 policy。
+
+缺失查询不是明确未接收：同一 admission/resource gate 下 retire 未接收 ID；晚到发送拒绝，若接收已胜出则返回原回执。receipt 8192/每 scope16 MiB/单4 KiB，永久有界凭据不静默淘汰；达到上限拒绝新输入。第一次实际 UI 接入仍待完成，不能声称 Composer 已不丢输入。
+
+本功能 Windows 检查：源码基线 a8653cf 加本功能完整差异；全 workspace/all-targets cargo check exit0（delivery-check-first.log）；存储首轮6通过，新增 retire 后8通过（delivery-host-first、delivery-host-retirement-retest.log）；RPC 首轮2通过/1失败，continuation样本10000 token低于真实根预算预留，合成预算改100000且max_tokens128后5通过（delivery-rpc-first、delivery-rpc-retirement-retest.log），未改预算守卫。客户端7通过（delivery-client-first.log），app类型exit0；SSE fixture和chat-sequence 3通过/exit0（delivery-browser-transport-first.log）；全workspace clippy exit0（delivery-clippy-first.log），发现一处新增可合并if后修正，窄复测仅既有27项lib警告/exit0（delivery-clippy-retest.log）。显式移除模型的宿主拒绝补强后 RPC5通过及窄clippy仅既有27警告/exit0（delivery-rpc-model-retest、delivery-clippy-model-retest.log）。未报告用量改为null（真实0仍为0），状态栏不显示虚构token数；新增流提前结束保留执行未知。定向计时/序列/回执5通过（delivery-usage-browser.log），终态三分支3通过（delivery-terminal-browser.log），有重叠，不累加作AC。app/node类型、定向lint通过，生产前端最终构建记录 manual-delivery-protocol-final-build.log。协议/客户端/检查同完整功能提交；模型费用0。
 
 宿主 storage/recovery.rs 在 EXECUTION_STATE 使用独立 namespace，复用 durable sync 批写及 resource_gate；不进入资源历史、checkpoint 或业务通知。每记录 1 MiB、每 owner/scope 64 MiB、活动 512/含 tombstone 总 4096、metadata 分页 50。超过限制如实失败，无静默淘汰。支持 CAS、准确 request 重试、discard tombstone、rename 转移、损坏记录隔离及原始导出。增量 Recovery RPC 的生成物、Web 代理与测试实现同功能更新；旧服务明确 Unimplemented。
 

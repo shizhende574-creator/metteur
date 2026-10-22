@@ -5,3 +5,4 @@ pub mod blueprint_files;
 pub mod versioning;
 pub mod resources;
 pub mod recovery;
+pub mod delivery;

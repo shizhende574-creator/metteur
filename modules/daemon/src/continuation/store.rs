@@ -256,6 +256,18 @@ impl ContinuationStore {
     ) -> DaemonResult<TaskRecord> {
         self.save_turn(id, expected, context, Some(wait), true, now)
     }
+    /// Caller holds the shared resource gate. These values are committed with
+    /// the accepted manual input and its session revision, never independently.
+    pub(crate) fn accepted_input_values(&self, id: Uuid, session: Uuid, previous: u64, accepted: u64) -> DaemonResult<Vec<(Vec<u8>,Vec<u8>)>> {
+        let mut record=self.get(id)?.ok_or_else(||DaemonError::Execution("Input task missing".into()))?;
+        if record.task.session!=session || record.task.expected_revision!=previous || matches!(record.task.state,TaskState::Stopped|TaskState::Completed) || record.task.dispatch.is_some() {
+            return Err(DaemonError::Execution("Input task or session changed before acceptance".into()));
+        }
+        record.task.expected_revision=accepted;
+        record.revision=record.revision.checked_add(1).ok_or_else(||DaemonError::Execution("Task revision exhausted".into()))?;
+        let raw=serde_json::to_vec(&record).map_err(|e|DaemonError::Serialization(e.to_string()))?;
+        Ok(vec![(self.key(id),raw.clone()),(format!("{}history/{}/{:020}",self.prefix,id,record.revision).into_bytes(),raw)])
+    }
     /// Context, task transition and consumed-event receipts share one WAL batch.
     pub fn save_turn(
         &self,

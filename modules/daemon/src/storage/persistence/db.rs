@@ -45,6 +45,8 @@ pub struct Db {
     changes: tokio::sync::watch::Sender<u64>,
     #[cfg(test)]
     pub(crate) fail_recovery_write: Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(test)]
+    pub(crate) fail_delivery_write: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Db {
@@ -115,6 +117,10 @@ impl Db {
         values: &[(Vec<u8>, Vec<u8>)],
         session: Option<(&[u8], &[u8], u64)>,
     ) -> DaemonResult<()> {
+        #[cfg(test)]
+        if self.fail_delivery_write.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(DaemonError::Persistence("injected input acceptance WAL failure".into()));
+        }
         let resources = self
             .inner
             .cf_handle(cf::EXECUTION_STATE)
@@ -240,6 +246,8 @@ impl Db {
             changes: tokio::sync::watch::channel(0).0,
             #[cfg(test)]
             fail_recovery_write: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(test)]
+            fail_delivery_write: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 

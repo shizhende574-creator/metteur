@@ -20,6 +20,8 @@ package metteur;
 service Daemon {
   // Input-only recovery. Ownership derives from the authenticated request.
   rpc Recovery(ResourceRequest) returns (ResourceResponse);
+  // Durable manual-send receipts; querying never starts or replays a turn.
+  rpc ChatDelivery(ResourceRequest) returns (ResourceResponse);
   rpc AddonPages(ResourceRequest) returns (ResourceResponse);
   rpc WriteSchedule(ResourceRequest) returns (ResourceResponse);
   rpc ConfirmBlueprintLaunch(ResourceRequest) returns (ResourceResponse);

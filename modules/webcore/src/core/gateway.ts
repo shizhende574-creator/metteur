@@ -9,6 +9,7 @@ import type {
   NodeCatalog,
   ChatMessage,
   ChatOptions,
+  ChatDeliveryReceipt,
   ChatSessionInfo,
   ChatSessionSnapshot,
   ChatUsage,
@@ -143,6 +144,8 @@ export interface DaemonGateway {
     onContext?: (stats: ChatContextStats) => void,
     /** Asks the client to decide on a sandbox approval, mid-turn. */
     onApproval?: (request: { requestId: string; detail: string }) => void,
+    /** Durable input acceptance, separate from the eventual model outcome. */
+    onDelivery?: (receipt:ChatDeliveryReceipt) => void,
   ): Promise<Result<void>>
   abortChat(workspacePath: string): Promise<Result<void>>
   /**

@@ -20,6 +20,7 @@ mod prompts;
 mod registry;
 mod reports;
 mod recovery;
+mod delivery;
 mod resources;
 mod sandbox;
 mod state;
@@ -85,6 +86,12 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn chat_delivery(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        Self::chat_delivery(self, request).await
+    }
     async fn recovery(
         &self,
         request: Request<super::proto::ResourceRequest>,

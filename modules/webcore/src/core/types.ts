@@ -135,17 +135,18 @@ export interface TodoItem {
 export interface ChatUsage {
   /** Server-measured total duration supplied with a terminal event. */
   turnElapsedMs?: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  /** Input tokens served from the provider's prompt cache (0 when unreported). */
-  cachedInputTokens: number
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  /** Input tokens served from the provider's prompt cache; null when unreported. */
+  cachedInputTokens: number | null
   /** Input tokens written into the provider's prompt cache. */
-  cacheWriteInputTokens: number
+  cacheWriteInputTokens: number | null
 }
 
 /** Sampling parameters for a ReAct chat turn, adjustable from the chat panel. */
 export interface ChatOptions {
+  delivery?: {id:string;expected_revision:number;new_session?:string}
   continuation_policy?: {detached:boolean;max_turns:number;token_limit:number;expires_ms:number;purpose:string}
   prompt_snapshots?: string[]
   model?: string
@@ -164,6 +165,20 @@ export interface ChatOptions {
   permission_mode?: 'ask' | 'sandbox' | 'full'
   /** Internal marker: retry must resume the restored persisted session. */
   retry?: boolean
+}
+
+export interface ChatDeliveryReceipt {
+  schema_version:1
+  id:string
+  input_digest:string
+  session:string
+  turn:string
+  checkpoint:string
+  accepted_revision:number
+  phase:'retired'|'accepted'|'started'|'finished'|'needs_attention'
+  outcome:string|null
+  accepted_ms:number
+  updated_ms:number
 }
 
 /** What the conversation occupies in the model's window, as the daemon sees it. */

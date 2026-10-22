@@ -480,6 +480,7 @@ const msgId = () => `m-${Date.now()}-${msgSeq++}`
  */
 export class MockGateway implements DaemonGateway {
   async resourceRequest(method?: import('./resources').ResourceMethod): Promise<Result<unknown>> {
+    if (method === 'chatDelivery') return err('Unimplemented: durable delivery receipts require a daemon connection.')
     if (method === 'recovery') return err('Unimplemented: recovery requires a daemon; mock input is not durably backed up.')
     return err(
       'Project resources require a daemon connection. Use the isolated NX preview for fixture interactions.',
@@ -926,6 +927,7 @@ export class MockGateway implements DaemonGateway {
     onApproval?: (request: { requestId: string; detail: string }) => void,
   ): Promise<Result<void>> {
     this.chatAbort.delete(ws)
+    if(options?.delivery)return err('Unimplemented: mock turns do not provide durable delivery receipts.')
     // The demo never blocks on a decision; the parameter exists so a caller can
     // pass the callback without the signature diverging from the real gateway.
     void onApproval

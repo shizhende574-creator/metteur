@@ -18,6 +18,9 @@ use crate::execution::react::{ReactEvent, run_react_streaming};
 use crate::llm::StreamDelta;
 use crate::observability::audit::AuditWriter;
 use crate::sandbox::approval::ApprovalBroker;
+use crate::storage::delivery::{
+    Acceptance, DeliveryIdentity, DeliveryPhase, DeliveryReceipt, DeliveryStore,
+};
 
 use super::super::acl::subject_from_request;
 use super::super::proto::{
@@ -61,6 +64,54 @@ impl DaemonService {
         let now = chrono::Utc::now().timestamp_millis() as u64;
         let ws_db = ws.db.clone();
         let _admission = ws.admit().await.map_err(to_status)?;
+        let delivery_identity: Option<DeliveryIdentity> = if resume.is_none() {
+            let options: serde_json::Value =
+                serde_json::from_str(&req.options_json).unwrap_or_default();
+            options
+                .get("delivery")
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| Status::invalid_argument("Invalid delivery identity"))
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        let delivery_store =
+            DeliveryStore::new(ws_db.clone(), &ws.root().to_string_lossy(), &subject)
+                .map_err(delivery_error)?;
+        let input_digest = crate::storage::resources::digest(
+            &serde_json::to_vec(&(
+                &req.session_id,
+                &req.message,
+                &req.history_json,
+                &req.options_json,
+            ))
+            .map_err(|_| Status::invalid_argument("Invalid delivery payload"))?,
+        );
+        if let Some(identity) = &delivery_identity {
+            if identity.id.is_nil() || identity.new_session.is_some_and(|id| id.is_nil()) {
+                return Err(Status::invalid_argument(
+                    "Delivery and new-chat identities must be non-nil UUIDs",
+                ));
+            }
+            if let Some(receipt) =
+                delivery_store.lookup(identity.id, &input_digest).map_err(delivery_error)?
+            {
+                return Ok(delivery_response(receipt, None));
+            }
+            if req
+                .message
+                .len()
+                .saturating_add(req.history_json.len())
+                .saturating_add(req.options_json.len())
+                > 1024 * 1024
+            {
+                return Err(Status::resource_exhausted(
+                    "Delivery input exceeds the bounded acceptance limit; retain the draft",
+                ));
+            }
+        }
         let selected_ids = serde_json::from_str::<serde_json::Value>(&req.options_json)
             .ok()
             .and_then(|options| options.get("prompt_snapshots").cloned())
@@ -119,7 +170,20 @@ impl DaemonService {
                 }
             }
         };
-        let session_id = existing.as_ref().map(|r| r.session_id).unwrap_or_else(uuid::Uuid::new_v4);
+        let session_id = existing.as_ref().map(|r| r.session_id).unwrap_or_else(|| {
+            delivery_identity
+                .as_ref()
+                .and_then(|identity| identity.new_session)
+                .unwrap_or_else(uuid::Uuid::new_v4)
+        });
+        if existing.is_none()
+            && (load_thread(&ws_db, &session_id).map_err(to_status)?.is_some()
+                || ws_db.chat_revision(session_id.as_bytes()).map_err(to_status)? != 0)
+        {
+            return Err(Status::failed_precondition(
+                "New-chat identity already belongs to an existing or deleted conversation",
+            ));
+        }
         let created_at = existing.as_ref().map(|r| r.created_at).unwrap_or(now);
         let old_turns = existing.as_ref().map(|r| r.turns).unwrap_or(0);
         let title = existing.as_ref().and_then(|r| r.title.clone());
@@ -129,6 +193,14 @@ impl DaemonService {
             crate::continuation::store::ContinuationStore::new(ws_db.clone(), ws.root())
                 .map_err(to_status)?;
         let session_revision = ws_db.chat_revision(session_id.as_bytes()).map_err(to_status)?;
+        if delivery_identity
+            .as_ref()
+            .is_some_and(|identity| identity.expected_revision != session_revision)
+        {
+            return Err(Status::failed_precondition(
+                "Conversation revision changed; this input was not accepted",
+            ));
+        }
         let mut page_after = None;
         loop {
             let page = task_store.list(page_after).map_err(to_status)?;
@@ -165,6 +237,39 @@ impl DaemonService {
         }
         if self.state.chats.read().await.contains_key(&ws_key) {
             return Err(Status::failed_precondition("workspace already has an active chat"));
+        }
+        let registry = self.state.registry_for(Some(ws.root()), true).await?;
+        if delivery_identity.is_some() {
+            if req.message.trim().is_empty() {
+                return Err(Status::invalid_argument("An input message is required"));
+            }
+            let history: serde_json::Value = serde_json::from_str(&req.history_json)
+                .map_err(|_| Status::invalid_argument("Invalid input history"))?;
+            if !history.is_array() {
+                return Err(Status::invalid_argument("Input history must be an array"));
+            }
+            let preflight = ExecutionContext::new(
+                registry.clone(),
+                self.state.llm_factory.clone(),
+                ws.root().to_path_buf(),
+            )
+            .with_config(ws.config.clone());
+            let defaults = ws.config.read().await.llm.clone();
+            let options = chat_options(&req.options_json);
+            if options.provider != "mock"
+                && options
+                    .model
+                    .as_ref()
+                    .filter(|key| !key.is_empty())
+                    .or(defaults.default_model.as_ref())
+                    .is_some_and(|key| !defaults.models.contains_key(key))
+            {
+                return Err(Status::failed_precondition(
+                    "Selected model is no longer configured; this input was not accepted",
+                ));
+            }
+            crate::execution::react::build_client(&preflight, &options, &defaults)
+                .map_err(to_status)?;
         }
         let mut resume_event = None;
         let task_handle = if let Some(handle) = resume {
@@ -273,7 +378,6 @@ impl DaemonService {
             .as_ref()
             .and_then(|h| h.store.get(h.id).ok().flatten())
             .is_some_and(|r| r.task.detached);
-        let registry = self.state.registry_for(Some(ws.root()), true).await?;
         if let Some(handle) = &task_handle {
             let config = ws.config.read().await;
             let options: serde_json::Value =
@@ -318,7 +422,7 @@ impl DaemonService {
         let checkpoint_id = crate::chat::checkpoint::capture(
             &ws_db,
             &ws.version_manager,
-            before,
+            before.clone(),
             &format!("Before chat turn {}", old_turns + 1),
         )
         .map_err(|error| {
@@ -327,6 +431,41 @@ impl DaemonService {
             ))
         })?
         .to_string();
+        let message = format!("{selected_text}{}", req.message);
+        let accepted_delivery = if let Some(identity) = &delivery_identity {
+            let mut accepted = before;
+            if !conventions.is_empty() {
+                accepted.context.push_message(Message::text(Role::User,format!("User-confirmed project conventions (no additional tool permissions):\n{conventions}")));
+            }
+            accepted.context.push_message(Message::text(Role::User, message.clone()));
+            let mut journal = Transcript::resuming(accepted.transcript);
+            journal.push_user(message.clone(), now);
+            journal.set_user_checkpoint(&checkpoint_id);
+            accepted.transcript = journal.finish();
+            accepted.updated_at = now;
+            accepted.title = accepted.title.or_else(|| title_of(&accepted.context));
+            Some(
+                delivery_store
+                    .accept(Acceptance {
+                        identity,
+                        input_digest: &input_digest,
+                        context: &accepted,
+                        turn: run_id,
+                        checkpoint: &checkpoint_id,
+                        task: task_handle.as_ref(),
+                        now,
+                    })
+                    .map_err(delivery_error)?,
+            )
+        } else {
+            None
+        };
+        if let Some(receipt) = &accepted_delivery
+            && let Err(error) =
+                delivery_store.transition(receipt.id, DeliveryPhase::Started, None, now)
+        {
+            return Ok(delivery_response(receipt.clone(),Some("Input was durably accepted but the runner did not start. Inspect its receipt before taking further action.".to_owned()+&format!(" {error}"))));
+        }
         let interrupt_bus = InterruptBus::new();
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let broker = Arc::new(ApprovalBroker::new());
@@ -372,11 +511,13 @@ impl DaemonService {
         let version_manager = ws.version_manager.clone();
         let jobs = ws.jobs();
         let user = subject.clone();
-        let message = format!("{selected_text}{}", req.message);
         let history_json = req.history_json.clone();
         let options_json = req.options_json.clone();
 
         tokio::spawn(async move {
+            if let Some(receipt) = &accepted_delivery {
+                let _ = event_tx.send(Ok(delivery_event(receipt)));
+            }
             let approval_lifetime = broker.close_on_drop();
             let mut ctx = ExecutionContext::new(registry, llm_factory, root.clone())
                 .with_run(run_id, now)
@@ -858,6 +999,7 @@ impl DaemonService {
             } else {
                 Err(DaemonError::Execution("Session was deleted before commit".into()))
             };
+            let persisted = saved_ok.is_ok();
             if let Err(error) = saved_ok {
                 if let Some(handle) = &task_handle {
                     let _ = handle.change(|r| {
@@ -875,6 +1017,30 @@ impl DaemonService {
             if wait_intent.is_none() {
                 if let Some(handle) = &task_handle {
                     jobs.kill_task(handle.id);
+                }
+            }
+            if let Some(receipt) = &accepted_delivery {
+                let outcome = match &terminal {
+                    Ok(event) => event.kind.as_str(),
+                    Err(_) => "unknown",
+                };
+                if let Err(error) = delivery_store.transition(
+                    receipt.id,
+                    if persisted {
+                        DeliveryPhase::Finished
+                    } else {
+                        DeliveryPhase::NeedsAttention
+                    },
+                    Some(outcome),
+                    chrono::Utc::now().timestamp_millis() as u64,
+                ) {
+                    terminal = Ok(ChatEvent {
+                        kind: "error".into(),
+                        content: format!(
+                            "Input was accepted; its final delivery receipt needs reconciliation: {error}"
+                        ),
+                        detail_json: String::new(),
+                    });
                 }
             }
             let _ = event_tx.send(terminal);
@@ -1097,6 +1263,39 @@ impl DaemonService {
         }
         Ok(Response::new(Empty {}))
     }
+}
+
+fn delivery_error(error: metteur_shared::resources::ResourceError) -> Status {
+    Status::failed_precondition(
+        serde_json::to_string(&error).unwrap_or_else(|_| "Delivery receipt unavailable".into()),
+    )
+}
+fn delivery_event(receipt: &DeliveryReceipt) -> ChatEvent {
+    ChatEvent {
+        kind: "delivery".into(),
+        content: String::new(),
+        detail_json: serde_json::to_string(receipt).unwrap_or_default(),
+    }
+}
+fn delivery_response(
+    receipt: DeliveryReceipt,
+    error: Option<String>,
+) -> Response<tokio_stream::wrappers::UnboundedReceiverStream<Result<ChatEvent, Status>>> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let _ = tx.send(Ok(delivery_event(&receipt)));
+    let _ = tx.send(Ok(ChatEvent {
+        kind: if error.is_some() {
+            "error"
+        } else {
+            "delivery_replay"
+        }
+        .into(),
+        content: error.unwrap_or_else(|| {
+            "This input is already accepted. Its original execution was not replayed.".into()
+        }),
+        detail_json: serde_json::to_string(&receipt).unwrap_or_default(),
+    }));
+    Response::new(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
 }
 
 /// Reads a non-empty string field out of the chat options JSON.

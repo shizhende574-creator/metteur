@@ -1225,7 +1225,7 @@ pub(crate) async fn build_anonymizer(ctx: &ExecutionContext) -> Anonymizer {
 /// the request, so a caller only has to name the model. Explicit per-call
 /// `base_url`/`api_key` overrides still win, and an unconfigured model falls
 /// back to the plain provider defaults.
-fn build_client(
+pub(crate) fn build_client(
     ctx: &ExecutionContext,
     opts: &ReactOptions,
     defaults: &LlmConfig,
