@@ -1,6 +1,27 @@
 # 工作流预览确认记录
 
-2026-10-22。三组均为 `PREVIEW_READY / PRESENTED / PENDING_USER`，不是产品验收。允许接入范围尚为空。
+2026-10-22。当前候选 **r2 / dw-ide-fixture-2**，三组均为 `PREVIEW_READY / PRESENTED / PENDING_USER`。r1 未批准；具体允许接入范围尚为空。
+
+## 当前 r2：保留原 IDE 布局
+
+用户对 r1 的原文反馈：“按照原设计,不要修改页面布局,原本就是模仿ide功能”。这不是对 r1 的批准。后续实施保留原活动栏、文件树、标签页、Monaco 编辑器、主聊天和 ExecutionLayout 的布局；不得按 r1 的独立页面壳接入。
+
+三组 r2：
+- WF-PV-01：http://127.0.0.1:19082/?preview=WF-PV-01
+- WF-PV-02：http://127.0.0.1:19082/?preview=WF-PV-02
+- WF-PV-03：http://127.0.0.1:19082/?preview=WF-PV-03
+
+使用真正的 App、router、ChatView、EditorPane、ExecutionView/ExecutionLayout 和共享组件。只有隔离 Vite 配置 `vite.daily-ide-preview.config.ts` 在构建时做 fixture 适配；生产组件/导航/壳没有为预览修改。右下角折叠控件仅为夹具操作，不属于产品新增导航。构建强制 MockGateway，CSP 禁用连接，无 daemon/模型/真实文件能力。
+
+范围：原聊天内关联运行卡与禁用发送、独立 Execution → Supervision、主草稿保持；原文本/画布编辑区的备份状态/恢复副本/三方冲突/引用/丢弃；原 Tasks 标题和页签中的来源/结果/分类异常；原有模型、权限和审批布局沿用，不宣称新模型调用或真实执行。
+
+验证：app/Node typecheck、隔离构建、浏览器明暗主题/1360/390px/原壳视口几何/无外部请求/发送与 IME 合成序列/监督返回/再次冲突/create-only/结果入草稿均通过。证据在工作区 `daily-workflow-evidence/20261022/preview-r2-final-check`；result.json 包含候选、未提交源码状态和逐文件摘要。构建保存在 preview-r2，19082 监听此静态目录。源 commit 将由本次独立预览修订提交绑定，摘要为该记录权威。
+
+首轮错误保留：原生 publicDir 未配置导致 favicon 构建失败；隔离 Tailwind 没有扫描原 App，程序交互检查未捕获视觉几何失败，截图复核发现后补 @source 和视口高度断言，复测通过。前两份截图/JSON 不作为可呈现 r2 的视觉通过证据。
+
+用户 r2 反馈/确认：尚未收到。正式接入与最终用户验收：未执行。r1 静态产物仍留在19081，以下记录作为历史。
+
+## r1 历史记录（未批准）
 
 | ID / revision | 可操作入口 | 覆盖范围 |
 |---|---|---|

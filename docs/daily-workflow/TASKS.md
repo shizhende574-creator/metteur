@@ -27,7 +27,7 @@
 | ID | 工作包 | 前置概要 | 当前状态 |
 |---|---|---|---|
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
-| DW-01 | 三组隔离交互预览 | DW-00 | WAITING_PREVIEW（r1 已呈现） |
+| DW-01 | 三组隔离交互预览 | DW-00 | WAITING_PREVIEW（r1 未批准，原 IDE 布局 r2 已呈现） |
 | DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（独立宿主部分） |
 | DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | PLANNED |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
@@ -59,7 +59,7 @@
 
 ### DW-01 · 三组隔离交互预览
 
-**状态**：WAITING_PREVIEW，WF-PV-01/02/03 r1 已构建、定向检查并呈现，尚无批准。**依赖**：DW-00；当前产品 UI 接入前需要对应预览 revision 确认。
+**状态**：WAITING_PREVIEW，WF-PV-01/02/03 r1 未批准；按用户“保留原 IDE 布局”反馈改为 r2，已构建、定向检查并呈现，尚无批准。**依赖**：DW-00；当前产品 UI 接入前需要对应预览 revision 确认。
 
 **实现定位**：modules/webcore/src/previews/next（复用现有预览机制）；现有 chat/execution/continuations、EditorPane 与统一 UI 组件。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -261,9 +261,9 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 
 | 预览 | 范围 | revision | 当前状态 |
 |---|---|---|---|
-| WF-PV-01 | 主聊天、独立监督、提交与控制状态 | r1 | PREVIEW_READY / PENDING_USER |
-| WF-PV-02 | 草稿、文件引用、冲突和回退 | r1 | PREVIEW_READY / PENDING_USER |
-| WF-PV-03 | 交接、任务结果与分类处置 | r1 | PREVIEW_READY / PENDING_USER |
+| WF-PV-01 | 主聊天、独立监督、提交与控制状态 | r2 原 IDE | PREVIEW_READY / PENDING_USER |
+| WF-PV-02 | 草稿、文件引用、冲突和回退 | r2 原 IDE | PREVIEW_READY / PENDING_USER |
+| WF-PV-03 | 交接、任务结果与分类处置 | r2 原 IDE | PREVIEW_READY / PENDING_USER |
 
 预览批准是 SPEC C14 规定的产品接入前置；当前已授权的文档工作不等待它。可先完成具体可操作预览、契约和已授权的独立后端工作，再针对真实 revision 收集反馈。
 
