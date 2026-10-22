@@ -202,7 +202,9 @@ impl DaemonService {
             ));
         }
         if super::foreground::unresolved_writes(&ws_db, ws.root()).map_err(to_status)? {
-            return Err(Status::failed_precondition("Workspace has an unresolved background write effect"));
+            return Err(Status::failed_precondition(
+                "Workspace has an unresolved background write effect",
+            ));
         }
 
         // A workspace hosts either one execution or one chat at a time.
@@ -448,9 +450,18 @@ impl DaemonService {
         let broker = Arc::new(ApprovalBroker::new());
         let persist = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let approval_details = Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+        let mut transcript = Transcript::resuming(existing_transcript.unwrap_or_default());
+        if resume_event.is_some() {
+            transcript.push_notice("Task resumed from a host event", now);
+        } else {
+            transcript.push_user(message.clone(), now);
+        }
+        transcript.set_user_checkpoint(&checkpoint_id);
+        let transcript = Arc::new(parking_lot::Mutex::new(transcript));
         self.state.chats.write().await.insert(
             ws_key.clone(),
             ChatRun {
+                transcript: transcript.clone(),
                 turn_id: run_id,
                 approval_details: approval_details.clone(),
                 interrupt_bus: Some(interrupt_bus.clone()),
@@ -502,7 +513,7 @@ impl DaemonService {
                 .with_user(user)
                 .with_config(ws_config)
                 .with_audit(AuditWriter::new(ws_db.clone()));
-            ctx.interrupts = Some(interrupt_bus);
+            ctx.interrupts = Some(interrupt_bus.clone());
             ctx.cancel_requested = cancel_flag.clone();
             ctx.approvals = Some(broker);
             ctx.workspace_db = Some(ws_db.clone());
@@ -578,13 +589,6 @@ impl DaemonService {
 
             // The transcript is the display view: it keeps tool calls, notices
             // and the timing the model's context cannot reproduce.
-            let mut transcript = Transcript::resuming(existing_transcript.unwrap_or_default());
-            if resume_event.is_some() {
-                transcript.push_notice("Task resumed from a host event", now);
-            } else {
-                transcript.push_user(message.clone(), now);
-            }
-            transcript.set_user_checkpoint(&checkpoint_id);
 
             // New sessions take their title from the first user message.
             let title = title.or_else(|| title_of(&context));
@@ -698,7 +702,6 @@ impl DaemonService {
             }
             // The closures below run while the turn streams, so the transcript
             // is shared rather than borrowed.
-            let transcript = std::sync::Arc::new(parking_lot::Mutex::new(transcript));
             let delta_tx = event_tx.clone();
             let delta_cancel = cancel_flag.clone();
             let delta_journal = std::sync::Arc::clone(&transcript);
@@ -824,6 +827,7 @@ impl DaemonService {
                 stream_broker,
             )
             .await;
+            let input_close = interrupt_bus.seal();
             drop(approval_lifetime);
             let task_handle = ctx.continuation.clone().or(task_handle);
             // The task list lives on the execution context; carry it into the
@@ -978,6 +982,7 @@ impl DaemonService {
                 Err(DaemonError::Execution("Session was deleted before commit".into()))
             };
             let persisted = saved_ok.is_ok();
+            let input_finish = interrupt_bus.finish_owned(persisted);
             if let Err(error) = saved_ok {
                 if let Some(handle) = &task_handle {
                     let _ = handle.change(|r| {
@@ -1021,6 +1026,13 @@ impl DaemonService {
                     });
                 }
             }
+            if let Err(error) = input_close.and(input_finish) {
+                terminal = Ok(ChatEvent {
+                    kind: "error".into(),
+                    content: format!("Queued input receipts need reconciliation: {error}"),
+                    detail_json: String::new(),
+                });
+            }
             let _ = event_tx.send(terminal);
             // Background commands belong to the turn that started them.
             let killed = jobs.kill_owned_by(run_id);
@@ -1049,8 +1061,12 @@ impl DaemonService {
         let chats = self.state.chats.read().await;
         let entry = chats.get(&ws_key).ok_or_else(|| Status::not_found("no active chat"))?;
         if req.session_id != entry.session_id.map(|id| id.to_string()).unwrap_or_default()
-            || req.turn_id != entry.turn_id.to_string() || req.session_id.is_empty() {
-            return Err(Status::failed_precondition("Chat target changed or is missing; stop was not redirected"));
+            || req.turn_id != entry.turn_id.to_string()
+            || req.session_id.is_empty()
+        {
+            return Err(Status::failed_precondition(
+                "Chat target changed or is missing; stop was not redirected",
+            ));
         }
         entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(broker) = &entry.approvals {

@@ -1,5 +1,7 @@
 # 控制与实时输入的固定目标
 
+后续主聊天 Queue/Steer 的持久接收与消费已接入，见 [LIVE_INPUTS.md](LIVE_INPUTS.md)。本页末尾 durable_queue=false 描述固定目标提交时的历史边界；监督及控制/审批持久回执仍待实施。
+
 2026-10-22；源码基线2a536f8加本功能差异。此功能补齐目标绑定，不等同于持久接收/消费回执；DW-03仍在实施。
 
 InterruptRequest新增target_kind、session_id、turn_id、run_id。chat只能发给完整匹配的当前session/turn，blueprint只能发给完整匹配的run；无目标、不一致、错误通道、停止中或没有接收bus均明确拒绝。不会从已结束聊天退到蓝图，也不会随同一session的新turn继续投递。Normal蓝图消息继续走监督入口。原始正文保持空白字符，大小上限1MiB，priority必须是已知值。

@@ -43,6 +43,190 @@ async fn receipt(service: &DaemonService, root: &Path, id: Uuid) -> serde_json::
     serde_json::from_str::<serde_json::Value>(&result.payload_json).unwrap()["receipt"].clone()
 }
 
+async fn query(
+    service: &DaemonService,
+    root: &Path,
+    payload: serde_json::Value,
+) -> metteur_proto::proto::ResourceResponse {
+    Daemon::chat_delivery(
+        service,
+        Request::new(ResourceRequest {
+            workspace_path: root.to_string_lossy().into(),
+            schema_version: 1,
+            payload_json: payload.to_string(),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap()
+    .into_inner()
+}
+fn live(id: Uuid, owner: &serde_json::Value, mode: &str) -> serde_json::Value {
+    serde_json::json!({"operation":"live_submit","id":id,"session":owner["session"],"turn":owner["turn"],"mode":mode,"message":"  extra\r\n中文  "})
+}
+#[tokio::test]
+async fn live_ack_does_not_claim_consumption_when_the_running_model_finishes_without_another_call()
+{
+    let (service, state, root) = setup().await;
+    let manual = Uuid::new_v4();
+    let mut request = command(&root, manual, "", 0);
+    let mut options: serde_json::Value = serde_json::from_str(&request.options_json).unwrap();
+    options["mock_delay_ms"] = 500.into();
+    request.options_json = options.to_string();
+    let mut stream = Daemon::send_chat(&service, Request::new(request)).await.unwrap().into_inner();
+    while stream.next().await.unwrap().unwrap().kind != "session" {}
+    let owner = receipt(&service, &root, manual).await;
+    let id = Uuid::new_v4();
+    let payload = live(id, &owner, "queue");
+    let first = query(&service, &root, payload.clone()).await;
+    assert!(first.error_json.is_empty(), "{}", first.error_json);
+    assert_eq!(receipt(&service, &root, id).await["phase"], "live_queued");
+    let duplicate = query(&service, &root, payload.clone()).await;
+    assert!(duplicate.error_json.is_empty(), "{}", duplicate.error_json);
+    let mut conflict = payload.clone();
+    conflict["message"] = "changed".into();
+    assert!(query(&service, &root, conflict).await.error_json.contains("request_conflict"));
+    while let Some(event) = stream.next().await {
+        assert_ne!(event.unwrap().kind, "error");
+    }
+    assert_eq!(receipt(&service, &root, id).await["phase"], "live_unconsumed");
+    let duplicate = query(&service, &root, payload).await;
+    assert!(duplicate.error_json.is_empty(), "{}", duplicate.error_json);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&duplicate.payload_json).unwrap()["phase"],
+        "live_unconsumed"
+    );
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let saved = load_thread(&ws.db, &Uuid::parse_str(owner["session"].as_str().unwrap()).unwrap())
+        .unwrap()
+        .unwrap();
+    assert!(!saved.transcript.iter().any(|entry| entry.content.contains("extra")));
+    let body = query(&service, &root, serde_json::json!({"operation":"live_body","id":id})).await;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body.payload_json).unwrap()["body"],
+        "  extra\r\n中文  "
+    );
+}
+#[tokio::test]
+async fn queue_and_steer_each_reach_the_root_context_and_transcript_once_with_exact_raw_input() {
+    let (service, state, root) = setup().await;
+    std::fs::write(root.join("fixture.txt"), "readable").unwrap();
+    let manual = Uuid::new_v4();
+    let mut request = command(&root, manual, "", 0);
+    let mut options: serde_json::Value = serde_json::from_str(&request.options_json).unwrap();
+    options["mock_delay_ms"] = 500.into();
+    options["mock_steps"] = serde_json::json!([{"tool_calls":[{"name":"ReadFile","arguments":{"path":"fixture.txt"}}]},{"text":"finished"}]);
+    request.options_json = options.to_string();
+    let mut stream = Daemon::send_chat(&service, Request::new(request)).await.unwrap().into_inner();
+    while stream.next().await.unwrap().unwrap().kind != "session" {}
+    let owner = receipt(&service, &root, manual).await;
+    let ids = [Uuid::new_v4(), Uuid::new_v4()];
+    for (id, mode) in ids.into_iter().zip(["queue", "steer"]) {
+        let payload = live(id, &owner, mode);
+        for _ in 0..2 {
+            let result = query(&service, &root, payload.clone()).await;
+            assert!(result.error_json.is_empty(), "{}", result.error_json);
+        }
+    }
+    while let Some(event) = stream.next().await {
+        assert_ne!(event.unwrap().kind, "error");
+    }
+    for id in ids {
+        assert_eq!(receipt(&service, &root, id).await["phase"], "live_applied");
+    }
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let saved = load_thread(&ws.db, &Uuid::parse_str(owner["session"].as_str().unwrap()).unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        saved.transcript.iter().filter(|entry| entry.content == "  extra\r\n中文  ").count(),
+        2
+    );
+    assert_eq!(
+        saved
+            .context
+            .messages
+            .iter()
+            .filter(|message| message.text_content() == "  extra\r\n中文  ")
+            .count(),
+        2
+    );
+    Daemon::delete_chat_session(
+        &service,
+        Request::new(metteur_proto::proto::DeleteChatSessionRequest {
+            workspace_path: root.to_string_lossy().into(),
+            session_id: owner["session"].as_str().unwrap().into(),
+        }),
+    )
+    .await
+    .unwrap();
+    let result =
+        query(&service, &root, serde_json::json!({"operation":"live_receipts","ids":ids})).await;
+    let result: serde_json::Value = serde_json::from_str(&result.payload_json).unwrap();
+    assert_eq!(result["items"][0]["source_available"], false);
+    let body =
+        query(&service, &root, serde_json::json!({"operation":"live_body","id":ids[0]})).await;
+    assert!(body.error_json.is_empty());
+}
+#[tokio::test]
+async fn live_inputs_reject_a_retired_id_stale_turn_and_invalid_prompt_without_acceptance() {
+    let (service, _state, root) = setup().await;
+    let owner = serde_json::json!({"session":Uuid::new_v4(),"turn":Uuid::new_v4()});
+    let id = Uuid::new_v4();
+    query(&service, &root, serde_json::json!({"operation":"retire","id":id})).await;
+    assert!(
+        query(&service, &root, live(id, &owner, "steer"))
+            .await
+            .error_json
+            .contains("delivery_retired")
+    );
+    let id = Uuid::new_v4();
+    assert!(
+        query(&service, &root, live(id, &owner, "queue"))
+            .await
+            .error_json
+            .contains("target_changed")
+    );
+    assert!(receipt(&service, &root, id).await.is_null());
+    let id = Uuid::new_v4();
+    let mut payload = live(id, &owner, "steer");
+    payload["prompt_snapshots"] = serde_json::json!([Uuid::new_v4()]);
+    assert!(query(&service, &root, payload).await.error_json.contains("permission_denied"));
+    assert!(receipt(&service, &root, id).await.is_null());
+}
+
+#[tokio::test]
+async fn abandoned_live_receipts_only_reconcile_and_never_restart_a_turn() {
+    use metteur_daemon::storage::delivery::{DeliveryPhase, DeliveryStore, LiveAcceptance};
+    let (service, state, root) = setup().await;
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let store = DeliveryStore::new(ws.db.clone(), &ws.root().to_string_lossy(), "local").unwrap();
+    let session = Uuid::new_v4();
+    let turn = Uuid::new_v4();
+    for (claimed, expected) in [(false, "live_unconsumed"), (true, "live_unknown")] {
+        let id = Uuid::new_v4();
+        store
+            .accept_live(LiveAcceptance {
+                id,
+                input_digest: "crash fixture",
+                session,
+                turn,
+                mode: "queue",
+                body: "unmodified crash input",
+                now: 1,
+            })
+            .unwrap();
+        if claimed {
+            store.transition_live(id, DeliveryPhase::LiveClaimed, 2).unwrap();
+        }
+        assert_eq!(receipt(&service, &root, id).await["phase"], expected);
+        assert_eq!(receipt(&service, &root, id).await["phase"], expected);
+        assert_eq!(store.live_body(id).unwrap().as_deref(), Some("unmodified crash input"));
+    }
+    assert_eq!(admission(&service, &root).await["state"], "idle");
+    assert!(metteur_daemon::chat::session::list_threads(&ws.db).unwrap().is_empty());
+}
+
 async fn admission(service: &DaemonService, root: &Path) -> serde_json::Value {
     let result = Daemon::chat_delivery(
         service,

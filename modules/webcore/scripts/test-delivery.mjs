@@ -35,6 +35,131 @@ function transport(handler) {
   }
 }
 
+function liveSnapshot() {
+  return {
+    ...snapshot(),
+    session: crypto.randomUUID(),
+    live: { mode: 'queue', turn: crypto.randomUUID() },
+  }
+}
+function liveReceipt(attempt, phase = 'live_queued') {
+  return {
+    ...accepted(attempt),
+    session: attempt.snapshot.session,
+    turn: attempt.snapshot.live.turn,
+    accepted_revision: 0,
+    phase,
+    live: { mode: attempt.snapshot.live.mode, body_digest: 'a'.repeat(64) },
+  }
+}
+function liveTransport(handler) {
+  return {
+    resourceRequest: async (_method, ws, payload) =>
+      payload.operation === 'capabilities'
+        ? {
+            ok: true,
+            data: {
+              durable_manual_send: true,
+              pending_reconciliation: true,
+              durable_queue: true,
+              durable_queue_channel: 'chat',
+            },
+          }
+        : payload.operation === 'reconcile_pending'
+          ? { ok: true, data: { items: [] } }
+          : handler(ws, payload),
+  }
+}
+test('live receipt binds mode and root turn, separates host reception from model use', async () => {
+  for (const phase of [
+    'live_queued',
+    'live_claimed',
+    'live_applied',
+    'live_unconsumed',
+    'live_unknown',
+  ]) {
+    let count = 0
+    const attempt = new DeliveryAttempt(
+      liveTransport(() => {
+        throw Error('unexpected query')
+      }),
+      liveSnapshot(),
+      () => count++,
+    )
+    assert(
+      await attempt.submit(async (_fixed, onReceipt) => {
+        onReceipt(liveReceipt(attempt, phase))
+        return { ok: false, error: 'provider stopped' }
+      }),
+    )
+    assert.equal(count, 1)
+    assert.equal(attempt.receipt.phase, phase)
+    assert.equal(
+      await attempt.submit(async () => {
+        throw Error('no replay')
+      }),
+      false,
+    )
+  }
+})
+test('live acknowledgement loss only reads its original ID', async () => {
+  let runs = 0
+  const calls = []
+  const attempt = new DeliveryAttempt(
+    liveTransport((_ws, payload) => {
+      calls.push(payload)
+      return { ok: true, data: { receipt: liveReceipt(attempt), source_available: true } }
+    }),
+    liveSnapshot(),
+  )
+  assert(
+    await attempt.submit(async () => {
+      runs++
+      throw Error('lost ack')
+    }),
+  )
+  assert.equal(runs, 1)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].id, attempt.id)
+})
+test('manual and live receipts cannot be exchanged; wrong turn or mode keeps input unknown', () => {
+  const manual = new DeliveryAttempt(
+    transport(() => {}),
+    snapshot(),
+  )
+  assert.equal(manual.acknowledge({ ...accepted(manual), phase: 'live_queued' }), false)
+  const attempt = new DeliveryAttempt(
+    liveTransport(() => {}),
+    liveSnapshot(),
+  )
+  assert.equal(attempt.acknowledge({ ...liveReceipt(attempt), turn: crypto.randomUUID() }), false)
+  assert.equal(
+    attempt.acknowledge({
+      ...liveReceipt(attempt),
+      live: { mode: 'steer', body_digest: 'a'.repeat(64) },
+    }),
+    false,
+  )
+  assert.equal(attempt.acknowledge({ ...liveReceipt(attempt), phase: 'started' }), false)
+  assert.equal(attempt.state, 'unknown')
+})
+test('old hosts cannot downgrade reliable chat input to legacy Interrupt', async () => {
+  let invoked = 0
+  const attempt = new DeliveryAttempt(
+    transport(() => {}),
+    liveSnapshot(),
+  )
+  assert.equal(
+    await attempt.submit(async () => {
+      invoked++
+      return { ok: true }
+    }),
+    false,
+  )
+  assert.equal(attempt.state, 'unsupported')
+  assert.equal(invoked, 0)
+})
+
 test('a model failure after durable acceptance does not make the same input unsent', async () => {
   let cleared = 0,
     queries = 0

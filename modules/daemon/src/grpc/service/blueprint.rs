@@ -334,36 +334,75 @@ impl DaemonService {
             "Normal" => InterruptPriority::Normal,
             _ => return Err(Status::invalid_argument("Unknown interrupt priority")),
         };
-        if req.message.len() > 1024 * 1024 {return Err(Status::resource_exhausted("Interrupt input is too large; retain the draft"));}
+        if req.message.len() > 1024 * 1024 {
+            return Err(Status::resource_exhausted(
+                "Interrupt input is too large; retain the draft",
+            ));
+        }
         if req.target_kind == "blueprint" {
             let running = self.state.running.read().await;
-            let entry = running.get(&ws_key).ok_or_else(|| Status::not_found("The targeted blueprint is no longer running"))?;
-            if req.run_id != entry.run_id.to_string() || !req.session_id.is_empty() || !req.turn_id.is_empty() {
-                return Err(Status::failed_precondition("Blueprint target changed; input was not redirected"));
+            let entry = running
+                .get(&ws_key)
+                .ok_or_else(|| Status::not_found("The targeted blueprint is no longer running"))?;
+            if req.run_id != entry.run_id.to_string()
+                || !req.session_id.is_empty()
+                || !req.turn_id.is_empty()
+            {
+                return Err(Status::failed_precondition(
+                    "Blueprint target changed; input was not redirected",
+                ));
             }
             if entry.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
-                return Err(Status::failed_precondition("The targeted blueprint is stopping; retain the input"));
+                return Err(Status::failed_precondition(
+                    "The targeted blueprint is stopping; retain the input",
+                ));
             }
             if priority == InterruptPriority::Normal {
-                return Err(Status::failed_precondition("Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model"));
+                return Err(Status::failed_precondition(
+                    "Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model",
+                ));
             }
-            let bus = entry.interrupt_bus.as_ref().ok_or_else(|| Status::failed_precondition("The targeted blueprint cannot receive input"))?;
-            bus.send(Interrupt {priority, message:req.message});
+            let bus = entry.interrupt_bus.as_ref().ok_or_else(|| {
+                Status::failed_precondition("The targeted blueprint cannot receive input")
+            })?;
+            bus.try_send(Interrupt {
+                priority,
+                message: req.message,
+            })
+            .map_err(to_status)?;
             return Ok(Response::new(Empty {}));
         }
-        if req.target_kind != "chat" || req.session_id.is_empty() || req.turn_id.is_empty() || !req.run_id.is_empty() {
-            return Err(Status::failed_precondition("A concrete chat or blueprint target is required"));
+        if req.target_kind != "chat"
+            || req.session_id.is_empty()
+            || req.turn_id.is_empty()
+            || !req.run_id.is_empty()
+        {
+            return Err(Status::failed_precondition(
+                "A concrete chat or blueprint target is required",
+            ));
         }
-        let chats=self.state.chats.read().await;
-        let entry=chats.get(&ws_key).ok_or_else(|| Status::not_found("The targeted chat has ended"))?;
-        if req.session_id != entry.session_id.map(|id|id.to_string()).unwrap_or_default() || req.turn_id != entry.turn_id.to_string() {
+        let chats = self.state.chats.read().await;
+        let entry =
+            chats.get(&ws_key).ok_or_else(|| Status::not_found("The targeted chat has ended"))?;
+        if req.session_id != entry.session_id.map(|id| id.to_string()).unwrap_or_default()
+            || req.turn_id != entry.turn_id.to_string()
+        {
             return Err(Status::failed_precondition("Chat turn changed; input was not redirected"));
         }
         if entry.cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(Status::failed_precondition("The targeted chat is stopping; retain the input"));
+            return Err(Status::failed_precondition(
+                "The targeted chat is stopping; retain the input",
+            ));
         }
-        let bus=entry.interrupt_bus.as_ref().ok_or_else(|| Status::failed_precondition("The targeted chat cannot receive input"))?;
-        bus.send(Interrupt {priority,message:req.message});
+        let bus = entry
+            .interrupt_bus
+            .as_ref()
+            .ok_or_else(|| Status::failed_precondition("The targeted chat cannot receive input"))?;
+        bus.try_send(Interrupt {
+            priority,
+            message: req.message,
+        })
+        .map_err(to_status)?;
         Ok(Response::new(Empty {}))
     }
 

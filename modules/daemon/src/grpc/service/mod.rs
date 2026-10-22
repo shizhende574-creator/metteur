@@ -22,6 +22,7 @@ mod registry;
 mod reports;
 mod recovery;
 mod delivery;
+mod live_input;
 mod resources;
 mod sandbox;
 mod state;

@@ -161,8 +161,10 @@ pub(crate) async fn handle_cancel(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
-    let target=live_target(client,&ws,false).await?;
-    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
+    let target = live_target(client, &ws, false).await?;
+    if target.kind != "blueprint" {
+        anyhow::bail!("No live blueprint target");
+    }
     client
         .cancel_execution(CancelRequest {
             run_id: target.run,
@@ -179,8 +181,10 @@ pub(crate) async fn handle_pause(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
-    let target=live_target(client,&ws,false).await?;
-    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
+    let target = live_target(client, &ws, false).await?;
+    if target.kind != "blueprint" {
+        anyhow::bail!("No live blueprint target");
+    }
     client
         .pause_execution(PauseRequest {
             run_id: target.run,
@@ -197,8 +201,10 @@ pub(crate) async fn handle_resume(
     state: &SessionState,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
-    let target=live_target(client,&ws,false).await?;
-    if target.kind!="blueprint" {anyhow::bail!("No live blueprint target");}
+    let target = live_target(client, &ws, false).await?;
+    if target.kind != "blueprint" {
+        anyhow::bail!("No live blueprint target");
+    }
     client
         .resume_execution(ResumeRequest {
             run_id: target.run,
@@ -217,7 +223,23 @@ pub(crate) async fn handle_say(
     message: String,
 ) -> anyhow::Result<Outcome> {
     let ws = require_ws(state)?;
-    let target=live_target(client,&ws,true).await?;
+    let target = live_target(client, &ws, true).await?;
+    if target.kind == "chat" && ["Normal", "Urgent"].contains(&priority.as_str()) {
+        return Ok(Outcome::Printed(
+            super::live::reliable_input(
+                client,
+                &ws,
+                &target,
+                if priority == "Normal" {
+                    "queue"
+                } else {
+                    "steer"
+                },
+                &message,
+            )
+            .await?,
+        ));
+    }
     client
         .send_interrupt(InterruptRequest {
             workspace_path: ws,

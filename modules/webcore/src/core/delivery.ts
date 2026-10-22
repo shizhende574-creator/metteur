@@ -8,6 +8,7 @@ export interface DeliverySnapshot {
   message: string
   history: ChatMessage[]
   options: ChatOptions
+  live?: { mode: 'queue' | 'steer'; turn: string }
 }
 export type DeliveryState =
   | 'draft'
@@ -56,7 +57,11 @@ export class DeliveryAttempt {
     if (
       !capabilities.ok ||
       (capabilities.data as { durable_manual_send?: boolean }).durable_manual_send !== true ||
-      (capabilities.data as { pending_reconciliation?: boolean }).pending_reconciliation !== true
+      (capabilities.data as { pending_reconciliation?: boolean }).pending_reconciliation !== true ||
+      (this.snapshot.live &&
+        ((capabilities.data as { durable_queue?: boolean }).durable_queue !== true ||
+          (capabilities.data as { durable_queue_channel?: string }).durable_queue_channel !==
+            'chat'))
     ) {
       this.state = 'unsupported'
       this.error = capabilities.ok
@@ -75,7 +80,7 @@ export class DeliveryAttempt {
       return false
     }
     let revision = 0
-    if (this.snapshot.session) {
+    if (this.snapshot.session && !this.snapshot.live) {
       const current = await this.transport.resourceRequest(
         'chatDelivery',
         this.snapshot.workspace,
@@ -117,7 +122,18 @@ export class DeliveryAttempt {
     if (
       receipt.schema_version !== 1 ||
       receipt.id !== this.id ||
-      !['retired', 'accepted', 'started', 'finished', 'needs_attention'].includes(receipt.phase)
+      !(
+        this.snapshot.live
+          ? [
+              'retired',
+              'live_queued',
+              'live_claimed',
+              'live_applied',
+              'live_unconsumed',
+              'live_unknown',
+            ]
+          : ['retired', 'accepted', 'started', 'finished', 'needs_attention']
+      ).includes(receipt.phase)
     ) {
       this.state = 'unknown'
       this.error = 'Input receipt could not be verified.'
@@ -137,7 +153,11 @@ export class DeliveryAttempt {
       !receipt.session ||
       !receipt.turn ||
       !Number.isSafeInteger(receipt.accepted_revision) ||
-      receipt.accepted_revision < 1
+      receipt.accepted_revision < (this.snapshot.live ? 0 : 1) ||
+      (this.snapshot.live &&
+        (receipt.turn !== this.snapshot.live.turn ||
+          receipt.live?.mode !== this.snapshot.live.mode ||
+          !/^[0-9a-f]{64}$/.test(receipt.live.body_digest)))
     ) {
       this.state = 'unknown'
       this.error = 'Input receipt belongs to a different conversation or version.'

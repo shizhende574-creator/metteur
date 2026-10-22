@@ -233,23 +233,14 @@ async function send(text: string, accepted?: () => void): Promise<boolean> {
 
 /** Queues a message into the running turn (Enter while the agent works). */
 async function queue(text: string): Promise<boolean> {
-  const source = chat.composerInput?.controller.capture(),
-    controller = chat.composerInput?.controller
-  const ok = await chat.queue(text, chat.pendingFiles ?? [])
-  if (!ok) feedback.toast('error', 'Could not queue the message', 'The turn may have just ended.')
-  if (ok && source && controller?.acceptLocal(source)) {
-    chat.pendingFiles = []
-  }
+  const ok = await chat.queue(text)
+  if (!ok) feedback.toast('error', 'Input Kept', chat.sendError || 'The turn may have just ended.')
   return ok
 }
 
-/** Sends a message into the running turn before the next model call. */
 async function steer(text: string): Promise<boolean> {
-  const source = chat.composerInput?.controller.capture(),
-    controller = chat.composerInput?.controller
   const ok = await chat.steer(text)
-  if (!ok) feedback.toast('error', 'Could not send the message', 'The turn may have just ended.')
-  if (ok && source) controller?.acceptLocal(source)
+  if (!ok) feedback.toast('error', 'Input Kept', chat.sendError || 'The turn may have just ended.')
   return ok
 }
 

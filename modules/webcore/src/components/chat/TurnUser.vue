@@ -15,6 +15,7 @@ const props = defineProps<{
   content: string
   createdAt: number
   queued: boolean
+  inputStatus?: 'queued' | 'claimed' | 'applied' | 'unconsumed' | 'unknown'
   /** Snapshot taken before this turn, when versioning is available. */
   checkpoint?: string
   onOpenFile: (path: string) => void
@@ -63,7 +64,19 @@ const time = computed(() =>
         </button>
         <template v-else>{{ part.kind === 'file' ? part.path : part.text }}</template>
       </template>
-      <span v-if="queued" class="chat-queued-mark">queued</span>
+      <span
+        v-if="inputStatus && inputStatus !== 'applied'"
+        class="ml-2 text-[13px] text-muted-foreground"
+        >{{
+          {
+            queued: 'Queued',
+            claimed: 'In this turn',
+            unconsumed: 'Not used · input kept',
+            unknown: 'Outcome unconfirmed · input kept',
+          }[inputStatus]
+        }}</span
+      >
+      <span v-else-if="queued && !inputStatus" class="chat-queued-mark">queued</span>
     </div>
     <div class="chat-turn-meta">
       <span class="tabular-nums">{{ time }}</span>

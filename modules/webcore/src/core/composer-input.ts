@@ -15,7 +15,8 @@ export interface PendingInput {
   new_session?: string
   clear_sequence: number
   content_hash: string
-  mode: 'send' | 'retry'
+  mode: 'send' | 'retry' | 'queue' | 'steer'
+  turn?: string
 }
 export function pendingInput(input: RecoveryInput): PendingInput | null {
   const view = input.view as { pending_delivery?: PendingInput } | null
@@ -25,6 +26,8 @@ export function pendingInput(input: RecoveryInput): PendingInput | null {
     typeof pending.session === 'string' &&
     typeof pending.original === 'string' &&
     typeof pending.content_hash === 'string' &&
+    ['send', 'retry', 'queue', 'steer'].includes(pending.mode) &&
+    (!['queue', 'steer'].includes(pending.mode) || typeof pending.turn === 'string') &&
     Number.isSafeInteger(pending.clear_sequence)
     ? clone(pending)
     : null
@@ -100,7 +103,7 @@ export class ComposerInput {
     ) => Promise<Result<unknown>>,
     options: {
       source?: RecoveryInput
-      mode?: 'send' | 'retry'
+      mode?: 'send' | 'retry' | 'queue' | 'steer'
       isCurrent?: () => boolean
       accepted?: (receipt: ChatDeliveryReceipt, cleared: boolean) => void
     } = {},
@@ -149,6 +152,7 @@ export class ComposerInput {
       clear_sequence: -1,
       content_hash: inputFingerprint(source),
       mode,
+      turn: snapshot.live?.turn,
     }
     const attempt = new DeliveryAttempt(
       this.transport,
@@ -166,7 +170,7 @@ export class ComposerInput {
       if (options.isCurrent && !options.isCurrent()) return false
       const originalInfo = {
         ...info,
-        mode: 'send' as const,
+        mode: info.mode === 'retry' ? ('send' as const) : info.mode,
         clear_sequence: 1,
         content_hash: inputFingerprint(original.input),
       }
@@ -184,7 +188,7 @@ export class ComposerInput {
       }
       if (options.isCurrent && !options.isCurrent()) return false
       info.clear_sequence =
-        mode === 'send' &&
+        mode !== 'retry' &&
         this.primary.input.edit_sequence === source.edit_sequence &&
         inputFingerprint(this.primary.input) === info.content_hash
           ? this.primary.input.edit_sequence + 1
@@ -215,7 +219,7 @@ export class ComposerInput {
     const matching = this.primary.input.pending_submission === info.id
     const exact =
       matching &&
-      info.mode === 'send' &&
+      info.mode !== 'retry' &&
       this.primary.input.edit_sequence === info.clear_sequence &&
       inputFingerprint(this.primary.input) === info.content_hash
     const sourceVerified =
@@ -267,6 +271,9 @@ export class ComposerInput {
           message: '',
           history: [],
           options: {},
+          ...((info.mode === 'queue' || info.mode === 'steer') && info.turn
+            ? { live: { mode: info.mode, turn: info.turn } }
+            : {}),
         },
         (receipt) => this.accept(receipt, info, null, callback),
         () => this.changed(),
@@ -330,7 +337,7 @@ export class ComposerInput {
       }
       if (
         data.receipt?.id !== current.info.id ||
-        data.receipt.phase !== 'finished' ||
+        !['finished', 'live_applied'].includes(data.receipt.phase) ||
         data.source_available !== true
       )
         return

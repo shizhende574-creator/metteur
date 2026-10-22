@@ -180,6 +180,7 @@ defineExpose({ scrollToBottom })
             :content="row.message.content"
             :created-at="row.message.createdAt"
             :queued="row.message.queued === true"
+            :input-status="row.message.inputStatus"
             :checkpoint="row.message.checkpoint"
             :on-open-file="onOpenFile"
             :on-copy="onCopy"

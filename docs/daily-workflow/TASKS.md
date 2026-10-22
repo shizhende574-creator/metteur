@@ -29,7 +29,7 @@
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
 | DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（宿主/文档/主聊天已接入，监督/位置待接入） |
-| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | IN_PROGRESS（手工Send/Composer已接入，Queue/Steer/控制待完成） |
+| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | IN_PROGRESS（手工Send/Queue/Steer持久输入已接入，监督/控制待完成） |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
 | DW-06 | 交接、可读结果与分类处置 | DW-03/05 | PLANNED |
@@ -229,7 +229,7 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 | AC-03 | ACK 后刷新/重开恢复，磁盘变化先冲突 | 02 | L1/L3 | PARTIAL：L1 重开/L2 刷新；L3 待验 |
 | AC-04 | 发送拒绝/队列失效/断线后输入及选择可恢复 | 02/03 | L1/L3 | PARTIAL：主聊天拒绝/未知L1/L2；队列/L3待验 |
 | AC-05 | 旧 ACK、新编辑、保存/备份竞态和多窗口隔离 | 02/03 | L1/L3 | PARTIAL：恢复在途/多窗口；完整入口待验 |
-| AC-06 | 重复提交/回执丢失不重复运行，同 ID 异内容拒绝 | 03 | L1/L3 | PARTIAL：Send RPC/客户端；Queue/Steer 待接 |
+| AC-06 | 重复提交/回执丢失不重复运行，同 ID 异内容拒绝 | 03 | L1/L3 | PARTIAL：Send及Queue/Steer RPC/客户端；监督/L3待验 |
 | AC-07 | 脏文件引用选择与实际内容身份一致 | 04 | L1/L3 | NOT_RUN |
 | AC-08 | 外部/Agent 并发改写及再变化不覆盖，create-only 恢复 | 04 | L1/L3 | NOT_RUN |
 | AC-09 | 有人工修改/脏稿时 retry/rewind/rollback 影响与失败真实 | 04 | L1/L3 | NOT_RUN |

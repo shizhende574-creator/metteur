@@ -1,5 +1,7 @@
 # 手工发送的持久接收协议
 
+最新主聊天 Queue/Steer 持久接收、正文和消费契约见 [LIVE_INPUTS.md](LIVE_INPUTS.md)。下方“Queue/Steer 待接入”“durable_queue=false”是手工 Send 提交阶段的历史边界，以新文档为准；蓝图监督及控制/审批仍未完成。
+
 固定实时输入/控制目标增量见LIVE_TARGETS.md；该增量不提供Queue/Steer的durable消费回执。
 
 2026-10-22 Composer 接入增量（源码基线 f60b614）：正式主聊天使用持久输入控制器与 DeliveryAttempt。发送前分别 ACK 固定原稿和当前编辑稿的 pending ID；Host Received 和执行结果分开，拒绝/未知/晚到回执不覆盖新输入。重开选取副本后只读/retire 原 ID，不自动发送；同窗口跨会话回调按 workspace/epoch 隔离。共享 Composer 覆盖 composition/229、候选确认后的 Enter、长按、键盘/菜单/按钮的共同守卫。监督调用仅同步修复 ACK 清理和失败覆盖，独立恢复与其协议后续完成。Queue/Steer 仍是原 Interrupt 协议，不能据此声称有持久固定目标回执；控制/审批亦待后续。

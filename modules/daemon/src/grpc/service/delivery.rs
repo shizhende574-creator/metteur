@@ -19,6 +19,13 @@ enum Query {
     ControlTarget,
     Capabilities,
     ReconcilePending,
+    LiveSubmit(super::live_input::LiveInput),
+    LiveBody {
+        id: Uuid,
+    },
+    LiveReceipts {
+        ids: Vec<Uuid>,
+    },
     Read {
         id: Uuid,
     },
@@ -41,7 +48,7 @@ impl DaemonService {
         let subject =
             super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
-        if req.schema_version != 1 || req.payload_json.len() > 4096 {
+        if req.schema_version != 1 || req.payload_json.len() > 1024 * 1024 + 16 * 1024 {
             return Ok(response(Err(fault("unsupported_request", "Unsupported delivery query"))));
         }
         let ws = self
@@ -63,7 +70,7 @@ impl DaemonService {
         // before a concrete Stop can be sent. It reads no ledger or content.
         if matches!(query, Query::Capabilities) {
             return Ok(response(Ok(
-                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"targeted_controls":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
+                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"targeted_controls":true,"durable_queue":true,"durable_queue_channel":"chat","max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
             )));
         }
         if matches!(query, Query::ControlTarget) {
@@ -74,15 +81,31 @@ impl DaemonService {
             ));
         }
         let _guard = ws.admit().await.map_err(super::to_status)?;
+        if let Query::LiveSubmit(input) = query {
+            return Ok(response(self.receive_live_input(&ws, &subject, input).await.and_then(
+                |receipt| {
+                    serde_json::to_value(receipt)
+                        .map_err(|_| fault("invalid_state", "Receipt could not be encoded"))
+                },
+            )));
+        }
+        if req.payload_json.len() > 4096 {
+            return Ok(response(Err(fault("invalid_request", "Query is too large"))));
+        }
         if matches!(query, Query::Admission) {
             return Ok(response(self.foreground(ws.root(), &ws.db).await.and_then(|value| {
                 serde_json::to_value(value)
                     .map_err(|_| fault("invalid_state", "Foreground state could not be encoded"))
             })));
         }
+        let chats = self.state.chats.read().await;
+        let current = chats.get(ws.root());
         let result = (|| -> Result<serde_json::Value> {
             let store = DeliveryStore::new(ws.db.clone(), &ws.root().to_string_lossy(), &subject)?;
             let receipt_payload = |receipt: Option<DeliveryReceipt>| -> Result<serde_json::Value> {
+                let receipt = receipt
+                    .map(|receipt| super::live_input::normalize(&store, receipt, current))
+                    .transpose()?;
                 let readable = self
                     .state
                     .acl_store
@@ -105,6 +128,22 @@ impl DaemonService {
                 Ok(serde_json::json!({"receipt":receipt,"source_available":source_available}))
             };
             match query {
+                Query::LiveSubmit(_) => unreachable!("handled asynchronously"),
+                Query::LiveBody {
+                    id,
+                } => Ok(serde_json::json!({"id":id,"body":store.live_body(id)?})),
+                Query::LiveReceipts {
+                    ids,
+                } => {
+                    if ids.len() > 64 {
+                        return Err(fault("invalid_request", "Receipt batch exceeds its bound"));
+                    }
+                    let items = ids
+                        .into_iter()
+                        .map(|id| receipt_payload(store.get(id)?))
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(serde_json::json!({"items":items}))
+                }
                 Query::Admission | Query::ControlTarget => {
                     unreachable!("Handled before synchronous receipt access")
                 }
@@ -133,7 +172,11 @@ impl DaemonService {
                 Query::List {
                     after,
                 } => {
-                    let items = store.list(after)?;
+                    let items = store
+                        .list(after)?
+                        .into_iter()
+                        .map(|receipt| super::live_input::normalize(&store, receipt, current))
+                        .collect::<Result<Vec<_>>>()?;
                     let next = if items.len() == 50 {
                         items.last().map(|r| r.id)
                     } else {

@@ -30,7 +30,15 @@ function host() {
       events.push({ method, workspace, payload: clone(payload), expected, request })
       if (method === 'chatDelivery') {
         if (payload.operation === 'capabilities')
-          return { ok: true, data: { durable_manual_send: true, pending_reconciliation: true } }
+          return {
+            ok: true,
+            data: {
+              durable_manual_send: true,
+              pending_reconciliation: true,
+              durable_queue: true,
+              durable_queue_channel: 'chat',
+            },
+          }
         if (payload.operation === 'reconcile_pending')
           return { ok: true, data: { items: [], raw_copies_unchanged: true } }
         if (offline) return { ok: false, error: 'receipt connection unavailable' }
@@ -130,6 +138,59 @@ function host() {
     },
   }
 }
+test('Queue and Steer back up original IDs, preserve newer choices and restore without replay', async () => {
+  for (const mode of ['queue', 'steer']) {
+    const f = setup(),
+      gate = deferred()
+    f.snapshot.session = f.primary.input.entity
+    f.snapshot.newSession = undefined
+    f.snapshot.live = { mode, turn: crypto.randomUUID() }
+    const task = f.input.submit(
+      f.snapshot,
+      async (snapshot, onReceipt) => {
+        await gate.promise
+        const receipt = {
+          ...f.accept(snapshot),
+          turn: snapshot.live.turn,
+          phase: 'live_queued',
+          live: { mode, body_digest: 'a'.repeat(64) },
+        }
+        f.receipts.set(receipt.id, receipt)
+        onReceipt(receipt)
+        return { ok: true }
+      },
+      { mode },
+    )
+    await until(() => f.input.state === 'submitting' && f.primary.input.pending_submission)
+    const pending = f.primary.input.pending_submission
+    assert.equal(f.primary.input.view.pending_delivery.mode, mode)
+    assert.equal(f.primary.input.view.pending_delivery.turn, f.snapshot.live.turn)
+    const original = [...f.records.values()].find((r) => r.input.id !== f.primary.input.id)
+    assert.equal(original.input.raw, 'original\r\n中文')
+    f.input.edit({ raw: 'newer', selections: [{ kind: 'file', path: 'new.ts' }] })
+    gate.resolve()
+    assert(await task)
+    assert.equal(f.primary.input.raw, 'newer')
+    assert.deepEqual(f.primary.input.selections, [{ kind: 'file', path: 'new.ts' }])
+    assert(!f.records.get(original.input.id).discarded)
+    const restored = new RecoveryCopy(
+      f.transport,
+      'workspace-a',
+      'project',
+      'chat',
+      f.primary.input.entity,
+      crypto.randomUUID(),
+    )
+    restored.loadAsNewCopy(restoredInput(original))
+    const controller = new ComposerInput(f.transport, restored)
+    assert(await controller.reconcile())
+    assert.equal(restored.input.raw, '')
+    assert.equal(f.receipts.get(pending).phase, 'live_queued')
+    controller.dispose()
+    restored.dispose()
+    f.dispose()
+  }
+})
 function setup() {
   const fixture = host(),
     entity = crypto.randomUUID()

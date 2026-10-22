@@ -322,6 +322,20 @@ async fn react_loop_inner(
             for msg in bus.drain(InterruptPriority::Emergency) {
                 context.push_message(Message::text(Role::User, msg));
             }
+            if ctx.depth == 0 && ctx.chat_session.is_some() && on_event.is_some() {
+                for priority in [InterruptPriority::Normal, InterruptPriority::Urgent] {
+                    let (messages, failure) = match bus.drain_owned(priority) {
+                        Ok(messages) => (messages, None),
+                        Err((error, messages)) => (messages, Some(error)),
+                    };
+                    for message in messages {
+                        context.push_message(Message::text(Role::User, message));
+                    }
+                    if let Some(error) = failure {
+                        return Err((error, context));
+                    }
+                }
+            }
         }
 
         // Tell the model how much room is left before it runs out of turns;

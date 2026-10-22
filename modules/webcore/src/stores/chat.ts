@@ -715,79 +715,186 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = false
     busy.value = false
     phase.value = 'idle'
-    queued.value = []
+    void refreshLiveInputs()
   }
 
-  /**
-   * Queues a message for the running turn.
-   *
-   * The daemon injects it at the next model call, so the transcript can show it
-   * immediately with a "queued" marker; the marker is cleared once the turn
-   * reports more activity.
-   */
-  async function queue(text: string, attachments: FileTreeNode[] = []): Promise<boolean> {
-    const ws = workspace.active
-    const epoch = conversationEpoch,
+  /** Both entry points freeze the same input and root turn. Receiving a body
+   * is independent of whether the turn later reaches another model call. */
+  async function submitLive(text: string, mode: 'queue' | 'steer'): Promise<boolean> {
+    const ws = workspace.active?.path,
       session = sessionId.value,
-      turn = activeTurn.value
-    const body = text
-    if (!ws || !body.trim() || !streaming.value) return false
-    if (!gateway.demo && !(await foreground.permits('queue', session))) return false
-    if (!gateway.demo && foreground.current.turn !== turn) return false
-    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
+      turn = activeTurn.value,
+      entity = draftEntity.value,
+      epoch = conversationEpoch
+    if (!ws || !text.trim() || !streaming.value || !session || (!gateway.demo && !turn))
       return false
-    const refs = attachments.map((f) => `@file ${f.path}`)
-    const content = refs.length ? `${[...refs, body].join('\n')}` : body
-    const id = `q-${Date.now()}`
-    const r = await gateway.sendInterrupt(ws.path, content, 'Normal', {
-      kind: 'chat',
-      sessionId: session,
-      turnId: turn,
-    })
-    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
-    if (!r.ok) return false
-    queued.value = [
-      ...queued.value,
-      { id, text: content, files: attachments, createdAt: Date.now() },
-    ]
-    messages.value.push({
-      id,
-      role: 'user',
-      content,
-      createdAt: Date.now(),
-      queued: true,
-    })
-    return true
-  }
-
-  /** Sends a queued-or-new message into the running turn immediately. */
-  async function steer(text: string): Promise<boolean> {
-    const ws = workspace.active
-    const epoch = conversationEpoch,
-      session = sessionId.value,
-      turn = activeTurn.value
-    const body = text
-    if (!ws || !body.trim() || !streaming.value) return false
-    if (!gateway.demo && !(await foreground.permits('steer', session))) return false
-    if (!gateway.demo && foreground.current.turn !== turn) return false
-    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
+    const input = inputs.read(ws, entity).controller,
+      source = input.capture(),
+      chosen = inputs.selections(source)
+    if (!input.canSubmit || chosen.length !== source.selections.length) {
+      sendError.value = 'Review or reconcile the current input before submitting.'
       return false
-    const r = await gateway.sendInterrupt(ws.path, body, 'Urgent', {
-      kind: 'chat',
-      sessionId: session,
-      turnId: turn,
+    }
+    const current = () =>
+      workspace.active?.path === ws && epoch === conversationEpoch && sessionId.value === session
+    const refs = chosen.flatMap((item) => (item.kind === 'file' ? [`@file ${item.file.path}`] : []))
+    const body = refs.length ? [...refs, text].join('\n') : text
+    const snapshot: DeliverySnapshot = {
+      workspace: ws,
+      session,
+      message: body,
+      history: [],
+      options: {},
+      live: { mode, turn },
+    }
+    const accepted = (receipt?: ChatDeliveryReceipt) => {
+      if (!current()) return
+      const id = receipt?.id ?? crypto.randomUUID()
+      if (!messages.value.some((message) => message.id === `q-${id}`)) {
+        queued.value.push({
+          id,
+          text: body,
+          files: chosen.flatMap((item) => (item.kind === 'file' ? [item.file] : [])),
+          createdAt: Date.now(),
+        })
+        messages.value.push({
+          id: `q-${id}`,
+          role: 'user',
+          content: body,
+          createdAt: Date.now(),
+          queued: true,
+          inputStatus: receipt ? 'queued' : undefined,
+        })
+      }
+      changingDraft = true
+      const remaining = inputs.selections(input.primary.input)
+      pendingFiles.value = remaining.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+      prompts.selections = remaining.flatMap((item) =>
+        item.kind === 'prompt' ? [item.selection] : [],
+      )
+      changingDraft = false
+      void refreshLiveInputs()
+    }
+    const run = async (
+      fixed: DeliverySnapshot,
+      onReceipt: (receipt: ChatDeliveryReceipt) => void,
+    ) => {
+      if (
+        !current() ||
+        !streaming.value ||
+        !(await foreground.permits(mode, session)) ||
+        foreground.current.turn !== turn ||
+        !current()
+      )
+        return { ok: false as const, error: 'The targeted turn changed. Your input is kept.' }
+      const ids: string[] = []
+      for (const item of chosen) {
+        if (item.kind !== 'prompt') continue
+        const reference = item.selection.snapshot.reference
+        const read = await gateway.resourceRequest('queryPromptResources', ws, {
+          operation: 'read',
+          scope: reference.scope.scope,
+          id: reference.id,
+        })
+        const latest = read.ok ? (read.data as { reference: typeof reference }).reference : null
+        if (
+          !current() ||
+          !latest ||
+          latest.revision !== reference.revision ||
+          latest.content_digest !== reference.content_digest
+        )
+          return {
+            ok: false as const,
+            error: 'A selected prompt changed or is unavailable. Review it before submitting.',
+          }
+        ids.push((await prompts.select(latest, { kind: 'chat' })).id)
+      }
+      if (!current())
+        return { ok: false as const, error: 'Conversation changed before submission.' }
+      if (gateway.demo)
+        return gateway.sendInterrupt(ws, body, mode === 'queue' ? 'Normal' : 'Urgent', {
+          kind: 'chat',
+          sessionId: session,
+          turnId: turn,
+        })
+      const result = await gateway.resourceRequest('chatDelivery', ws, {
+        operation: 'live_submit',
+        id: fixed.options.delivery!.id,
+        session,
+        turn,
+        mode,
+        message: fixed.message,
+        prompt_snapshots: ids,
+      })
+      if (result.ok) onReceipt(result.data as ChatDeliveryReceipt)
+      return result
+    }
+    if (gateway.demo) {
+      const result = await gateway.sendInterrupt(ws, body, mode === 'queue' ? 'Normal' : 'Urgent', {
+        kind: 'chat',
+        sessionId: session,
+        turnId: turn,
+      })
+      if (result.ok && input.acceptLocal(source)) accepted()
+      return result.ok
+    }
+    const ok = await inputs.submit(ws, entity, snapshot, run, {
+      source,
+      mode,
+      isCurrent: current,
+      accepted,
     })
-    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
-    if (!r.ok) return false
-    messages.value.push({
-      id: `q-${Date.now()}`,
-      role: 'user',
-      content: body,
-      createdAt: Date.now(),
-      queued: true,
-    })
-    return true
+    if (current() && !ok)
+      sendError.value = input.error || 'Input outcome is unconfirmed. Keep its original identity.'
+    return ok
   }
+  function queue(text: string, _attachments: FileTreeNode[] = []) {
+    return submitLive(text, 'queue')
+  }
+  function steer(text: string) {
+    return submitLive(text, 'steer')
+  }
+  async function refreshLiveInputs() {
+    const ws = workspace.active?.path,
+      epoch = conversationEpoch,
+      ids = queued.value.map((item) => item.id).slice(0, 64)
+    if (!ws || gateway.demo || !gateway.connected.value || !ids.length) return
+    const result = await gateway.resourceRequest('chatDelivery', ws, {
+      operation: 'live_receipts',
+      ids,
+    })
+    if (!result.ok || workspace.active?.path !== ws || epoch !== conversationEpoch) return
+    const data = result.data as { items: Array<{ receipt: ChatDeliveryReceipt | null }> }
+    for (const entry of data.items ?? []) {
+      const receipt = entry.receipt
+      if (
+        !receipt ||
+        receipt.schema_version !== 1 ||
+        !receipt.live ||
+        receipt.session !== sessionId.value ||
+        !ids.includes(receipt.id)
+      )
+        continue
+      const status = (
+        {
+          live_queued: 'queued',
+          live_claimed: 'claimed',
+          live_applied: 'applied',
+          live_unconsumed: 'unconsumed',
+          live_unknown: 'unknown',
+        } as Partial<Record<ChatDeliveryReceipt['phase'], ChatMessage['inputStatus']>>
+      )[receipt.phase]
+      if (!status) continue
+      const found = messages.value.find((message) => message.id === `q-${receipt.id}`)
+      if (found) {
+        found.inputStatus = status
+        found.queued = status === 'queued' || status === 'claimed'
+      }
+      if (['applied', 'unconsumed', 'unknown'].includes(status))
+        queued.value = queued.value.filter((item) => item.id !== receipt.id)
+    }
+  }
+  useWorkspaceRefresh(refreshLiveInputs, [streaming, () => gateway.connected.value])
 
   /** Collapse the reasoning content without stopping the answer's timer. */
   function settleReasoningStream() {
@@ -827,11 +934,7 @@ export const useChatStore = defineStore('chat', () => {
     if (m.role === 'tool') pendingTool.value = null
     const nextPhase = phaseOf(m)
     if (nextPhase) phase.value = nextPhase
-    // An injected queued message has reached the model by now.
-    if (m.role !== 'user' && queued.value.length) {
-      queued.value = []
-      for (const message of messages.value) message.queued = false
-    }
+
     const idx = messages.value.findIndex((x) => x.id === m.id)
     if (idx < 0) {
       if (m.role === 'assistant') m.turnStartedAt = turnStartedAt.value

@@ -113,6 +113,7 @@ export interface ChatMessage {
   turnStartedAt?: number
   /** Set on a user turn typed while the agent worked, until it is injected. */
   queued?: boolean
+  inputStatus?: 'queued' | 'claimed' | 'applied' | 'unconsumed' | 'unknown'
   /**
    * Snapshot taken before this turn ran, when versioning is available: the
    * transcript offers to roll the workspace back to it.
@@ -183,7 +184,18 @@ export interface ChatDeliveryReceipt {
   turn: string
   checkpoint: string
   accepted_revision: number
-  phase: 'retired' | 'accepted' | 'started' | 'finished' | 'needs_attention'
+  phase:
+    | 'retired'
+    | 'accepted'
+    | 'started'
+    | 'finished'
+    | 'needs_attention'
+    | 'live_queued'
+    | 'live_claimed'
+    | 'live_applied'
+    | 'live_unconsumed'
+    | 'live_unknown'
+  live?: { mode: 'queue' | 'steer'; body_digest: string }
   outcome: string | null
   accepted_ms: number
   updated_ms: number

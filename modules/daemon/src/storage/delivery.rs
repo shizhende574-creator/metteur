@@ -6,6 +6,8 @@ use super::{
 use crate::{chat::session::ChatSessionRecord, continuation::store::TaskHandle};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod live;
+pub use live::{LiveAcceptance, LiveMetadata, MAX_LIVE_BODY};
 
 pub const MAX_RECEIPTS: usize = 8192;
 pub const MAX_RECEIPT_BYTES: usize = 4096;
@@ -35,11 +37,18 @@ pub enum DeliveryPhase {
     Started,
     Finished,
     NeedsAttention,
+    LiveQueued,
+    LiveClaimed,
+    LiveApplied,
+    LiveUnconsumed,
+    LiveUnknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryReceipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live: Option<LiveMetadata>,
     pub schema_version: u32,
     pub id: Uuid,
     pub input_digest: String,
@@ -95,7 +104,7 @@ impl DeliveryStore {
             .db
             .get(cf::EXECUTION_STATE, &self.marker())
             .map_err(unavailable)?
-            .is_some_and(|raw| raw != b"1")
+            .is_some_and(|raw| raw != b"1" && raw != b"2")
         {
             return Err(fault(
                 "unsupported_schema",
@@ -112,6 +121,24 @@ impl DeliveryStore {
             return Err(fault(
                 "unsupported_schema",
                 "Unknown delivery receipt schema; do not replay the input",
+            ));
+        }
+        let live_phase = matches!(
+            receipt.phase,
+            DeliveryPhase::LiveQueued
+                | DeliveryPhase::LiveClaimed
+                | DeliveryPhase::LiveApplied
+                | DeliveryPhase::LiveUnconsumed
+                | DeliveryPhase::LiveUnknown
+        );
+        if receipt.live.is_some() != live_phase
+            || receipt.live.as_ref().is_some_and(|live| {
+                !["queue", "steer"].contains(&live.mode.as_str()) || live.body_digest.len() != 64
+            })
+        {
+            return Err(fault(
+                "corrupt_receipt",
+                "Receipt channel or live input metadata is invalid; do not replay",
             ));
         }
         Ok(receipt)
@@ -162,6 +189,7 @@ impl DeliveryStore {
             return Ok(receipt);
         }
         let receipt = DeliveryReceipt {
+            live: None,
             schema_version: 1,
             id,
             input_digest: String::new(),
@@ -180,7 +208,12 @@ impl DeliveryStore {
             .resource_scan(&self.records_prefix(), &[], MAX_RECEIPTS + 1)
             .map_err(unavailable)?;
         if rows.len() >= MAX_RECEIPTS
-            || rows.iter().map(|(_, raw)| raw.len()).sum::<usize>().saturating_add(bytes.len())
+            || rows
+                .iter()
+                .map(|(_, raw)| raw.len())
+                .sum::<usize>()
+                .saturating_add(self.live_body_bytes()?)
+                .saturating_add(bytes.len())
                 > MAX_LEDGER_BYTES
         {
             return Err(fault(
@@ -189,7 +222,7 @@ impl DeliveryStore {
             ));
         }
         self.db
-            .resource_batch(&[(self.marker(), b"1".to_vec()), (self.key(id), bytes)])
+            .resource_batch(&[(self.marker(), self.marker_bytes()?), (self.key(id), bytes)])
             .map_err(unavailable)?;
         Ok(receipt)
     }
@@ -199,6 +232,12 @@ impl DeliveryStore {
         let _guard = self.db.resource_gate.lock().map_err(unavailable)?;
         self.check_schema()?;
         if let Some(receipt) = self.lookup(acceptance.identity.id, acceptance.input_digest)? {
+            if receipt.live.is_some() {
+                return Err(fault(
+                    "request_conflict",
+                    "Input identity already belongs to a live queue",
+                ));
+            }
             return Ok(receipt);
         }
         let rows = self
@@ -214,6 +253,7 @@ impl DeliveryStore {
             ));
         }
         let receipt = DeliveryReceipt {
+            live: None,
             schema_version: 1,
             id: acceptance.identity.id,
             input_digest: acceptance.input_digest.into(),
@@ -231,7 +271,12 @@ impl DeliveryStore {
         let bytes = serde_json::to_vec(&receipt).map_err(unavailable)?;
         if bytes.len() > MAX_RECEIPT_BYTES
             || rows.len() >= MAX_RECEIPTS
-            || rows.iter().map(|(_, raw)| raw.len()).sum::<usize>().saturating_add(bytes.len())
+            || rows
+                .iter()
+                .map(|(_, raw)| raw.len())
+                .sum::<usize>()
+                .saturating_add(self.live_body_bytes()?)
+                .saturating_add(bytes.len())
                 > MAX_LEDGER_BYTES
         {
             return Err(fault(
@@ -240,7 +285,7 @@ impl DeliveryStore {
             ));
         }
         let context = serde_json::to_vec(acceptance.context).map_err(unavailable)?;
-        let mut values = vec![(self.marker(), b"1".to_vec()), (self.key(receipt.id), bytes)];
+        let mut values = vec![(self.marker(), self.marker_bytes()?), (self.key(receipt.id), bytes)];
         if let Some(handle) = acceptance.task {
             values.extend(
                 handle
@@ -271,6 +316,9 @@ impl DeliveryStore {
         let _guard = self.db.resource_gate.lock().map_err(unavailable)?;
         let mut receipt =
             self.get(id)?.ok_or_else(|| fault("not_found", "Delivery receipt missing"))?;
+        if receipt.live.is_some() {
+            return Err(fault("invalid_transition", "Live input uses its owned turn lifecycle"));
+        }
         if receipt.phase == DeliveryPhase::Finished
             || receipt.phase == DeliveryPhase::NeedsAttention
             || receipt.phase == DeliveryPhase::Retired
@@ -289,6 +337,7 @@ impl DeliveryStore {
         receipt.phase = phase;
         receipt.outcome = outcome.map(str::to_owned);
         receipt.updated_ms = now;
+        self.check_replacement(id, serde_json::to_vec(&receipt).map_err(unavailable)?.len())?;
         self.db
             .resource_batch(&[(self.key(id), serde_json::to_vec(&receipt).map_err(unavailable)?)])
             .map_err(unavailable)?;
