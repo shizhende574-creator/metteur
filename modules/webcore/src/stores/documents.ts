@@ -18,8 +18,19 @@ export interface EditorDocument {
   revision: number
   saving: boolean
   error: string
+  readOnlyReason?: string
   resource?: PromptEntry
   diskResource?: PromptEntry
+}
+export interface DocumentReview {
+  workspace: string
+  path: string
+  revision: number
+  local: string
+  baseline: string
+  latest: string
+  deleted: boolean
+  resource?: PromptEntry
 }
 
 /** Buffers belong to workspace documents, never to a mounted editor component. */
@@ -56,9 +67,13 @@ export const useDocumentsStore = defineStore('documents', () => {
       })
     return records.get(id)!
   }
-  const dirty = (doc: EditorDocument) => doc.deleted || doc.content !== doc.baseline
+  const dirty = (doc: EditorDocument) => doc.deleted || doc.conflict || doc.content !== doc.baseline
   function edit(workspace: string, path: string, content: string) {
     const doc = get(workspace, path)
+    if (doc.readOnlyReason) {
+      doc.error = doc.readOnlyReason
+      return
+    }
     if (doc.content !== content) {
       doc.content = content
       doc.revision++
@@ -89,6 +104,7 @@ export const useDocumentsStore = defineStore('documents', () => {
         doc.loaded = true
         doc.error = ''
         doc.resource = result.data.resource
+        doc.readOnlyReason = result.data.readOnlyReason
         doc.diskResource = result.data.resource
         return doc
       } finally {
@@ -100,34 +116,37 @@ export const useDocumentsStore = defineStore('documents', () => {
   }
   async function sync(workspace: string, path: string) {
     const doc = get(workspace, path)
-    if (!doc.loaded) return
+    if (!doc.loaded) return false
     if (doc.saving) {
       pendingSync.add(doc)
-      return
+      return false
     }
     const revision = doc.revision
     const ticket = invalidateSync(doc)
     const current = () =>
       ticket === syncTickets.get(doc) && revision === doc.revision && !doc.saving
     const result = await readDocument(workspace, path)
-    if (!current()) return
+    if (!current()) return false
     if (!result.ok) {
+      doc.error = result.error
       // Only a confirmed missing file is deletion; transport/permission errors preserve buffers.
       if (parsePromptFile(path)) {
         if (/not.found|missing|deleted/i.test(result.error)) doc.deleted = true
-        return
+        return false
       }
       const stat = await gateway.statFile(workspace, path)
-      if (!current()) return
+      if (!current()) return false
       if (!stat.ok && /not.found|no such file|cannot find|os error 2/i.test(stat.error))
         doc.deleted = true
-      return
+      return false
     }
     const disk = result.data.content
+    const wasDirty = dirty(doc)
     doc.deleted = false
     doc.disk = disk
     doc.diskResource = result.data.resource
-    if (dirty(doc))
+    doc.readOnlyReason = result.data.readOnlyReason
+    if (wasDirty && disk !== doc.content)
       doc.conflict =
         (disk !== doc.baseline && disk !== doc.content) ||
         (doc.resource !== undefined &&
@@ -138,17 +157,34 @@ export const useDocumentsStore = defineStore('documents', () => {
       doc.content = doc.baseline = disk
       doc.conflict = false
       doc.resource = result.data.resource
+      if (wasDirty) void recovery.saved(workspace, recoveryKind(path), path, disk)
     }
+    doc.error = ''
+    return true
   }
-  async function save(workspace: string, path: string, overwrite = false) {
+  async function save(workspace: string, path: string) {
     const doc = get(workspace, path)
+    if (!doc.loaded || doc.readOnlyReason) {
+      doc.error = doc.readOnlyReason || 'Load the document before saving.'
+      return false
+    }
     if (doc.saving) return false
-    if (doc.conflict && !doc.deleted && !overwrite) {
+    if (doc.conflict && !doc.deleted) {
       doc.error =
         'File content changed on disk; review the current version before saving this draft.'
       return false
     }
-    const content = doc.content
+    return persist(doc, doc.content, doc.baseline, doc.resource, doc.deleted)
+  }
+  async function persist(
+    doc: EditorDocument,
+    content: string,
+    expected: string,
+    resource?: PromptEntry,
+    createOnly = false,
+  ) {
+    if (doc.saving) return false
+    const { workspace, path } = doc
     invalidateSync(doc)
     doc.saving = true
     try {
@@ -156,17 +192,14 @@ export const useDocumentsStore = defineStore('documents', () => {
         workspace,
         path,
         content,
-        doc.resource,
-        doc.deleted
-          ? { createOnly: true }
-          : overwrite
-            ? undefined
-            : { expectedContent: doc.baseline },
+        resource,
+        createOnly ? { createOnly: true } : { expectedContent: expected },
       )
       if (!result.ok) {
         doc.error = result.error
         return false
       }
+      if (records.get(key(workspace, path)) !== doc || doc.path !== path) return true
       // Edits made while the save was in flight stay dirty against the saved snapshot.
       doc.baseline = doc.disk = content
       doc.deleted = false
@@ -182,6 +215,148 @@ export const useDocumentsStore = defineStore('documents', () => {
       if (pendingSync.delete(doc) && records.get(key(workspace, path)) === doc)
         void sync(workspace, path)
     }
+  }
+  function review(workspace: string, path: string): DocumentReview | null {
+    const doc = peek(workspace, path)
+    if (!doc?.loaded || doc.saving) return null
+    return Object.freeze({
+      workspace,
+      path,
+      revision: doc.revision,
+      local: doc.content,
+      baseline: doc.baseline,
+      latest: doc.disk,
+      deleted: doc.deleted,
+      ...(doc.diskResource ? { resource: JSON.parse(JSON.stringify(doc.diskResource)) } : {}),
+    })
+  }
+  function matchesReview(snapshot: DocumentReview) {
+    const doc = peek(snapshot.workspace, snapshot.path)
+    return (
+      !!doc &&
+      !doc.saving &&
+      doc.loaded &&
+      doc.revision === snapshot.revision &&
+      doc.content === snapshot.local &&
+      doc.baseline === snapshot.baseline &&
+      doc.disk === snapshot.latest &&
+      doc.deleted === snapshot.deleted &&
+      JSON.stringify(doc.diskResource?.reference) === JSON.stringify(snapshot.resource?.reference)
+    )
+  }
+  function changedReview(snapshot: DocumentReview) {
+    const doc = peek(snapshot.workspace, snapshot.path)
+    if (doc) doc.error = 'Your draft or the saved file changed again. Review the latest versions.'
+    return false
+  }
+  async function protectWorkspaceDrafts(workspace: string, paths?: string[]) {
+    const drafts = [...records.values()].filter(
+      (doc) =>
+        doc.workspace === workspace &&
+        doc.loaded &&
+        dirty(doc) &&
+        (!paths || paths.includes(doc.path)),
+    )
+    const versions = drafts.map((doc) => ({
+      doc,
+      revision: doc.revision,
+      raw: doc.content,
+      path: doc.path,
+    }))
+    for (const { doc, revision, raw, path } of versions) {
+      if (doc.saving) {
+        doc.error = 'Wait for the current save before restoring files.'
+        return false
+      }
+      recovery.edit(workspace, recoveryKind(path), path, {
+        raw,
+        baseline_identity: `xxh3:${hash(doc.baseline)}`,
+        view: { baseline_content: doc.baseline },
+      })
+      if (!(await recovery.flush(workspace, recoveryKind(path), path))) {
+        doc.error =
+          'The current draft could not be backed up. Keep or export it before replacing files.'
+        return false
+      }
+      if (doc.revision !== revision || doc.content !== raw || doc.path !== path) {
+        doc.error = 'A newer draft was kept. Review it before replacing files.'
+        return false
+      }
+    }
+    return versions.every(
+      ({ doc, revision, raw, path }) =>
+        doc.revision === revision && doc.content === raw && doc.path === path,
+    )
+  }
+  async function saveReviewed(snapshot: DocumentReview) {
+    if (!matchesReview(snapshot)) return changedReview(snapshot)
+    const doc = get(snapshot.workspace, snapshot.path)
+    // The latest saved side remains recoverable in existing Version Flow;
+    // Prompt resources already preserve their append-only revision history.
+    if (!snapshot.resource && !snapshot.deleted) {
+      const backup = await gateway.createSnapshot(
+        snapshot.workspace,
+        `Before resolving conflict: ${snapshot.path}`,
+      )
+      if (!backup.ok) {
+        doc.error = `The saved version could not be protected: ${backup.error}`
+        return false
+      }
+    }
+    if (!matchesReview(snapshot)) return changedReview(snapshot)
+    return persist(doc, snapshot.local, snapshot.latest, snapshot.resource, snapshot.deleted)
+  }
+  async function useReviewedDisk(snapshot: DocumentReview) {
+    if (!matchesReview(snapshot) || snapshot.deleted) return changedReview(snapshot)
+    if (!(await sync(snapshot.workspace, snapshot.path))) return false
+    if (!matchesReview(snapshot)) return changedReview(snapshot)
+    if (
+      !(await protectWorkspaceDrafts(snapshot.workspace, [snapshot.path])) ||
+      !matchesReview(snapshot)
+    )
+      return false
+    const doc = get(snapshot.workspace, snapshot.path)
+    if (
+      !recovery.retainConfirmed(
+        snapshot.workspace,
+        recoveryKind(snapshot.path),
+        snapshot.path,
+        snapshot.local,
+      )
+    ) {
+      doc.error =
+        'The original draft has no confirmed recovery copy. Keep editing or export it first.'
+      return false
+    }
+    invalidateSync(doc)
+    doc.content = doc.baseline = doc.disk = snapshot.latest
+    doc.resource = doc.diskResource
+    doc.conflict = false
+    doc.error = ''
+    doc.revision++
+    return true
+  }
+  async function saveCopy(snapshot: DocumentReview, target: string) {
+    if (!matchesReview(snapshot)) return changedReview(snapshot)
+    const doc = get(snapshot.workspace, snapshot.path)
+    if (
+      !target.trim() ||
+      target === snapshot.path ||
+      parsePromptFile(target) ||
+      snapshot.resource
+    ) {
+      doc.error = 'Choose a different ordinary file path for this copy.'
+      return false
+    }
+    const result = await writeDocument(snapshot.workspace, target, snapshot.local, undefined, {
+      createOnly: true,
+    })
+    if (!result.ok) {
+      doc.error = result.error
+      return false
+    }
+    doc.error = ''
+    return true
   }
   function markDeleted(workspace: string, path: string) {
     for (const doc of records.values()) {
@@ -237,6 +412,12 @@ export const useDocumentsStore = defineStore('documents', () => {
     edit,
     sync,
     save,
+    review,
+    matchesReview,
+    saveReviewed,
+    useReviewedDisk,
+    saveCopy,
+    protectWorkspaceDrafts,
     dirty,
     markDeleted,
     discard,

@@ -110,7 +110,12 @@ impl DaemonService {
         &self,
         request: Request<ReadFileRequest>,
     ) -> Result<Response<ReadFileResponse>, Status> {
+        let subject =
+            super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
+        if req.freeze_reference {
+            self.file_reference_access(&subject)?;
+        }
         let ws = self
             .state
             .workspaces
@@ -119,10 +124,32 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("workspace not open"))?;
         let path = resolve_ws_path(ws.root(), &req.path)?;
         let bytes = std::fs::read(&path).map_err(io_status)?;
+        if req.freeze_reference && bytes.len() > 64 * 1024 {
+            return Err(Status::resource_exhausted(
+                "Saved file references support at most 64 KiB of UTF-8 text",
+            ));
+        }
+        let digest = crate::storage::resources::digest(&bytes);
         let content = String::from_utf8(bytes)
             .map_err(|_| Status::invalid_argument("file is not valid utf-8"))?;
+        let file_reference_json = if req.freeze_reference {
+            let version = ws.version_manager.capture_file(&req.path).map_err(to_status)?;
+            ws.version_manager
+                .referenced_file(version.snapshot_id, &version.blueprint_uri, &digest)
+                .map_err(to_status)?;
+            serde_json::to_string(&super::file_references::FileReference {
+                snapshot_id: version.snapshot_id,
+                path: version.blueprint_uri,
+                digest,
+            })
+            .map_err(|_| Status::internal("File reference could not be encoded"))?
+        } else {
+            String::new()
+        };
         Ok(Response::new(ReadFileResponse {
+            content_utf8: Some(content.as_bytes().to_vec()),
             content,
+            file_reference_json,
         }))
     }
 
@@ -162,12 +189,23 @@ impl DaemonService {
             super::blueprint::ensure_valid(&graph, &registry)?;
             self.ensure_blueprint_idle(&ws.root, graph.id).await?;
             crate::replan::application::ensure_resolved(&ws.db).map_err(to_status)?;
-            crate::storage::blueprint_files::save(
+            let expected = if req.create_only {
+                crate::storage::versioning::ExpectedFile::Absent
+            } else if let Some(content) = &req.expected_content {
+                crate::storage::versioning::ExpectedFile::Contents {
+                    blueprint: graph.id,
+                    bytes: content.as_bytes(),
+                }
+            } else {
+                crate::storage::versioning::ExpectedFile::Blueprint(graph.id)
+            };
+            crate::storage::blueprint_files::save_with_origin(
                 &ws.db,
                 &ws.version_manager,
                 &graph,
                 &req.path,
                 req.content.as_bytes(),
+                expected,
                 None,
             )
             .map_err(to_status)?;
@@ -177,6 +215,7 @@ impl DaemonService {
                 &path,
                 Some(req.content.as_bytes()),
                 req.expected_content.as_deref().map(str::as_bytes),
+                req.create_only,
             )
             .map_err(to_status)?;
         }
@@ -238,7 +277,7 @@ impl DaemonService {
         if meta.is_dir() {
             std::fs::remove_dir_all(&path).map_err(io_status)?;
         } else {
-            mutate_regular_file(&ws, &path, None, None).map_err(to_status)?;
+            mutate_regular_file(&ws, &path, None, None, false).map_err(to_status)?;
         }
         Ok(Response::new(Empty {}))
     }
@@ -247,7 +286,8 @@ impl DaemonService {
         &self,
         request: Request<RenameFileRequest>,
     ) -> Result<Response<Empty>, Status> {
-        let subject = super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
+        let subject =
+            super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws = self
             .state
@@ -268,10 +308,21 @@ impl DaemonService {
         }
         std::fs::rename(&from, &to).map_err(io_status)?;
         let identity = format!("project:{}", ws.root().to_string_lossy());
-        let store = crate::storage::recovery::RecoveryStore::new(ws.db.clone(), &identity, &subject)
-            .map_err(|_| Status::internal("File renamed; recovery copies require reconciliation"))?;
-        let from_relative = from.strip_prefix(ws.root()).map_err(|_| Status::internal("Rename source unavailable"))?.to_string_lossy().replace('\\', "/");
-        let to_relative = to.strip_prefix(ws.root()).map_err(|_| Status::internal("Rename destination unavailable"))?.to_string_lossy().replace('\\', "/");
+        let store =
+            crate::storage::recovery::RecoveryStore::new(ws.db.clone(), &identity, &subject)
+                .map_err(|_| {
+                    Status::internal("File renamed; recovery copies require reconciliation")
+                })?;
+        let from_relative = from
+            .strip_prefix(ws.root())
+            .map_err(|_| Status::internal("Rename source unavailable"))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let to_relative = to
+            .strip_prefix(ws.root())
+            .map_err(|_| Status::internal("Rename destination unavailable"))?
+            .to_string_lossy()
+            .replace('\\', "/");
         store.rename_entity(&from_relative, &to_relative, chrono::Utc::now().timestamp_millis() as u64)
             .map_err(|_| Status::internal("File renamed; recovery transfer failed. Original recovery copies were retained for manual review"))?;
         Ok(Response::new(Empty {}))
@@ -364,24 +415,28 @@ fn mutate_regular_file(
     path: &std::path::Path,
     after: Option<&[u8]>,
     expected: Option<&[u8]>,
+    create_only: bool,
 ) -> crate::error::DaemonResult<()> {
     use crate::execution::file_journal::{DbFileJournal, FileJournal, FileOrigin};
     let log = crate::execution::TransactionLog::new().with_journal(FileJournal::new(
         ws.root.clone(),
         std::sync::Arc::new(DbFileJournal(ws.db.clone())),
     ));
-    log.mutate_file(
-        ws.root(),
-        path,
-        after,
-        FileOrigin {
-            run_id: uuid::Uuid::new_v4(),
-            node_id: uuid::Uuid::nil(),
-            attempt: 1,
-            wal_position: 0,
-        },
-        expected,
-    )
+    let origin = FileOrigin {
+        run_id: uuid::Uuid::new_v4(),
+        node_id: uuid::Uuid::nil(),
+        attempt: 1,
+        wal_position: 0,
+    };
+    if create_only {
+        return log.create_file(
+            ws.root(),
+            path,
+            after.ok_or_else(|| crate::DaemonError::Execution("new file needs content".into()))?,
+            origin,
+        );
+    }
+    log.mutate_file(ws.root(), path, after, origin, expected)
 }
 
 /// Opens the OS file manager with `path` selected, fire-and-forget.

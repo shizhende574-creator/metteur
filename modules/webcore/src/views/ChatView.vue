@@ -22,6 +22,7 @@ import { onHighlightReady, warmHighlighter } from '@/lib/markdown'
 import { clearRenderCache } from '@/lib/chat/stream-render'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import WorkflowReceipts from '@/components/WorkflowReceipts.vue'
+import FileReferenceDialog from '@/components/FileReferenceDialog.vue'
 import ChatThread from '@/components/chat/ChatThread.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatStatusBar from '@/components/chat/ChatStatusBar.vue'
@@ -33,6 +34,7 @@ import { useComposerInputsStore } from '@/stores/composer-inputs'
 import RecoveryCopies from '@/components/RecoveryCopies.vue'
 import type { RecoveryRecord } from '@/core/recovery'
 import { useForegroundStore } from '@/stores/foreground'
+import { useDocumentsStore } from '@/stores/documents'
 import { useSurfaceNavigation } from '@/lib/surface'
 
 /**
@@ -369,9 +371,74 @@ async function restore(snapshotId: string): Promise<void> {
   else feedback.toast('error', 'Restore failed', error)
 }
 
-function attach(file: FileTreeNode): void {
-  chat.queueFile(file)
+const referenceBusy = ref(false),
+  fileReferenceTarget = ref<{ workspace: string; entity: string; file: FileTreeNode } | null>(null)
+let referenceEpoch = 0
+watch([() => workspace.active?.path, () => chat.draftEntity], () => {
+  referenceEpoch++
+  referenceBusy.value = false
+  fileReferenceTarget.value = null
+})
+function finishReference() {
+  fileReferenceTarget.value = null
+  referenceBusy.value = false
 }
+function selectReferencedFile(file: FileTreeNode) {
+  const target = fileReferenceTarget.value
+  if (target && workspace.active?.path === target.workspace && chat.draftEntity === target.entity)
+    chat.queueFile(file)
+  finishReference()
+}
+function reviewReferencedFile() {
+  const path = fileReferenceTarget.value?.file.path
+  finishReference()
+  if (path) openFile(path)
+}
+async function attach(file: FileTreeNode) {
+  const ws = workspace.active?.path,
+    entity = chat.draftEntity
+  if (!ws || referenceBusy.value) return
+  const ticket = ++referenceEpoch
+  referenceBusy.value = true
+  const doc = useDocumentsStore().peek(ws, file.path)
+  if (doc && useDocumentsStore().dirty(doc)) {
+    fileReferenceTarget.value = { workspace: ws, entity, file }
+    return
+  }
+  try {
+    const result = await gateway.readFile(ws, file.path, true)
+    if (ticket !== referenceEpoch || workspace.active?.path !== ws || chat.draftEntity !== entity)
+      return
+    if (!result.ok || !result.data.reference) {
+      feedback.toast(
+        'error',
+        'File Reference Unavailable',
+        result.ok ? 'The host did not confirm a saved version.' : result.error,
+      )
+      return
+    }
+    chat.queueFile({ ...file, reference: result.data.reference })
+  } catch (cause) {
+    if (ticket === referenceEpoch)
+      feedback.toast('error', 'File Reference Unavailable', String(cause))
+  } finally {
+    if (ticket === referenceEpoch) referenceBusy.value = false
+  }
+}
+watch(
+  () => chat.requestedAttachment,
+  (target) => {
+    if (!target) return
+    chat.requestedAttachment = null
+    if (target.workspace !== workspace.active?.path || target.entity !== chat.draftEntity) return
+    void attach({
+      kind: 'file',
+      path: target.path,
+      name: target.path.split('/').at(-1) || target.path,
+    })
+  },
+  { immediate: true },
+)
 
 /**
  * Hands the current plan to the turn.
@@ -561,7 +628,10 @@ const starterPrompts = [
           :draft-identity="draftIdentity"
           :on-draft-change="(text) => (chat.draft = text)"
           :send-blocked="
-            inputBlocked || (chat.busy && !chat.streaming) || !chat.composerInput?.canSubmit
+            inputBlocked ||
+            referenceBusy ||
+            (chat.busy && !chat.streaming) ||
+            !chat.composerInput?.canSubmit
           "
           :files="chat.files"
           :pending-files="chat.pendingFiles"
@@ -707,5 +777,13 @@ const starterPrompts = [
         </div>
       </div>
     </div>
+    <FileReferenceDialog
+      v-if="fileReferenceTarget"
+      :workspace="fileReferenceTarget.workspace"
+      :file="fileReferenceTarget.file"
+      @close="finishReference"
+      @selected="selectReferencedFile"
+      @review="reviewReferencedFile"
+    />
   </div>
 </template>

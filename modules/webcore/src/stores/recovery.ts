@@ -85,6 +85,24 @@ export const useRecoveryStore = defineStore('recovery', () => {
     const current = copies.get(key(workspace, scopeFor(entity), kind, entity))
     return current ? current.flush() : true
   }
+  /** Detach an acknowledged original without discarding its host record.
+   * Replacing a reviewed draft must not overwrite that copy on the next edit. */
+  function retainConfirmed(workspace: string, kind: RecoveryKind, entity: string, raw: string) {
+    const identity = key(workspace, scopeFor(entity), kind, entity),
+      current = copies.get(identity)
+    if (
+      !current ||
+      current.input.raw !== raw ||
+      current.state !== 'backed_up' ||
+      current.input.pending_submission ||
+      current.acknowledgedSequence !== current.input.edit_sequence
+    )
+      return false
+    current.dispose()
+    copies.delete(identity)
+    statuses.delete(identity)
+    return true
+  }
   async function saved(workspace: string, kind: RecoveryKind, entity: string, content: string) {
     const identity = key(workspace, scopeFor(entity), kind, entity),
       current = copies.get(identity)
@@ -183,6 +201,7 @@ export const useRecoveryStore = defineStore('recovery', () => {
     scopeFor,
     edit,
     flush,
+    retainConfirmed,
     saved,
     discard,
     newChat,

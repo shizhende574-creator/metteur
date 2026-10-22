@@ -46,14 +46,16 @@ async function handleCreate() {
 }
 
 async function handleRollback(snapshot: SnapshotInfo) {
+  const target = workspace.active?.path
+  if (!target) return
   const ok = await feedback.confirm({
     header: 'Confirm rollback',
-    message: `Roll back to ${snapshot.alias ?? snapshot.id}?`,
+    message: `Restore tracked workspace files to ${snapshot.alias ?? snapshot.id}? Unsaved drafts are backed up first. Current disk files remain in a recovery snapshot. Events, permissions and budgets are kept.`,
     acceptLabel: 'Roll back',
     rejectLabel: 'Cancel',
     danger: true,
   })
-  if (ok) await version.rollback(snapshot.id)
+  if (ok && workspace.active?.path === target) await version.rollback(snapshot.id, target)
 }
 
 function opTone(op: string): string {
@@ -151,6 +153,7 @@ function opTone(op: string): string {
             <button
               class="btn btn-danger-outline shrink-0"
               type="button"
+              :disabled="version.restoring"
               @click="handleRollback(selected)"
             >
               <RotateCcw class="h-4 w-4" /> Roll back

@@ -24,6 +24,10 @@ pub(super) struct LiveInput {
     pub message: String,
     #[serde(default)]
     pub prompt_snapshots: Vec<Uuid>,
+    #[serde(default)]
+    pub file_references: Vec<super::file_references::FileReference>,
+    #[serde(default)]
+    pub context_order: Vec<super::file_references::ContextOrder>,
 }
 fn time() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
@@ -99,6 +103,8 @@ impl DaemonService {
                 &input.mode,
                 &input.message,
                 &input.prompt_snapshots,
+                &input.file_references,
+                &input.context_order,
             ))
             .map_err(failure)
             .map_err(|e| fault("invalid_input", &e.to_string()))?,
@@ -113,6 +119,7 @@ impl DaemonService {
             return Ok(receipt);
         }
         let mut body = String::new();
+        let mut prompt_parts = Vec::new();
         for id in &input.prompt_snapshots {
             let snapshot =
                 self.selected_prompt(&ws.root().to_string_lossy(), subject, *id).await.map_err(
@@ -123,10 +130,16 @@ impl DaemonService {
             }
             body.push_str(&crate::prompt_snapshots::user_text(&snapshot));
             body.push_str("\n\n");
+            prompt_parts.push(format!("{}\n\n", crate::prompt_snapshots::user_text(&snapshot)));
         }
         if body.len() > 64 * 1024 {
             return Err(fault("invalid_input", "Selected prompt budget exceeded"));
         }
+        let files = self
+            .selected_file_parts(ws, subject, &input.file_references)
+            .map_err(|error| fault("invalid_file_reference", &error.to_string()))?;
+        body = super::file_references::ordered_text(&prompt_parts, &files, &input.context_order)
+            .map_err(|error| fault("invalid_file_reference", &error.to_string()))?;
         body.push_str(&input.message);
         if body.len() > crate::storage::delivery::MAX_LIVE_BODY {
             return Err(fault("invalid_input", "Input exceeds the bounded body limit"));

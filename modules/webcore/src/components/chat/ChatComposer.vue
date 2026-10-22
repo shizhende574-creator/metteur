@@ -405,7 +405,15 @@ defineExpose({
     <div v-if="pendingFiles.length" class="chat-composer-chips">
       <span v-for="file in pendingFiles" :key="file.path" class="chat-chip">
         <FileCode class="h-3 w-3 shrink-0" />
-        <span class="max-w-60 truncate">{{ file.path }}</span>
+        <span
+          class="max-w-60 truncate text-[13px]"
+          :title="
+            file.reference
+              ? `Saved version ${file.reference.snapshotId} · SHA256 ${file.reference.digest}`
+              : 'Path only; review the file before sending'
+          "
+          >{{ file.path }} · {{ file.reference ? 'Saved' : 'Path only' }}</span
+        >
         <button
           class="ml-0.5 rounded hover:text-foreground"
           type="button"

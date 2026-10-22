@@ -2377,6 +2377,7 @@ async fn smoke_file_roundtrip_and_containment() {
         .read_file(ReadFileRequest {
             workspace_path: ws_path.clone(),
             path: "src/app.ts".to_string(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -3320,6 +3321,7 @@ sum -> check
         .read_file(ReadFileRequest {
             workspace_path: ws_path.clone(),
             path: "notes.txt".to_string(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -3337,6 +3339,7 @@ sum -> check
         .read_file(ReadFileRequest {
             workspace_path: ws_path.clone(),
             path: "notes.txt".to_string(),
+            ..Default::default()
         })
         .await
         .unwrap()

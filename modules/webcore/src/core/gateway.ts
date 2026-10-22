@@ -77,7 +77,11 @@ export interface DaemonGateway {
 
   // File explorer / editors ---------------------------------------------------
   listFiles(workspacePath: string, dir: string): Promise<Result<FileTreeNode[]>>
-  readFile(workspacePath: string, filePath: string): Promise<Result<FileContent>>
+  readFile(
+    workspacePath: string,
+    filePath: string,
+    freezeReference?: boolean,
+  ): Promise<Result<FileContent>>
   writeFile(
     workspacePath: string,
     filePath: string,

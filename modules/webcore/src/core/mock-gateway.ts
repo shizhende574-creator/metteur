@@ -479,14 +479,29 @@ const msgId = () => `m-${Date.now()}-${msgSeq++}`
  * built and validated before the real Connect transport lands.
  */
 export class MockGateway implements DaemonGateway {
-  async resourceRequest(method?: import('./resources').ResourceMethod, workspace = '', payload?: unknown): Promise<Result<unknown>> {
-    if (method === 'chatDelivery' && (payload as {operation?:string})?.operation === 'admission') {
-      const run = this.runs.get(workspace), active = run && ['running','paused'].includes(run.status)
-      return ok({state:active?'blueprint':'idle',run:active?`run-${workspace.length}`:null,session:null,turn:null,
-        reason:active?run.paused?'Blueprint is paused':'Blueprint is running':''})
+  async resourceRequest(
+    method?: import('./resources').ResourceMethod,
+    workspace = '',
+    payload?: unknown,
+  ): Promise<Result<unknown>> {
+    if (
+      method === 'chatDelivery' &&
+      (payload as { operation?: string })?.operation === 'admission'
+    ) {
+      const run = this.runs.get(workspace),
+        active = run && ['running', 'paused'].includes(run.status)
+      return ok({
+        state: active ? 'blueprint' : 'idle',
+        run: active ? `run-${workspace.length}` : null,
+        session: null,
+        turn: null,
+        reason: active ? (run.paused ? 'Blueprint is paused' : 'Blueprint is running') : '',
+      })
     }
-    if (method === 'chatDelivery') return err('Unimplemented: durable delivery receipts require a daemon connection.')
-    if (method === 'recovery') return err('Unimplemented: recovery requires a daemon; mock input is not durably backed up.')
+    if (method === 'chatDelivery')
+      return err('Unimplemented: durable delivery receipts require a daemon connection.')
+    if (method === 'recovery')
+      return err('Unimplemented: recovery requires a daemon; mock input is not durably backed up.')
     return err(
       'Project resources require a daemon connection. Use the isolated NX preview for fixture interactions.',
     )
@@ -620,7 +635,26 @@ export class MockGateway implements DaemonGateway {
     return ok(nodes.map(({ name, path, kind }) => ({ name, path, kind })))
   }
 
-  async readFile(ws: string, filePath: string): Promise<Result<FileContent>> {
+  async readFile(
+    ws: string,
+    filePath: string,
+    freezeReference = false,
+  ): Promise<Result<FileContent>> {
+    if (freezeReference && isConfigDoc(filePath))
+      return err('Configuration cannot be used as a saved file reference')
+    const result = await this.readSavedFile(ws, filePath)
+    if (!result.ok || !freezeReference) return result
+    const { fileTextDigest } = await import('./file-reference')
+    return ok({
+      ...result.data,
+      reference: {
+        snapshotId: crypto.randomUUID(),
+        path: filePath.replaceAll('\\', '/'),
+        digest: await fileTextDigest(result.data.content),
+      },
+    })
+  }
+  private async readSavedFile(ws: string, filePath: string): Promise<Result<FileContent>> {
     if (isConfigDoc(filePath)) {
       const scopePath = configScopeOf(filePath) === 'user' ? '' : ws
       const cfg = await this.getConfig(scopePath)
@@ -932,7 +966,8 @@ export class MockGateway implements DaemonGateway {
     onApproval?: (request: { requestId: string; detail: string; contentDigest?: string }) => void,
   ): Promise<Result<void>> {
     this.chatAbort.delete(ws)
-    if(options?.delivery)return err('Unimplemented: mock turns do not provide durable delivery receipts.')
+    if (options?.delivery)
+      return err('Unimplemented: mock turns do not provide durable delivery receipts.')
     // The demo never blocks on a decision; the parameter exists so a caller can
     // pass the callback without the signature diverging from the real gateway.
     void onApproval

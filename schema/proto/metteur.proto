@@ -581,10 +581,14 @@ message FileList {
 message ReadFileRequest {
   string workspace_path = 1;
   string path = 2;
+  bool freeze_reference = 3;
 }
 
 message ReadFileResponse {
   string content = 1;
+  string file_reference_json = 2;
+  // Exact UTF-8 bytes; protobuf string decoders may consume a leading BOM.
+  optional bytes content_utf8 = 3;
 }
 
 message WriteFileRequest {

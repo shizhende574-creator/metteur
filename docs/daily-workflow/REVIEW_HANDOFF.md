@@ -1,8 +1,14 @@
 # 实施对话给规划复核对话的交接
 
-更新：2026-10-22。活动分支 codex/daily-workflow-20261022；起点 6b19ffa36ea1013c8cd4eb14f49e5e32590081b1。本文件反映实际状态，不代替用户批准或完整验收。
+更新：2026-10-23。活动分支 codex/daily-workflow-20261022；起点 6b19ffa36ea1013c8cd4eb14f49e5e32590081b1。本文件反映实际状态，不代替用户批准或完整验收。
 
 ## 当前进展
+
+- S2/DW-04当前Windows文件场景已完成：FILES.md、schema增量/消费者、统一版本选择与冲突流程。首轮native dw_files3及蓝图历史/文件意图/恢复通过；上下文顺序unit1通过；L2新文件与受影响入口22首轮通过。workspace/all-targets clippy exit0，仅既有27 lib及1旧测试告警，app/node类型通过。夹具no-shadow已清理，最终窄lint无告警。
+- 保留真实首轮失败：dw04-live-browser-first暴露protobuf JS string解码吞UTF-8 BOM；ReadFileResponse新增可选content_utf8，网关fatal/ignoreBOM解码。仅受影响RPC1和生产文件故事复测通过（dw04-bom-rpc-narrow、dw04-live-browser-bom），首轮trace/截图未覆盖；此前已过L2不重跑。控制器首轮13通过/新增1项仅断言错误文案失配，窄修后通过；dw04-controller-{first,narrow}。全部范围不累加为AC。
+- 当前可操作文件运行版 http://127.0.0.1:19088，launcher exec session25992，daemon32804/web56940；数据daily-workflow-evidence/20261022/dw04-live-bom/live-dbyo92/workspace，ready同父目录。冻结bin dw04-runtime-20261023-r2/bin，Web dw04-production-bom，清单manifest/source-bom记录内容身份。原19086保持DW-03；19087保留首轮失败现场。文件故事实际2次本地provider请求，固定旧引用与当前ReadFile确证不同；无付费模型调用。只读截图dw04-production-visual.png已检查，原IDE保留，历史引用长正文仍展开，DW-06必须收进共享可读详情。最终用户体验/全AC未代签。下一继续S3/DW-05/06/07，按同场景收齐后集中检查，不停工等待授权。
+
+- 当前推进S2/DW-04，基线9212d6a上的工作树须保留。FILES.md说明文件引用/冲突/回退实际契约；ReadFile增量及TS生成物/消费者配套。首轮文件RPC3、受影响蓝图历史/文件意图/恢复、文件选择顺序单元及L2文件协作22均通过；app/node类型通过，workspace/all-targets clippy exit0仅既有27 lib及1旧测试告警。日志dw04-batch-*。L2未受影响的已过输入/控制场景不重复跑；测试新增no-shadow告警仅夹具作用域，待清理。当前生产构建已完成，正在构建原生bin，随后同一文件故事验证真实链路。功能尚未提交、DW-04/跨包AC未关闭。既有19086仍是已冻结DW-03实例。
 
 - 2026-10-23 DW-03收尾，源码基线3119cb0加完整差异；摘要dw03-close-batch-source.json。复用现有窄控制RPC/bus，新增固定ID/目标/revision、持久Prepare/Claim/Accepted/Unknown/Retired，Urgent正文原子接收及消费节点checkpoint提交后Applied；Web/CLI/TS协议生成物与旧消费者同包。WORKFLOW_RECEIPTS.md定义容量/兼容/Stop磁盘失败/不重放边界；DW-03本包已定向及生产链验证，跨包AC最终验收仍保留。
 - 集中首轮通过：Windows存储/RPC7、bus7、受影响delivery15、客户端15、L2目标/前台/回执9；workspace/all-targets clippy exit0，仅既有27 lib及1旧diagnostics测试告警，app类型/lint exit0。日志dw03-close-batch-*。早期dw03-close-native-check-first.log捕获旧proto构造缺receipt_json，所有消费者已配套；首轮app检查的UUID默认参数类型已明确string，原输出保留于工具记录，后续dw03-close-app-types-second.log及集中类型exit0。源码未变的已过场景没有重跑。

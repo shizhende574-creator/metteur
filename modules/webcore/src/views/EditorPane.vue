@@ -25,8 +25,9 @@ import { dirOf } from '@/lib/path'
 import { fileRoute, pathByFileParam } from '@/lib/file-token'
 import { renderMarkdown } from '@/lib/markdown'
 import FileDiffView from '@/components/FileDiffView.vue'
+import DocumentConflictDialog from '@/components/DocumentConflictDialog.vue'
 import { wurl } from '@/lib/workspace-url'
-import { useDocumentsStore } from '@/stores/documents'
+import { useDocumentsStore, type DocumentReview } from '@/stores/documents'
 import { usePromptResourcesStore } from '@/stores/prompt-resources'
 import { useSurfaceNavigation } from '@/lib/surface'
 import RecoveryCopies from '@/components/RecoveryCopies.vue'
@@ -79,6 +80,7 @@ const modelId = computed(() =>
 const documents = useDocumentsStore()
 const recovery = useRecoveryStore()
 const recoveryOpen = ref(false)
+const conflictReview = ref<DocumentReview | null>(null)
 const backup = computed(() =>
   recovery.status(
     workspace.active?.path ?? '',
@@ -317,13 +319,13 @@ async function load() {
 
 /** Save the active file and refresh the explorer listing of its folder. */
 async function handleSave() {
-  return saveBuffer(false)
+  return saveBuffer()
 }
-async function saveBuffer(overwrite: boolean) {
+async function saveBuffer() {
   const ws = workspace.active
   if (!ws || isBlueprint.value) return
   const path = filePath.value
-  if (await documents.save(ws.path, path, overwrite)) workspace.invalidateDir(ws.path, dirOf(path))
+  if (await documents.save(ws.path, path)) workspace.invalidateDir(ws.path, dirOf(path))
   else {
     feedback.toast('error', 'Save Failed', documents.get(ws.path, path).error)
     await documents.sync(ws.path, path)
@@ -332,43 +334,18 @@ async function saveBuffer(overwrite: boolean) {
 
 /** Discard local edits and adopt the on-disk content. */
 async function reloadFromDisk() {
-  const ws = workspace.active?.path,
-    path = filePath.value
-  if (!ws) return
-  if (
-    await feedback.confirm({
-      header: 'Discard Unsaved Changes?',
-      message:
-        'Reload this document from its latest saved revision. Your local draft will be discarded.',
-      acceptLabel: 'Reload',
-      rejectLabel: 'Keep Editing',
-      danger: true,
-    })
-  )
-    documents.discard(ws, path)
+  await reviewResourceConflict()
 }
 async function reviewResourceConflict() {
   const ws = workspace.active?.path,
-    path = filePath.value,
-    doc = buffer.value
-  const latest = doc.diskResource
-  if (!ws || !latest) return
-  const reviewed = latest.reference
-  const confirmed = await feedback.confirm({
-    header: 'Review the Current Prompt Revision',
-    message: `Saved revision ${reviewed.revision}:\n\n${doc.disk}\n\nSave your draft in place of this body?`,
-    acceptLabel: 'Save My Draft',
-    rejectLabel: 'Keep Editing',
-  })
-  if (!confirmed) return
-  if (!documents.adoptReviewedResource(ws, path, reviewed)) {
-    feedback.toast('error', 'Source Changed Again', 'Review the latest revision before saving.')
+    path = filePath.value
+  if (!ws) return
+  if (!(await documents.sync(ws, path))) {
+    feedback.toast('error', 'Could Not Read Saved Version', documents.get(ws, path).error)
     return
   }
-  if (!(await documents.save(ws, path))) {
-    feedback.toast('error', 'Save Failed', doc.error)
-    await documents.sync(ws, path)
-  }
+  if (workspace.active?.path !== ws || filePath.value !== path) return
+  conflictReview.value = documents.review(ws, path)
 }
 
 /** Detect disk changes for the active file (auto-adopt when clean, flag when
@@ -419,6 +396,7 @@ onBeforeUnmount(() => {
 watch(
   [filePath, () => workspace.active?.path],
   () => {
+    conflictReview.value = null
     if (!props.filePath && filePath.value && workspace.active) tabs.openFile(filePath.value)
     void load()
   },
@@ -673,7 +651,7 @@ async function compileToBlueprint() {
       <!-- Conflict banner: local edits + disk changed → resolve manually. -->
       <div
         v-if="conflicted"
-        class="flex shrink-0 items-center gap-2 border-b border-divider px-3 py-1.5 text-[11.5px]"
+        class="flex shrink-0 items-center gap-2 border-b border-divider px-3 py-2 text-[13px]"
         style="background: var(--danger-soft); color: var(--danger)"
       >
         <TriangleAlert class="h-3.5 w-3.5 shrink-0" />
@@ -689,9 +667,9 @@ async function compileToBlueprint() {
           v-if="!buffer.resource"
           class="shrink-0 underline underline-offset-2 hover:opacity-80"
           type="button"
-          @click="saveBuffer(true)"
+          @click="reviewResourceConflict"
         >
-          Overwrite
+          Compare Changes
         </button>
         <button
           v-else
@@ -703,7 +681,11 @@ async function compileToBlueprint() {
         </button>
       </div>
 
-      <div v-if="diffing" class="flex min-h-0 flex-1 flex-col">
+      <div v-if="buffer.readOnlyReason" class="min-h-0 flex-1 overflow-auto p-4 text-[13px]">
+        <p role="status" class="mb-3">{{ buffer.readOnlyReason }}</p>
+        <pre class="whitespace-pre-wrap">{{ content }}</pre>
+      </div>
+      <div v-else-if="diffing" class="flex min-h-0 flex-1 flex-col">
         <div
           class="flex shrink-0 items-center gap-2 border-b border-divider px-3 py-1.5 text-[11.5px] text-subtle"
         >
@@ -744,5 +726,11 @@ async function compileToBlueprint() {
         />
       </div>
     </template>
+    <DocumentConflictDialog
+      v-if="conflictReview"
+      :review="conflictReview"
+      @close="conflictReview = null"
+      @saved="(ws, path) => workspace.invalidateDir(ws, dirOf(path))"
+    />
   </div>
 </template>

@@ -33,6 +33,12 @@ export interface FileTreeNode {
   kind: 'dir' | 'file'
   /** Present only for directories. */
   children?: FileTreeNode[]
+  reference?: SavedFileReference
+}
+export interface SavedFileReference {
+  snapshotId: string
+  path: string
+  digest: string
 }
 
 /** Metadata of one filesystem entry, used by the explorer's Properties. */
@@ -83,6 +89,8 @@ export interface WatchEvent {
 /** A sidecar resource (a saved file) inside the workspace. */
 export interface FileContent {
   content: string
+  reference?: SavedFileReference
+  readOnlyReason?: string
   /** Editor language hint derived from the extension, e.g. `json`, `blueprint`. */
   language: string
 }
@@ -90,6 +98,7 @@ export interface FileContent {
 /** One turn in the ReAct conversation shown by the chat surface. */
 export interface ChatMessage {
   id: string
+  fileReferences?: SavedFileReference[]
   role: 'user' | 'assistant' | 'tool' | 'error' | 'notice'
   /** Role header for tool messages, e.g. the tool name. */
   actor?: string
@@ -156,6 +165,8 @@ export interface ChatOptions {
     purpose: string
   }
   prompt_snapshots?: string[]
+  file_references?: SavedFileReference[]
+  context_order?: { kind: 'file' | 'prompt'; index: number }[]
   model?: string
   system?: string
   temperature?: number

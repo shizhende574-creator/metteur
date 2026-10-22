@@ -1,6 +1,12 @@
 import { gateway, type Result, type FileContent } from '@/core'
 import type { PromptEntry } from '@/core/resources'
 
+function textConstraint(content: string) {
+  return /\r(?!\n)/.test(content) || (/\r\n/.test(content) && /(?<!\r)\n/.test(content))
+    ? 'This file uses mixed or unsupported line endings. Read it here and edit it externally to preserve its original bytes.'
+    : undefined
+}
+
 /** Resource-backed Markdown uses the same editor, with the resource store's CAS. */
 export const promptFilePath = (entry: PromptEntry) =>
   `@prompt/${entry.reference.scope.scope}/${entry.reference.id}.md`
@@ -13,14 +19,35 @@ export async function readDocument(
   path: string,
 ): Promise<Result<FileContent & { resource?: PromptEntry }>> {
   const prompt = parsePromptFile(path)
-  if (!prompt) return gateway.readFile(workspace, path)
+  if (!prompt) {
+    const result = await gateway.readFile(workspace, path)
+    return result.ok
+      ? ({
+          ok: true,
+          data: {
+            ...result.data,
+            readOnlyReason: path.endsWith('.blueprint')
+              ? undefined
+              : textConstraint(result.data.content),
+          },
+        } as const)
+      : result
+  }
   const result = await gateway.resourceRequest('queryPromptResources', workspace, {
     operation: 'read',
     ...prompt,
   })
   if (!result.ok) return result
   const resource = result.data as PromptEntry
-  return { ok: true, data: { content: resource.content.body, language: 'markdown', resource } }
+  return {
+    ok: true,
+    data: {
+      content: resource.content.body,
+      language: 'markdown',
+      resource,
+      readOnlyReason: textConstraint(resource.content.body),
+    },
+  }
 }
 export async function writeDocument(
   workspace: string,

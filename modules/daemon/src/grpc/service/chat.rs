@@ -122,6 +122,7 @@ impl DaemonService {
             return Err(Status::resource_exhausted("too many prompt selections"));
         }
         let mut selected_text = String::new();
+        let mut prompt_parts = Vec::new();
         let mut selected_prompts = Vec::new();
         for id in selected_ids {
             let snapshot = self
@@ -133,10 +134,33 @@ impl DaemonService {
             }
             selected_text.push_str(&crate::prompt_snapshots::user_text(&snapshot));
             selected_text.push_str("\n\n");
+            prompt_parts.push(format!("{}\n\n", crate::prompt_snapshots::user_text(&snapshot)));
             selected_prompts.push(snapshot);
         }
         if selected_text.len() > 64 * 1024 {
             return Err(Status::resource_exhausted("selected prompt budget exceeded"));
+        }
+        let files = serde_json::from_str::<serde_json::Value>(&req.options_json)
+            .ok()
+            .and_then(|options| options.get("file_references").cloned())
+            .unwrap_or_else(|| serde_json::json!([]));
+        let files: Vec<super::file_references::FileReference> = serde_json::from_value(files)
+            .map_err(|_| Status::invalid_argument("invalid saved file references"))?;
+        let order = serde_json::from_str::<serde_json::Value>(&req.options_json)
+            .ok()
+            .and_then(|options| options.get("context_order").cloned())
+            .unwrap_or_else(|| serde_json::json!([]));
+        let order: Vec<super::file_references::ContextOrder> = serde_json::from_value(order)
+            .map_err(|_| Status::invalid_argument("invalid selected context order"))?;
+        selected_text = super::file_references::ordered_text(
+            &prompt_parts,
+            &self.selected_file_parts(&ws, &subject, &files)?,
+            &order,
+        )?;
+        if req.message.len().saturating_add(selected_text.len()) > 1024 * 1024 {
+            return Err(Status::resource_exhausted(
+                "Combined input and selected context exceed the supported limit",
+            ));
         }
         let conventions = crate::project_memory::ProjectMemory::new(ws_db.clone(), ws.root())
             .map_err(|error| Status::internal(error.to_string()))?
@@ -1054,7 +1078,8 @@ impl DaemonService {
         &self,
         request: Request<AbortChatRequest>,
     ) -> Result<Response<Empty>, Status> {
-        let owner = super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
+        let owner =
+            super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws = self
             .state
@@ -1074,11 +1099,19 @@ impl DaemonService {
             ));
         }
         let identity = super::workflow_receipts::identity(&req.receipt_json, true)?;
-        let store = crate::storage::workflow_receipts::Store::new(ws.db.clone(), &owner).map_err(super::workflow_receipts::error)?;
-        let target = crate::storage::approval_delivery::Target {kind:"chat".into(),session:entry.session_id,turn:Some(entry.turn_id),run:None};
+        let store = crate::storage::workflow_receipts::Store::new(ws.db.clone(), &owner)
+            .map_err(super::workflow_receipts::error)?;
+        let target = crate::storage::approval_delivery::Target {
+            kind: "chat".into(),
+            session: entry.session_id,
+            turn: Some(entry.turn_id),
+            run: None,
+        };
         let receipt = store.control(&identity, &target, "stop", || {
             entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-            if let Some(broker) = &entry.approvals { broker.close(); }
+            if let Some(broker) = &entry.approvals {
+                broker.close();
+            }
         });
         if let Some(bus) = &entry.interrupt_bus {
             bus.send(Interrupt {

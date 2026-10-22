@@ -45,6 +45,9 @@ const receipts = {
   sawToolResult: false,
   workflowInputRequests: 0,
   supervisionRequests: 0,
+  fileReferenceRequests: 0,
+  sawFrozenFile: false,
+  sawCurrentFileRead: false,
 }
 
 function start(name, executable, args, env = withCurrentNodePath()) {
@@ -99,8 +102,15 @@ const provider = createServer(async (request, response) => {
     receipts.calls++
     const workflowInput=body.messages?.some(m=>m.role==='user' && String(m.content).includes('DW03_TEMPORARY_INPUT'))
     if(workflowInput) receipts.workflowInputRequests++
+    const fileMode=body.messages?.some(m=>m.role==='user' && String(m.content).includes('DW04_FILE_WORKFLOW'))
+    if(fileMode){
+      receipts.fileReferenceRequests++;
+      receipts.sawFrozenFile ||= body.messages.some(m=>m.role==='user' && String(m.content).includes('DW04_SAVED_VERSION') && String(m.content).includes('<file_content>'));
+      receipts.sawCurrentFileRead ||= Boolean(result && JSON.stringify(result).includes(nonce) && JSON.stringify(result).includes('DW04_CURRENT_DISK'));
+    }
     let tool = {id:jobMode?(job?'fixture-wait':'fixture-job'):'fixture-read',type:'function',function: jobMode ? (job? {name:'AwaitEvents',arguments:JSON.stringify({sources:[job[1]],mode:'all',deadline_ms:Date.now()+3600000,params:{fixture:'local-only'}})} : {name:'StartCommand',arguments:JSON.stringify({command:localDelayCommand()})}) : {name:'ReadFile',arguments:JSON.stringify({path:'app.ts'})}}
     let content = jobMode ? 'M2_LOCAL_JOB completed through the host continuation.' : `METTEUR_LOCAL_READY ${nonce}: app.ts exports the local evidence constant.`
+    if(fileMode){tool.function={name:'ReadFile',arguments:JSON.stringify({path:'workflow.txt'})};content=`DW04_FILE_READY ${nonce}: saved selection and current tool read remained distinct.`}
     const launchMode=body.messages?.some(m=>m.role==='user'&&String(m.content).includes('M3_LOCAL_BLUEPRINT'));
     const nodeMode=body.messages?.some(m=>String(m.content)==='BLUEPRINT_NODE');
     const supervisionMode=body.messages?.some(m=>m.role==='user' && String(m.content).includes('DW03_SUPERVISION_MESSAGE'))

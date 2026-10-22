@@ -71,7 +71,7 @@ impl DaemonService {
         // before a concrete Stop can be sent. It reads no ledger or content.
         if matches!(query, Query::Capabilities) {
             return Ok(response(Ok(
-                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"targeted_controls":true,"durable_queue":true,"durable_queue_channel":"chat","max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
+                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"conditional_files":true,"frozen_file_references":true,"targeted_controls":true,"durable_queue":true,"durable_queue_channel":"chat","max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
             )));
         }
         if matches!(query, Query::ControlTarget) {

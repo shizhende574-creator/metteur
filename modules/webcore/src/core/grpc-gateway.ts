@@ -1,5 +1,6 @@
 import type { OversightReports } from './oversight'
 import { submitWorkflow } from './workflow-receipts'
+import { validFileReference, fileTextDigest } from './file-reference'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
@@ -537,20 +538,39 @@ export class GrpcGateway implements DaemonGateway {
     }
   }
 
-  async readFile(workspacePath: string, filePath: string): Promise<Result<FileContent>> {
+  async readFile(
+    workspacePath: string,
+    filePath: string,
+    freezeReference = false,
+  ): Promise<Result<FileContent>> {
     if (isConfigDoc(filePath)) {
+      if (freezeReference)
+        return err(
+          'Configuration documents do not provide workspace file snapshots. Copy the required text explicitly.',
+        )
       const scopePath = configScopeOf(filePath) === 'user' ? '' : workspacePath
       const cfg = await this.getConfig(scopePath)
       return cfg.ok ? ok({ content: configToToml(cfg.data), language: 'toml' }) : cfg
     }
     try {
-      const file = await this.client.readFile({ workspacePath, path: filePath })
+      const file = await this.client.readFile({ workspacePath, path: filePath, freezeReference })
+      const content =
+        file.contentUtf8 === undefined
+          ? file.content
+          : new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(file.contentUtf8)
+      const reference = file.fileReferenceJson ? JSON.parse(file.fileReferenceJson) : undefined
+      if (
+        freezeReference &&
+        (!validFileReference(reference, filePath.replaceAll('\\', '/')) ||
+          reference.digest !== (await fileTextDigest(content)))
+      )
+        return err('The host did not provide a verifiable saved file version. Your draft was kept.')
       const language = filePath.endsWith('.blueprint')
         ? 'blueprint'
         : filePath.endsWith('.json')
           ? 'json'
           : 'text'
-      return ok({ content: file.content, language })
+      return ok({ content, language, ...(reference ? { reference } : {}) })
     } catch (e) {
       return toErr(e)
     }
@@ -569,6 +589,17 @@ export class GrpcGateway implements DaemonGateway {
       return this.setConfig(parsed, scopePath)
     }
     try {
+      if (options?.createOnly || options?.expectedContent !== undefined) {
+        const caps = await this.resourceRequest('chatDelivery', workspacePath, {
+          operation: 'capabilities',
+        })
+        if (!caps.ok || (caps.data as { conditional_files?: boolean }).conditional_files !== true)
+          return err(
+            caps.ok
+              ? 'Host cannot protect conditional file writes. Update the host before saving.'
+              : caps.error,
+          )
+      }
       await this.client.writeFile({ workspacePath, path: filePath, content, ...options })
       return ok(undefined)
     } catch (e) {

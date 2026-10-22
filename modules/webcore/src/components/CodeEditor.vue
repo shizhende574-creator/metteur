@@ -35,6 +35,14 @@ const emit = defineEmits<{
 const themeStore = useThemeStore()
 const views = useWorkspaceViewStore()
 let positionFrame = 0
+// Host positions count the original text, including BOM and CRLF bytes as UTF-16.
+const monacoBom = () => (monoModel?.getValue(undefined, true).startsWith('\uFEFF') ? 1 : 0)
+const cmRawOffset = (offset: number) =>
+  cmView
+    ? offset + (cmView.state.doc.lineAt(offset).number - 1) * (cmView.state.lineBreak.length - 1)
+    : offset
+const cmEditorOffset = (offset: number) =>
+  props.modelValue.slice(0, offset).replaceAll('\r\n', '\n').length
 function savePosition() {
   if (!props.viewTarget || disposed || positionFrame) return
   positionFrame = requestAnimationFrame(() => {
@@ -47,8 +55,8 @@ function savePosition() {
         top: monoEditor.getScrollTop(),
         left: monoEditor.getScrollLeft(),
         selections: (monoEditor.getSelections() ?? []).map((selection) => ({
-          anchor: monoModel!.getOffsetAt(selection.getSelectionStart()),
-          head: monoModel!.getOffsetAt(selection.getPosition()),
+          anchor: monoModel!.getOffsetAt(selection.getSelectionStart()) + monacoBom(),
+          head: monoModel!.getOffsetAt(selection.getPosition()) + monacoBom(),
         })),
       }
     else if (cmView)
@@ -57,8 +65,8 @@ function savePosition() {
         top: cmView.scrollDOM.scrollTop,
         left: cmView.scrollDOM.scrollLeft,
         selections: cmView.state.selection.ranges.map((range) => ({
-          anchor: range.anchor,
-          head: range.head,
+          anchor: cmRawOffset(range.anchor),
+          head: cmRawOffset(range.head),
         })),
       }
     if (position) views.position(props.viewTarget.workspace, props.viewTarget.path, position)
@@ -150,8 +158,8 @@ async function setupMonaco() {
   if (savedPosition) {
     monoEditor.setSelections(
       savedPosition.selections.map((selection) => {
-        const anchor = model.getPositionAt(selection.anchor),
-          head = model.getPositionAt(selection.head)
+        const anchor = model.getPositionAt(Math.max(0, selection.anchor - monacoBom())),
+          head = model.getPositionAt(Math.max(0, selection.head - monacoBom()))
         return new mod.Selection(anchor.lineNumber, anchor.column, head.lineNumber, head.column)
       }),
     )
@@ -160,7 +168,7 @@ async function setupMonaco() {
   monoEditor.onDidChangeCursorSelection(savePosition)
   monoEditor.onDidScrollChange(savePosition)
   monoEditor.onDidChangeModelContent(() => {
-    const value = monoEditor!.getValue()
+    const value = monoModel!.getValue(undefined, true)
     if (value !== props.modelValue) emit('update:modelValue', value)
     syncUndoState()
   })
@@ -171,6 +179,7 @@ let cmView: import('@codemirror/view').EditorView | null = null
 let cmUndo: ((v: unknown) => boolean) | null = null
 let cmRedo: ((v: unknown) => boolean) | null = null
 let applyCmTheme: (() => void) | null = null
+let applyCmLineBreak: ((value: string) => void) | null = null
 
 async function cmLanguage() {
   const jsmod = await import('@codemirror/lang-javascript')
@@ -229,6 +238,7 @@ async function setupCm() {
   const stateSupport = (await cmLanguage()) as unknown
   if (disposed || initializationFailed || !container.value) return
   const themeCompartment = new stateMod.Compartment()
+  const lineBreakCompartment = new stateMod.Compartment()
   const extensions = [
     viewMod.lineNumbers(),
     viewMod.highlightActiveLine(),
@@ -237,6 +247,9 @@ async function setupCm() {
     viewMod.drawSelection(),
     viewMod.dropCursor(),
     stateMod.EditorState.allowMultipleSelections.of(true),
+    lineBreakCompartment.of(
+      stateMod.EditorState.lineSeparator.of(props.modelValue.includes('\r\n') ? '\r\n' : '\n'),
+    ),
     langMod.indentOnInput(),
     langMod.bracketMatching(),
     langMod.syntaxHighlighting(langMod.defaultHighlightStyle, { fallback: true }),
@@ -247,7 +260,7 @@ async function setupCm() {
     ),
     viewMod.EditorView.updateListener.of((update: import('@codemirror/view').ViewUpdate) => {
       if (update.docChanged) {
-        const text = update.state.doc.toString()
+        const text = update.state.sliceDoc()
         if (text !== props.modelValue) emit('update:modelValue', text)
       }
       if (update.selectionSet || update.docChanged) savePosition()
@@ -264,8 +277,8 @@ async function setupCm() {
         ? stateMod.EditorSelection.create(
             savedPosition.selections.map((selection) =>
               stateMod.EditorSelection.range(
-                Math.min(props.modelValue.length, selection.anchor),
-                Math.min(props.modelValue.length, selection.head),
+                cmEditorOffset(selection.anchor),
+                cmEditorOffset(selection.head),
               ),
             ),
           )
@@ -273,6 +286,12 @@ async function setupCm() {
     }),
   })
   cmView = view
+  applyCmLineBreak = (value) =>
+    view.dispatch({
+      effects: lineBreakCompartment.reconfigure(
+        stateMod.EditorState.lineSeparator.of(value.includes('\r\n') ? '\r\n' : '\n'),
+      ),
+    })
   if (savedPosition) {
     view.scrollDOM.scrollTop = savedPosition.top
     view.scrollDOM.scrollLeft = savedPosition.left
@@ -322,8 +341,8 @@ onBeforeUnmount(() => {
       top: monoEditor.getScrollTop(),
       left: monoEditor.getScrollLeft(),
       selections: (monoEditor.getSelections() ?? []).map((selection) => ({
-        anchor: monoModel!.getOffsetAt(selection.getSelectionStart()),
-        head: monoModel!.getOffsetAt(selection.getPosition()),
+        anchor: monoModel!.getOffsetAt(selection.getSelectionStart()) + monacoBom(),
+        head: monoModel!.getOffsetAt(selection.getPosition()) + monacoBom(),
       })),
     })
   else if (props.viewTarget && cmView)
@@ -332,8 +351,8 @@ onBeforeUnmount(() => {
       top: cmView.scrollDOM.scrollTop,
       left: cmView.scrollDOM.scrollLeft,
       selections: cmView.state.selection.ranges.map((range) => ({
-        anchor: range.anchor,
-        head: range.head,
+        anchor: cmRawOffset(range.anchor),
+        head: cmRawOffset(range.head),
       })),
     })
   disposed = true
@@ -359,10 +378,13 @@ watch(
   () => props.modelValue,
   (value) => {
     if (monoEditor && monoModel && !monoModel.isDisposed()) {
-      if (monoEditor.getValue() !== value) monoEditor.setValue(value)
+      if (monoModel?.getValue(undefined, true) !== value) monoEditor.setValue(value)
     } else if (cmView) {
-      const cur = cmView.state.doc.toString()
-      if (cur !== value) cmView.dispatch({ changes: { from: 0, to: cur.length, insert: value } })
+      const cur = cmView.state.sliceDoc()
+      if (cur !== value) {
+        applyCmLineBreak?.(value)
+        cmView.dispatch({ changes: { from: 0, to: cmView.state.doc.length, insert: value } })
+      }
     }
   },
 )

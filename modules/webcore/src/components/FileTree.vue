@@ -521,6 +521,7 @@ async function onMenuSelect(id: string) {
       openInSplit(node.path)
       break
     case 'add-to-chat':
+      if (node.kind !== 'file') return
       chat.attach(node.path)
       openSurface('chat')
       break

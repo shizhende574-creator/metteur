@@ -58,6 +58,9 @@ export class DeliveryAttempt {
       !capabilities.ok ||
       (capabilities.data as { durable_manual_send?: boolean }).durable_manual_send !== true ||
       (capabilities.data as { pending_reconciliation?: boolean }).pending_reconciliation !== true ||
+      (this.snapshot.options.file_references?.length &&
+        (capabilities.data as { frozen_file_references?: boolean }).frozen_file_references !==
+          true) ||
       (this.snapshot.live &&
         ((capabilities.data as { durable_queue?: boolean }).durable_queue !== true ||
           (capabilities.data as { durable_queue_channel?: string }).durable_queue_channel !==

@@ -33,7 +33,7 @@
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
 | DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（草稿/位置入口已接入，生产链/完整验收待完成） |
 | DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包AC最终验收保留） |
-| DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
+| DW-04 | 文件引用、冲突和回退 | DW-00/02 | VERIFIED（当前Windows文件场景及生产链；跨包AC最终验收保留） |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
 | DW-06 | 交接、可读结果与分类处置 | DW-03/05 | PLANNED |
 | DW-07 | 状态事件刷新与有界开销 | DW-00 | PLANNED |
@@ -118,7 +118,7 @@
 
 ### DW-04 · 文件引用、冲突和回退
 
-**状态**：PLANNED。**依赖**：DW-00/02；WF-PV-02 获批；提交引用接入与 DW-03 对齐。
+**状态**：VERIFIED（当前Windows定向/生产文件链；最终跨包验收保留）。**依赖**：DW-00/02；WF-PV-02 r2 已获批；提交引用接入与 DW-03 对齐。前置当前生产链/控制收尾为9212d6a。
 
 **实现定位**：modules/webcore/src/stores/documents.ts、version.ts；views/EditorPane.vue、VersionView.vue、BlueprintView.vue；lib/prompt-file.ts；modules/daemon/src/grpc/service/files.rs、storage/versioning。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -132,7 +132,7 @@
 
 **验收**：AC-07/08/09/11/17/24/29。**证据交付**：文件冲突、引用快照、回退失败和镜像失败的定向证据。
 
-**实际记录**：实施 NOT_STARTED；检查 NOT_RUN；提交无；预览批准范围见 PREVIEWS.md，正式行为未验收。
+**实际记录**：固定文件引用、三方比较/条件保存/保留双方、独立ACK恢复副本、BOM/CRLF及回退错误呈现已接入，见FILES.md。首轮L2文件协作及受影响入口22通过，native文件RPC3/历史/意图/恢复通过，workspace全部消费者clippy exit0仅既有告警。L3首轮发现protobuf JS吞BOM，已补可选原始UTF-8字节；仅复测该RPC及完整文件链通过，旧证据保留。控制器新增能力拒绝用例仅错误文案断言失配，窄修复测通过。生产入口19088，冻结bin/Web与ready归属见REVIEW_HANDOFF；没有付费调用或远端操作。文件引用长上下文在历史中仍展开，纳入DW-06共享可读展示；最终AC尚未关闭。
 
 ### DW-05 · 主聊天与蓝图监督分离
 
@@ -235,9 +235,9 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 | AC-04 | 发送拒绝/队列失效/断线后输入及选择可恢复 | 02/03 | L1/L3 | PARTIAL：主聊天/队列/监督拒绝与未知L1/L2；临时插入/L3待验 |
 | AC-05 | 旧 ACK、新编辑、保存/备份竞态和多窗口隔离 | 02/03 | L1/L3 | PARTIAL：恢复在途/多窗口；完整入口待验 |
 | AC-06 | 重复提交/回执丢失不重复运行，同 ID 异内容拒绝 | 03 | L1/L3 | PARTIAL：Send/Queue/Steer/监督正常输入RPC/客户端；临时插入/L3待验 |
-| AC-07 | 脏文件引用选择与实际内容身份一致 | 04 | L1/L3 | NOT_RUN |
-| AC-08 | 外部/Agent 并发改写及再变化不覆盖，create-only 恢复 | 04 | L1/L3 | NOT_RUN |
-| AC-09 | 有人工修改/脏稿时 retry/rewind/rollback 影响与失败真实 | 04 | L1/L3 | NOT_RUN |
+| AC-07 | 脏文件引用选择与实际内容身份一致 | 04 | L1/L3 | PARTIAL：固定快照/摘要/选择顺序L1，实际脏稿选择与模型/工具读取分离L3；最终撤权/恢复矩阵待验 |
+| AC-08 | 外部/Agent 并发改写及再变化不覆盖，create-only 恢复 | 04 | L1/L3 | PARTIAL：CAS/再次变化/另存冲突/删除恢复L1/L2，真实并发文件链L3；最终矩阵待验 |
+| AC-09 | 有人工修改/脏稿时 retry/rewind/rollback 影响与失败真实 | 04 | L1/L3 | PARTIAL：保护草稿/回退错误L2，原文件恢复L1；完整故事待验 |
 | AC-10 | 运行状态、原因、下一动作、来源及结果准确 | 05/06 | L2/L3 | NOT_RUN |
 | AC-11 | launch Stale/重复/保存或 mirror 失败/断线安全 | 04/05/06/08 | L1/L3 | NOT_RUN |
 | AC-12 | 自动续聊与只保留结果策略正确，人工停止不重跑 | 05/06/08 | L1/L3 | NOT_RUN |

@@ -16,6 +16,7 @@ mod config;
 mod continuations;
 mod delivery;
 mod files;
+mod file_references;
 mod foreground;
 mod jobs;
 mod launches;

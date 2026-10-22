@@ -42,6 +42,29 @@ function liveSnapshot() {
     live: { mode: 'queue', turn: crypto.randomUUID() },
   }
 }
+
+test('saved file context cannot silently downgrade on an older host', async () => {
+  const fixed = snapshot()
+  fixed.options.file_references = [
+    { snapshotId: crypto.randomUUID(), path: 'a.txt', digest: 'a'.repeat(64) },
+  ]
+  let sends = 0
+  const attempt = new DeliveryAttempt(
+    transport(() => {
+      throw Error('unexpected receipt query')
+    }),
+    fixed,
+  )
+  assert.equal(
+    await attempt.submit(async () => {
+      sends++
+      return { ok: true, data: undefined }
+    }),
+    false,
+  )
+  assert.equal(sends, 0)
+  assert.match(attempt.error, /does not provide.*receipts/i)
+})
 function liveReceipt(attempt, phase = 'live_queued') {
   return {
     ...accepted(attempt),

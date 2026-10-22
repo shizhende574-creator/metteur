@@ -25,6 +25,8 @@ import { isSessionId } from '@/core/workspace-view'
 import { useApprovalDecisionsStore } from './approval-decisions'
 import { approvalDigest, type ApprovalTarget } from '@/core/approval-decision'
 import { useFeedbackStore } from './feedback'
+import { useDocumentsStore } from './documents'
+import { validFileReference } from '@/core/file-reference'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -61,6 +63,7 @@ export const useChatStore = defineStore('chat', () => {
   const streaming = ref(false)
   const busy = ref(false)
   const sendError = ref('')
+  const requestedAttachment = ref<{ workspace: string; entity: string; path: string } | null>(null)
   /** id of the persisted session, passed back on every turn. */
   const sessionId = ref('')
   const sessionUnavailable = ref(false)
@@ -421,6 +424,17 @@ export const useChatStore = defineStore('chat', () => {
     if (f.kind !== 'file' || pendingFiles.value.some((x) => x.path === f.path)) return
     pendingFiles.value = [...pendingFiles.value, f]
   }
+  function contextOrder(chosen: ComposerSelection[]): NonNullable<ChatOptions['context_order']> {
+    let file = 0,
+      prompt = 0
+    return chosen.flatMap<NonNullable<ChatOptions['context_order']>[number]>((item) =>
+      item.kind === 'prompt'
+        ? [{ kind: 'prompt', index: prompt++ }]
+        : item.file.reference
+          ? [{ kind: 'file', index: file++ }]
+          : [],
+    )
+  }
 
   /** Drop a queued chip. */
   function removeQueuedFile(path: string): void {
@@ -461,6 +475,16 @@ export const useChatStore = defineStore('chat', () => {
         'Some recovered references need review. Keep or copy the input before sending.'
       return false
     }
+    if (
+      !gateway.demo &&
+      chosen.some(
+        (item) => item.kind === 'file' && !validFileReference(item.file.reference, item.file.path),
+      )
+    ) {
+      sendError.value =
+        'Review recovered file references and choose their saved versions before sending.'
+      return false
+    }
     const refs = chosen.flatMap((item) =>
         item.kind === 'file' ? [`@file ${item.file.path}`] : [],
       ),
@@ -475,8 +499,19 @@ export const useChatStore = defineStore('chat', () => {
       newSession: targetSession ? undefined : entity,
       message: body,
       history,
-      options: { ...options },
+      options: {
+        ...options,
+        ...(mode !== 'retry'
+          ? {
+              file_references: chosen.flatMap((item) =>
+                item.kind === 'file' && item.file.reference ? [item.file.reference] : [],
+              ),
+              context_order: contextOrder(chosen),
+            }
+          : {}),
+      },
     }
+    const fixedFileReferences = JSON.parse(JSON.stringify(snapshot.options.file_references ?? []))
     let received = false,
       executionOk = false
     const receivedInput = (receipt?: ChatDeliveryReceipt) => {
@@ -497,6 +532,7 @@ export const useChatStore = defineStore('chat', () => {
           content: body,
           createdAt: receipt?.accepted_ms ?? Date.now(),
           checkpoint: receipt?.checkpoint ?? undefined,
+          fileReferences: fixedFileReferences,
         })
       streaming.value = true
       lastUsage.value = null
@@ -669,6 +705,10 @@ export const useChatStore = defineStore('chat', () => {
       if (streaming.value) await abort()
       if (pending) await pending
       busy.value = true
+      if (!(await useDocumentsStore().protectWorkspaceDrafts(ws.path)))
+        return 'Current file drafts could not be protected. Keep or export them before restoring.'
+      if (workspace.active?.path !== ws.path || sessionId.value !== targetSession)
+        return 'Conversation changed before restoring files.'
       const result = await gateway.rewindChat(ws.path, targetSession, snapshotId)
       if (!result.ok) return result.error
       workspace.invalidateTree(ws.path)
@@ -733,7 +773,11 @@ export const useChatStore = defineStore('chat', () => {
       // Mark this as a session-bound retry. The daemon will reject a retry
       // without a restored session instead of seeding a new context from the
       // display history (which could reintroduce the discarded answer).
-      return (await send(prompt, { ...options, retry: true }, 'retry'))
+      return (await send(
+        prompt,
+        { ...options, file_references: original.fileReferences ?? [], retry: true },
+        'retry',
+      ))
         ? null
         : 'The old turn was restored, but the new reply failed.'
     } finally {
@@ -905,6 +949,16 @@ export const useChatStore = defineStore('chat', () => {
       sendError.value = 'Review or reconcile the current input before submitting.'
       return false
     }
+    if (
+      !gateway.demo &&
+      chosen.some(
+        (item) => item.kind === 'file' && !validFileReference(item.file.reference, item.file.path),
+      )
+    ) {
+      sendError.value =
+        'Review recovered file references and choose their saved versions before submitting.'
+      return false
+    }
     const current = () =>
       workspace.active?.path === ws && epoch === conversationEpoch && sessionId.value === session
     const refs = chosen.flatMap((item) => (item.kind === 'file' ? [`@file ${item.file.path}`] : []))
@@ -914,7 +968,12 @@ export const useChatStore = defineStore('chat', () => {
       session,
       message: body,
       history: [],
-      options: {},
+      options: {
+        file_references: chosen.flatMap((item) =>
+          item.kind === 'file' && item.file.reference ? [item.file.reference] : [],
+        ),
+        context_order: contextOrder(chosen),
+      },
       live: { mode, turn },
     }
     const accepted = (receipt?: ChatDeliveryReceipt) => {
@@ -995,6 +1054,12 @@ export const useChatStore = defineStore('chat', () => {
         mode,
         message: fixed.message,
         prompt_snapshots: ids,
+        ...(fixed.options.file_references?.length
+          ? {
+              file_references: fixed.options.file_references,
+              context_order: fixed.options.context_order,
+            }
+          : {}),
       })
       if (result.ok) onReceipt(result.data as ChatDeliveryReceipt)
       return result
@@ -1204,18 +1269,14 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
-  /** Attach a file reference to the conversation without sending a turn
-   *  (explorer "Add to Conversation"). The agent sees it on the next reply. */
+  /** Explorer attachment follows the same saved-version choice as the composer. */
   function attach(filePath: string) {
-    messages.value.push({
-      id: `ref-${Date.now()}`,
-      role: 'user',
-      content: `@file ${filePath}`,
-      createdAt: Date.now(),
-    })
+    const ws = workspace.active?.path
+    if (ws) requestedAttachment.value = { workspace: ws, entity: draftEntity.value, path: filePath }
   }
 
   return {
+    requestedAttachment,
     messages,
     rewind,
     rewinding,

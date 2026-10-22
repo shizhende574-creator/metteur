@@ -50,7 +50,7 @@ export function acquireModel(
   const existing = entries.get(identity)
   if (existing && !existing.model.isDisposed()) {
     existing.refs += 1
-    if (existing.model.getValue() !== value) existing.model.setValue(value)
+    if (existing.model.getValue(undefined, true) !== value) existing.model.setValue(value)
     if (existing.model.getLanguageId() !== language) {
       monaco.editor.setModelLanguage(existing.model, language)
     }
