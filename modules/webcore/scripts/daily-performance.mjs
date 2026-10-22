@@ -3,7 +3,7 @@ import { chromium, expect } from '@playwright/test'
 import { createClient } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
 import { Daemon } from '../src/gen/metteur_pb.ts'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { hostname, cpus, totalmem } from 'node:os'
 import assert from 'node:assert/strict'
@@ -34,10 +34,19 @@ const result = {
 const p95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]
 const browser = await chromium.launch({ headless: true })
 try {
+  const reuse = process.argv[5]
+  if (reuse) {
+    const previous = JSON.parse(await readFile(reuse, 'utf8'))
+    assert.equal(previous.machine.host, result.machine.host)
+    assert.equal(previous.sample.viewport.join('x'), result.sample.viewport.join('x'))
+    const original = previous.measurements.find((measurement) => measurement.name === 'baseline')
+    assert.equal(original.baseURL, baseline)
+    result.measurements.push({ ...original, reusedFrom: reuse })
+  }
   for (const [name, baseURL] of [
     ['baseline', baseline],
     ['candidate', candidate],
-  ]) {
+  ].filter(([kind]) => !reuse || kind === 'candidate')) {
     assert.equal(new URL(baseURL).hostname, '127.0.0.1')
     const workspace = join(output, name)
     await mkdir(workspace)
