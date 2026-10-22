@@ -54,7 +54,15 @@ for (const outcome of ['error', 'delivery_replay', 'closed'] as const) {
           notices: any[] = [],
           usage: any[] = []
         const transport = {
-          resourceRequest: async () => ({ ok: true, data: { durable_manual_send: true } }),
+          resourceRequest: async () => ({
+            ok: true,
+            data: {
+              durable_manual_send: true,
+              pending_reconciliation: true,
+              items: [],
+              raw_copies_unchanged: true,
+            },
+          }),
         }
         const attempt = new DeliveryAttempt(
           transport,

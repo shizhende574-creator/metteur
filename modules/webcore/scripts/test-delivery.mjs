@@ -28,8 +28,10 @@ function transport(handler) {
   return {
     resourceRequest: async (_method, ws, payload) =>
       payload.operation === 'capabilities'
-        ? { ok: true, data: { durable_manual_send: true } }
-        : handler(ws, payload),
+        ? { ok: true, data: { durable_manual_send: true, pending_reconciliation: true } }
+        : payload.operation === 'reconcile_pending'
+          ? { ok: true, data: { items: [], raw_copies_unchanged: true } }
+          : handler(ws, payload),
   }
 }
 
@@ -244,4 +246,52 @@ test('duplicate submit calls during preflight still create at most one transport
   release()
   assert.equal(await first, true)
   assert.equal(runs, 1)
+})
+
+test('a host missing cross-reopen pending reconciliation cannot receive a protected send', async () => {
+  const attempt = new DeliveryAttempt(
+    { resourceRequest: async () => ({ ok: true, data: { durable_manual_send: true } }) },
+    snapshot(),
+  )
+  assert.equal(
+    await attempt.submit(async () => {
+      throw Error('must not send to an older receipt host')
+    }),
+    false,
+  )
+  assert.equal(attempt.state, 'unsupported')
+})
+
+test('failure to reconcile host-backed pending inputs blocks a fresh send before backup or execution', async () => {
+  const calls = []
+  let backups = 0,
+    runs = 0
+  const attempt = new DeliveryAttempt(
+    {
+      resourceRequest: async (_method, _ws, payload) => {
+        calls.push(payload.operation)
+        return payload.operation === 'capabilities'
+          ? { ok: true, data: { durable_manual_send: true, pending_reconciliation: true } }
+          : { ok: false, error: 'pending receipt storage is unavailable' }
+      },
+    },
+    snapshot(),
+  )
+  assert.equal(
+    await attempt.submit(
+      async () => {
+        runs++
+        return { ok: true }
+      },
+      async () => {
+        backups++
+        return true
+      },
+    ),
+    false,
+  )
+  assert.deepEqual(calls, ['capabilities', 'reconcile_pending'])
+  assert.equal(backups, 0)
+  assert.equal(runs, 0)
+  assert.equal(attempt.state, 'unknown')
 })

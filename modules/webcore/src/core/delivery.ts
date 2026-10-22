@@ -55,12 +55,22 @@ export class DeliveryAttempt {
     )
     if (
       !capabilities.ok ||
-      (capabilities.data as { durable_manual_send?: boolean }).durable_manual_send !== true
+      (capabilities.data as { durable_manual_send?: boolean }).durable_manual_send !== true ||
+      (capabilities.data as { pending_reconciliation?: boolean }).pending_reconciliation !== true
     ) {
       this.state = 'unsupported'
       this.error = capabilities.ok
-        ? 'This host does not provide durable input receipts.'
+        ? 'This host does not provide durable input receipts with pending-input reconciliation.'
         : capabilities.error
+      this.changed()
+      return false
+    }
+    const pending = await this.transport.resourceRequest('chatDelivery', this.snapshot.workspace, {
+      operation: 'reconcile_pending',
+    })
+    if (!pending.ok) {
+      this.state = 'unknown'
+      this.error = pending.error
       this.changed()
       return false
     }

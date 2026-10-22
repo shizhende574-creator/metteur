@@ -16,6 +16,7 @@ use uuid::Uuid;
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
     Capabilities,
+    ReconcilePending,
     Read {
         id: Uuid,
     },
@@ -54,8 +55,21 @@ impl DaemonService {
             let store = DeliveryStore::new(ws.db.clone(), &ws.root().to_string_lossy(), &subject)?;
             match query {
                 Query::Capabilities => Ok(
-                    serde_json::json!({"schema":1,"durable_manual_send":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
+                    serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
                 ),
+                Query::ReconcilePending => {
+                    let recovery = crate::storage::recovery::RecoveryStore::new(
+                        ws.db.clone(),
+                        &format!("project:{}", ws.root().to_string_lossy()),
+                        &subject,
+                    )?;
+                    let now = chrono::Utc::now().timestamp_millis() as u64;
+                    let mut items = Vec::new();
+                    for id in recovery.pending_submissions()? {
+                        items.push(store.retire(id, now)?);
+                    }
+                    Ok(serde_json::json!({"items":items,"raw_copies_unchanged":true}))
+                }
                 Query::Read {
                     id,
                 } => Ok(serde_json::json!({"receipt":store.get(id)?})),

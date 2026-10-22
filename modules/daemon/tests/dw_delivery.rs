@@ -189,3 +189,69 @@ async fn new_chat_identity_is_bound_before_acceptance_and_invalid_model_is_not_a
     );
     assert!(receipt(&service, &root, rejected).await.is_null());
 }
+
+#[tokio::test]
+async fn host_backed_pending_inputs_are_reconciled_before_another_browser_can_resubmit() {
+    let (service, state, root) = setup().await;
+    let ws = state.workspaces.get(&root).await.unwrap();
+    let recovery = metteur_daemon::storage::recovery::RecoveryStore::new(
+        ws.db.clone(),
+        &format!("project:{}", ws.root().to_string_lossy()),
+        "local",
+    )
+    .unwrap();
+    let unreceived = Uuid::new_v4();
+    let received = Uuid::new_v4();
+    let mut stream = Daemon::send_chat(&service, Request::new(command(&root, received, "", 0)))
+        .await
+        .unwrap()
+        .into_inner();
+    while let Some(event) = stream.next().await {
+        assert_ne!(event.unwrap().kind, "error");
+    }
+    let original_receipt = receipt(&service, &root, received).await;
+    let mut copies = vec![];
+    for (kind, submission) in
+        [("chat", unreceived), ("new_chat", received), ("supervision", Uuid::new_v4())]
+    {
+        let draft = metteur_daemon::storage::recovery::DraftInput {
+            id: Uuid::new_v4(),
+            window_id: Uuid::new_v4(),
+            kind: kind.into(),
+            entity: Uuid::new_v4().to_string(),
+            edit_sequence: 1,
+            raw: "unmodified raw\r\n中文".into(),
+            baseline_identity: None,
+            selections: vec![],
+            pending_submission: Some(submission),
+            selected_model: None,
+            view: None,
+        };
+        copies.push(draft.id);
+        recovery.backup(draft, 0, Uuid::new_v4(), 1).unwrap();
+    }
+    let result = Daemon::chat_delivery(
+        &service,
+        Request::new(ResourceRequest {
+            workspace_path: root.to_string_lossy().into(),
+            schema_version: 1,
+            payload_json: serde_json::json!({"operation":"reconcile_pending"}).to_string(),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap()
+    .into_inner();
+    assert!(result.error_json.is_empty(), "{}", result.error_json);
+    let result: serde_json::Value = serde_json::from_str(&result.payload_json).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 2);
+    assert_eq!(receipt(&service, &root, unreceived).await["phase"], "retired");
+    assert_eq!(receipt(&service, &root, received).await["turn"], original_receipt["turn"]);
+    assert_eq!(receipt(&service, &root, received).await["phase"], "finished");
+    assert!(
+        Daemon::send_chat(&service, Request::new(command(&root, unreceived, "", 0))).await.is_err()
+    );
+    for id in copies {
+        assert_eq!(recovery.get(id).unwrap().unwrap().input.raw, "unmodified raw\r\n中文");
+    }
+}

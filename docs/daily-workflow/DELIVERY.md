@@ -1,5 +1,9 @@
 # 手工发送的持久接收协议
 
+2026-10-22 增量：客户端还要求 capabilities.pending_reconciliation=true，准备新 Send 时先调用 reconcile_pending。宿主只扫描当前认证 owner/project scope 中已备份的 chat/new_chat pending_submission 身份；未接收的原 ID 持久关闭，已接收的返回原 turn/phase。监督身份不混入手工 Send ledger，损坏记录隔离，原始副本不改写。失败时阻止新 Send，不静默降级或执行旧输入。这覆盖浏览器重开后旧请求仍可能晚到的窗口；自动恢复/发送仍禁止。
+
+该增量在 9aa23cc 上独立实施：真实 RPC6项、客户端9项、SSE3项及 app 类型/daemon clippy 通过（仅既有27项lib警告）。证据为 pending-delivery-rpc-first、pending-delivery-client-first、pending-delivery-transport、pending-delivery-clippy-first.log。没有新生产运行包或真实模型调用；主聊天/监督草稿与 Composer 仍待接入。
+
 DW-03 第一个独立功能，2026-10-22。包括 daemon 接收/查询、Web SSE 适配及独立客户端状态机。Composer、未决输入恢复、Queue/Steer、控制与 IME 仍待后续接入；定向通过不代表整个工作包或 AC 已关闭。
 
 先查询增量 ChatDelivery RPC 的 capabilities。新请求在既有 SendChat.options_json 提供 `delivery: { id, expected_revision, new_session? }`，身份为非 nil UUID。new_session 在显式 Send 接受后才成为新会话。旧请求保持原语义和统一准入；旧服务返回 Unimplemented，新客户端不声称旧服务有新保证；mock 不提供伪耐久回执。durable_queue=false 如实表达其边界。

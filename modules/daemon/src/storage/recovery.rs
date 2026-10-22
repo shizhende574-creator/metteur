@@ -128,6 +128,26 @@ impl RecoveryStore {
             .map(|raw| Self::decode(&raw))
             .transpose()
     }
+    /// Pending manual inputs can outlive a browser. Return identities only;
+    /// their raw recovery copies remain untouched and corrupt rows isolated.
+    pub fn pending_submissions(&self) -> Result<Vec<Uuid>> {
+        self.check_schema()?;
+        let rows = self
+            .db
+            .resource_scan(&self.records_prefix(), &[], MAX_RECORDS + 1)
+            .map_err(unavailable)?;
+        let mut pending = std::collections::BTreeSet::new();
+        for (_, raw) in rows {
+            if let Ok(record) = Self::decode(&raw)
+                && !record.discarded
+                && matches!(record.input.kind.as_str(), "chat" | "new_chat")
+                && let Some(id) = record.input.pending_submission
+            {
+                pending.insert(id);
+            }
+        }
+        Ok(pending.into_iter().collect())
+    }
     /// Export owned bytes without decoding them, including quarantined records.
     pub fn export(&self, id: Uuid) -> Result<Vec<u8>> {
         let raw = self

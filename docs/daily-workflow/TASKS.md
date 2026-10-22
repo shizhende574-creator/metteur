@@ -109,7 +109,7 @@
 
 **验收**：AC-04/05/06/15/23/26/27/29。**证据交付**：接收崩溃窗口与兼容矩阵、定向 daemon/CLI/browser 检查。
 
-**实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机已实现待功能提交；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/聊天草稿持久接入、Queue/Steer、控制、IME 与整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
+**实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机完整提交 9aa23cc；已备份未决身份启动前对账增量亦已完成定向验证；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/聊天草稿持久接入、Queue/Steer、控制、IME 与整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
 
 ### DW-04 · 文件引用、冲突和回退
 

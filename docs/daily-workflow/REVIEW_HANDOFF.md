@@ -6,12 +6,15 @@
 
 - DW-00 基线完成，提交 1b39ce8；G01～19、接口/容量/性能判定及最小复现见 BASELINE.md。复现发送拒绝清空、IME synthetic Enter 提交、rollback 失败不呈现、蓝图替换主聊天。简单切页原有 KeepAlive 保留输入，没有伪造该项失败。
 - DW-01：r1 67f56d9 未批准。r2 5e40cbf 复用原 App/IDE，三组已获用户原文“批准三组 r2，保留现有 IDE 布局”。具体范围见 PREVIEWS.md。最终产品视觉签字尚未取得。
-- DW-02 宿主和文档恢复完整功能已提交 97436a6；聊天、监督和位置恢复尚未接入。r3 低密度隔离修订已提交 a8653cf，19085，原 r2 保留19082。r3 尚未代填用户签字。当前未提交差异属 DW-03 手工发送接收协议。DW-02～09 未关闭，AC-01～30 尚未关闭。
+- DW-02 宿主和文档恢复完整功能已提交 97436a6；聊天、监督和位置恢复尚未接入。r3 低密度隔离修订已提交 a8653cf，19085，原 r2 保留19082。r3 尚未代填用户签字。手工发送接收协议已提交 9aa23cc；当前增量为已备份未决身份的启动前对账，检查已通过，待完整提交。DW-02～09 未关闭，AC-01～30 尚未关闭。
 - 最新体验约束：“界面不要太多小字,信息量不要太大,要兼顾使用体验”。保留 IDE 几何；新增主要文字/操作约 13～14px，默认状态与必要操作，身份、revision、窗口和长诊断收进详情。已用于文档恢复栏和恢复弹窗，后续继续遵循。
 
 ## 当前功能与限制
 
-DW-03 当前未提交：增量 ChatDelivery RPC；SendChat.options.delivery 为可选精确 request ID/expected revision/新会话 UUID。普通旧请求保持原语义；新客户端先探测能力，不在旧服务静默回退受保护语义。接收把用户输入/session revision/receipt/关联新 task expected revision 一次 sync WAL 提交，再将 Started 持久化后进入原 runner。重复或重开只查询同一 ID，不新建执行；回执与模型结果分开。普通断流仍取消，获批 detached 沿用原 policy。
+新增 pending_reconciliation 能力和 reconcile_pending：仅当前宿主 owner/project 的 chat/new_chat 未决身份先对账；未接收身份持久关闭、已接收保持原 turn，监督身份不混用，原始副本不改写。客户端在新发送前检查能力并对账，失败即保留输入且不启动新回合。基线9aa23cc；Windows真实RPC6、客户端9、SSE3、app类型及daemon clippy通过，仅既有27项lib警告；pending-delivery-*.log。此增量没有更新生产运行包，未接入Composer，不计AC关闭。
+
+
+DW-03 接收协议完整提交 9aa23cc：增量 ChatDelivery RPC；SendChat.options.delivery 为可选精确 request ID/expected revision/新会话 UUID。普通旧请求保持原语义；新客户端先探测能力，不在旧服务静默回退受保护语义。接收把用户输入/session revision/receipt/关联新 task expected revision 一次 sync WAL 提交，再将 Started 持久化后进入原 runner。重复或重开只查询同一 ID，不新建执行；回执与模型结果分开。普通断流仍取消，获批 detached 沿用原 policy。
 
 缺失查询不是明确未接收：同一 admission/resource gate 下 retire 未接收 ID；晚到发送拒绝，若接收已胜出则返回原回执。receipt 8192/每 scope16 MiB/单4 KiB，永久有界凭据不静默淘汰；达到上限拒绝新输入。第一次实际 UI 接入仍待完成，不能声称 Composer 已不丢输入。
 
