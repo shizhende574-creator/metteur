@@ -12,6 +12,12 @@ import { useExecutionStore } from '@/stores/execution'
 import ChatThread from '@/components/chat/ChatThread.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import OversightProposal from './OversightProposal.vue'
+import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
+import { useSupervisionInputsStore } from '@/stores/supervision-inputs'
+import { useFeedbackStore } from '@/stores/feedback'
+import RecoveryCopies from '@/components/RecoveryCopies.vue'
+import type { RecoveryRecord } from '@/core/recovery'
+
 const props = defineProps<{ runId: string | null; connected: boolean; tab?: string }>()
 const emit = defineEmits<{ target: [target: ProposalTarget]; version: [target: ProposalVersion] }>()
 const workspace = useWorkspaceStore(),
@@ -21,51 +27,83 @@ const state = ref<ConciergeState | null>(null),
   busy = ref(false)
 let revision = 0
 let generation = 0,
-  disposed = false,
-  timer: ReturnType<typeof setTimeout> | undefined
+  disposed = false
 let controller: AbortController | undefined
-let uncertain: { id: string; text: string } | undefined
+const inputs = useSupervisionInputsStore(),
+  feedback = useFeedbackStore(),
+  recoveryOpen = ref(false)
+const input = computed(() =>
+  workspace.active?.path && props.runId ? inputs.read(workspace.active.path, props.runId) : null,
+)
+const draft = computed({
+  get: () => input.value?.input.raw ?? '',
+  set: (raw: string) => input.value?.controller.edit({ raw }),
+})
+const backupLabel = computed(() =>
+  input.value?.state === 'unknown'
+    ? 'Input unconfirmed'
+    : input.value?.error
+      ? 'Input kept'
+      : input.value?.backup?.state === 'backed_up'
+        ? 'Backed up on host'
+        : draft.value
+          ? 'Not backed up'
+          : '',
+)
+async function restoreInput(record: RecoveryRecord) {
+  const ws = workspace.active?.path,
+    run = props.runId
+  if (!ws || !run) return
+  if (await inputs.restore(ws, run, record)) {
+    if (workspace.active?.path === ws && props.runId === run) recoveryOpen.value = false
+  } else
+    feedback.toast('error', 'Input Kept', 'Back up or reconcile this draft before replacing it.')
+}
+async function reconcileInput() {
+  await input.value?.controller.reconcile()
+  void updates.run(refresh)
+}
+async function refresh() {
+  const ws = workspace.active?.path,
+    run = props.runId,
+    ticket = generation,
+    version = revision
+  if (!ws || !run || !props.connected) return
+  try {
+    const result = await gateway.getConciergeState(ws, run, run)
+    if (disposed || ticket !== generation || version !== revision) return
+    if (!result.ok) throw new Error(result.error)
+    if (result.data.run_id !== run || result.data.conversation_id !== run)
+      throw new Error('Supervision identity could not be verified.')
+    state.value = result.data
+    error.value = ''
+  } catch (reason) {
+    if (!disposed && ticket === generation && version === revision) {
+      state.value = null
+      error.value = String(reason)
+    }
+  }
+}
+const updates = useWorkspaceRefresh(refresh, [
+  () => props.runId,
+  () => props.connected,
+  () => props.tab,
+])
 watch(
   [() => workspace.active?.path, () => props.runId, () => props.connected],
   () => {
-    const ticket = ++generation
-    clearTimeout(timer)
+    generation++
     controller?.abort()
     state.value = null
     error.value = ''
     busy.value = false
-    uncertain = undefined
-    const ws = workspace.active?.path,
-      run = props.runId
-    if (!ws || !run || !props.connected) return
-    async function refresh() {
-      const version = revision
-      try {
-        const result = await gateway.getConciergeState(ws!, run!, run!)
-        if (disposed || ticket !== generation) return
-        if (!result.ok) throw new Error(result.error)
-        if (result.data.run_id !== run || result.data.conversation_id !== run)
-          throw new Error('Concierge identity does not match this run.')
-        if (version === revision) state.value = result.data
-      } catch (e) {
-        if (!disposed && ticket === generation) {
-          if (version === revision) {
-            state.value = null
-            error.value = String(e)
-          }
-        }
-      } finally {
-        if (!disposed && ticket === generation) timer = setTimeout(refresh, 1000)
-      }
-    }
-    void refresh()
+    recoveryOpen.value = false
   },
   { immediate: true },
 )
 onBeforeUnmount(() => {
   disposed = true
   generation++
-  clearTimeout(timer)
   controller?.abort()
 })
 const active = computed(
@@ -110,63 +148,88 @@ const messages = computed<ChatMessage[]>(() => [
 async function send(text: string, accepted?: () => void): Promise<boolean> {
   const ws = workspace.active?.path,
     run = props.runId,
-    ticket = generation
+    ticket = generation,
+    entry = input.value?.controller
   if (
     !ws ||
     !run ||
+    !entry ||
     !available.value ||
     busy.value ||
-    state.value?.messages.some((t) => t.state === 'processing')
+    state.value?.messages.some((turn) => turn.state === 'processing')
   )
     return false
-  const id = uncertain?.text === text ? uncertain.id : crypto.randomUUID()
-  revision++
-  uncertain = { id, text }
+  const current = () =>
+    !disposed && ticket === generation && workspace.active?.path === ws && props.runId === run
   busy.value = true
   error.value = ''
-  controller = new AbortController()
-  let terminal = false,
-    received = false
-  const result = await gateway.sendConciergeMessage(
-    ws,
-    run,
-    run,
-    id,
-    text,
-    (event) => {
-      if (disposed || ticket !== generation || event.runId !== run || event.messageId !== id) return
-      if (event.turn) {
-        if (!received) {
-          received = true
-          accepted?.()
-        }
+  revision++
+  const abort = new AbortController()
+  controller = abort
+  const execute = async (
+    id: string,
+    body: string,
+    receive: (turn: NonNullable<ConciergeState['messages']>[number]) => void,
+  ) =>
+    gateway.sendConciergeMessage(
+      ws,
+      run,
+      run,
+      id,
+      body,
+      (event) => {
+        if (event.runId !== run || event.messageId !== id || !event.turn) return
+        receive(event.turn)
+        if (!current()) return
+        accepted?.()
         revision++
-        terminal = event.turn.state !== 'processing'
-        const current = state.value
-        if (current) current.messages = [...current.messages.filter((t) => t.id !== id), event.turn]
+        const value = state.value
+        if (value) value.messages = [...value.messages.filter((turn) => turn.id !== id), event.turn]
         if (event.turn.error) error.value = event.turn.error
-      }
-    },
-    controller.signal,
-  )
-  if (disposed || ticket !== generation) return false
-  busy.value = false
-  if (!result.ok || !terminal) {
-    error.value = result.ok
-      ? 'Result is not confirmed. Inspect the recorded message before retrying.'
-      : result.error
-  } else uncertain = undefined
-  return received
+      },
+      abort.signal,
+    )
+  try {
+    if (gateway.demo) {
+      const source = entry.capture(),
+        result = await execute(crypto.randomUUID(), text, () => {
+          if (
+            entry.primary.input.edit_sequence === source.edit_sequence &&
+            entry.primary.input.raw === source.raw
+          )
+            entry.edit({ raw: '' })
+        })
+      return result.ok
+    }
+    return await entry.submit(text, execute, current)
+  } finally {
+    if (current()) {
+      busy.value = false
+      void updates.run(refresh)
+    }
+  }
 }
 async function urgent(text: string) {
   const ws = workspace.active?.path,
+    run = props.runId,
     ticket = generation,
-    run = props.runId
-  if (!ws || !run || !active.value) return false
-  const result = await gateway.sendInterrupt(ws, text, 'Urgent', { kind: 'blueprint', runId: run })
-  if (ticket !== generation) return false
-  if (!result.ok) error.value = result.error
-  return result.ok
+    entry = input.value?.controller
+  if (!ws || !run || !entry || !active.value) return false
+  const current = () =>
+    !disposed && ticket === generation && workspace.active?.path === ws && props.runId === run
+  const execute = (body: string) =>
+    gateway.sendInterrupt(ws, body, 'Urgent', { kind: 'blueprint', runId: run })
+  if (gateway.demo) {
+    const source = entry.capture(),
+      result = await execute(text)
+    if (result.ok && entry.primary.input.edit_sequence === source.edit_sequence)
+      entry.edit({ raw: '' })
+    if (current() && !result.ok) error.value = result.error
+    return result.ok
+  }
+  const ok = await entry.temporary(execute, current)
+  if (current() && !ok) error.value = entry.error
+  return ok
 }
 async function copy(text: string): Promise<void> {
   try {
@@ -186,6 +249,10 @@ const controls = computed(() => ({
   model: '',
   effort: 'medium' as const,
   draftIdentity: `${workspace.active?.path}:${props.runId}`,
+  draftValue: draft.value,
+  onDraftChange: (raw: string) => (draft.value = raw),
+  sendBlocked: !input.value?.canSubmit,
+
   readOnly: !props.runId || state.value?.read_only === true,
   contextStats: null,
   usage: null,
@@ -258,9 +325,37 @@ function proposalDetails(
         :on-retry="noop"
         :on-restore="noop"
       />
-      <div class="concierge-composer"><ChatComposer ref="composer" v-bind="controls" /></div>
+      <div class="concierge-composer">
+        <ChatComposer ref="composer" v-bind="controls" />
+        <div
+          class="flex items-center gap-3 pt-2 text-[13px] text-muted-foreground"
+          data-supervision-draft-status
+        >
+          <span v-if="backupLabel" role="status">{{ backupLabel }}</span>
+          <button class="cursor-pointer hover:text-foreground" @click="recoveryOpen = true">
+            Recovery Copies
+          </button>
+          <button v-if="input?.state === 'unknown'" class="btn" @click="reconcileInput">
+            Check Receipt
+          </button>
+          <details v-if="input?.error">
+            <summary class="cursor-pointer">Details</summary>
+            <p>{{ input.error }}</p>
+          </details>
+        </div>
+      </div>
     </template>
-    <div v-else-if="tab === 'Requests'" class="request-list">
+    <RecoveryCopies
+      v-if="recoveryOpen && workspace.active?.path && runId"
+      :key="`${workspace.active.path}:${runId}`"
+      :workspace="workspace.active.path"
+      scope="project"
+      :entity="runId"
+      :local-copies="inputs.localCopies(workspace.active.path)"
+      @close="recoveryOpen = false"
+      @restore="restoreInput"
+    />
+    <div v-if="tab === 'Requests'" class="request-list">
       <p v-if="!state">Request state is unavailable.</p>
       <p v-else-if="!state.requests.length">No requests recorded.</p>
       <article v-for="request in state?.requests" :key="request.request_id" class="request-card">
@@ -296,7 +391,9 @@ function proposalDetails(
         </details>
       </article>
     </div>
-    <p v-else class="concierge-status">Supervisor reviews are not enabled yet.</p>
+    <p v-else-if="tab && tab !== 'Chat'" class="concierge-status">
+      Supervisor reviews are not enabled yet.
+    </p>
   </section>
 </template>
 <style scoped>

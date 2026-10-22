@@ -148,6 +148,25 @@ impl RecoveryStore {
         }
         Ok(pending.into_iter().collect())
     }
+    pub fn pending_supervision(&self) -> Result<Vec<(Uuid, Uuid)>> {
+        self.check_schema()?;
+        let rows = self
+            .db
+            .resource_scan(&self.records_prefix(), &[], MAX_RECORDS + 1)
+            .map_err(unavailable)?;
+        let mut pending = std::collections::BTreeSet::new();
+        for (_, raw) in rows {
+            if let Ok(record) = Self::decode(&raw)
+                && !record.discarded
+                && record.input.kind == "supervision"
+                && let Some(id) = record.input.pending_submission
+                && let Ok(run) = Uuid::parse_str(&record.input.entity)
+            {
+                pending.insert((run, id));
+            }
+        }
+        Ok(pending.into_iter().collect())
+    }
     /// Export owned bytes without decoding them, including quarantined records.
     pub fn export(&self, id: Uuid) -> Result<Vec<u8>> {
         let raw = self

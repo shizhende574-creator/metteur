@@ -45,6 +45,7 @@ import { useSurfaceNavigation } from '@/lib/surface'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useDocumentsStore } from '@/stores/documents'
 import { useComposerInputsStore } from '@/stores/composer-inputs'
+import { useSupervisionInputsStore } from '@/stores/supervision-inputs'
 
 const EditorPane = defineAsyncComponent(() => import('@/views/EditorPane.vue'))
 
@@ -61,9 +62,11 @@ const fileWatch = useFileWatchStore()
 const feedback = useFeedbackStore()
 const documents = useDocumentsStore()
 const composerInputs = useComposerInputsStore()
+const supervisionInputs = useSupervisionInputsStore()
 function protectDrafts(event: BeforeUnloadEvent) {
   if (
     !composerInputs.hasUnbackedInput() &&
+    !supervisionInputs.hasUnbacked &&
     ![...documents.records.values()].some((doc) => doc.loaded && documents.dirty(doc))
   )
     return

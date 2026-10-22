@@ -265,6 +265,16 @@ impl Db {
     pub(crate) fn resource_batch(&self, values: &[(Vec<u8>, Vec<u8>)]) -> DaemonResult<()> {
         self.durable_resource_batch(values, true)
     }
+    pub(crate) fn supervision_input_batch(
+        &self,
+        values: &[(Vec<u8>, Vec<u8>)],
+    ) -> DaemonResult<()> {
+        #[cfg(test)]
+        if self.fail_delivery_write.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(DaemonError::Persistence("injected input WAL failure".into()));
+        }
+        self.resource_batch(values)
+    }
 
     /// Recovery input is not an execution/resource change. Backups must not
     /// wake every workspace subscriber or the continuation dispatcher.
@@ -276,7 +286,11 @@ impl Db {
         self.durable_resource_batch(values, false)
     }
 
-    fn durable_resource_batch(&self, values: &[(Vec<u8>, Vec<u8>)], notify: bool) -> DaemonResult<()> {
+    fn durable_resource_batch(
+        &self,
+        values: &[(Vec<u8>, Vec<u8>)],
+        notify: bool,
+    ) -> DaemonResult<()> {
         let handle = self
             .inner
             .cf_handle(cf::EXECUTION_STATE)

@@ -1557,7 +1557,8 @@ export class GrpcGateway implements DaemonGateway {
       )) {
         if (event.runId !== runId || event.messageId !== messageId)
           throw new Error('Mismatched concierge event')
-        const turn = event.kind === 'processing' ? undefined : JSON.parse(event.detailJson)
+        const value = JSON.parse(event.detailJson || '{}')
+        const turn = event.kind === 'processing' && !value.id ? undefined : value
         if (turn && (turn.id !== messageId || turn.conversation_id !== conversationId))
           throw new Error('Mismatched concierge turn')
         onEvent({ runId, messageId, kind: event.kind, turn })

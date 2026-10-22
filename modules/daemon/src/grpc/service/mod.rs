@@ -11,6 +11,7 @@ mod blackboard;
 mod blueprint;
 mod chat;
 mod concierge;
+mod concierge_delivery;
 mod config;
 mod continuations;
 mod files;
@@ -88,6 +89,9 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn concierge_delivery(&self,request:Request<super::proto::ResourceRequest>)->Result<Response<super::proto::ResourceResponse>,Status> {
+        Self::concierge_delivery(self,request).await
+    }
     async fn chat_delivery(
         &self,
         request: Request<super::proto::ResourceRequest>,

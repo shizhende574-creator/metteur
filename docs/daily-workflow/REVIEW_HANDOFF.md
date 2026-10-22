@@ -4,6 +4,10 @@
 
 ## 当前进展
 
+- 最新完整功能（源码基线 e4f2a69，摘要 supervision-input-source-before-commit.json）：监督正常消息的正文/身份原子接收及只读/关闭回执、owner/run/conversation固定、旧部分写入不重放；ConciergeDelivery新增RPC/代理/TS生成物配套。监督受控草稿/独立原稿/原ID恢复与低密度恢复栏已接入，单独保存临时蓝图插入原稿；该临时通道仍没有durable消费回执，后续继续补齐。监督面板1s轮询已移除，复用workspace事件/显式切tab刷新；Reviews等其余DW-07入口还未改。契约与实际边界见 SUPERVISION_INPUTS.md。
+- 集中证据：Windows存储6、RPC7、受影响concierge集成6及本地provider设置1、客户端8通过（supervision-input-batch-{ledger,rpc,affected,controllers}.log）；workspace/all-targets clippy exit0，仅既有27 lib和1旧diagnostics测试警告。app/node类型、定向lint exit0；最终窄修后app/lint再查exit0（supervision-input-final-*.log）。正式前端构建exit0（supervision-input-production-final-build.log），产物supervision-input-production-final显式grpc网关，未替换运行入口、不计L3。
+- L2集中25项首轮23通过/2失败，保留supervision-input-batch-browser原始截图/trace；旧夹具在首次60ms状态读取前锁住历史，改为等待实际输入可用。慢历史场景同时验证下一草稿/发送按钮不被历史查询阻塞；仅复测失败/受影响2项，全部通过（supervision-input-narrow-browser.log），未重跑已通过23项。早期缺fixture业务通知的首轮/第二轮失败亦完整保留，补通知而未加回轮询。监督输入密度截图已检查，保持IDE几何/13px状态，未代签用户最终体验。各轮不累加为AC，模型费用0，无push/合并。
+
 - 最新完整功能：主聊天 Queue/Steer 持久输入，源码基线5e7b81d；提交前摘要 live-input-source-before-commit.json，完整提交以Git对照。契约与容量/兼容/边界见LIVE_INPUTS.md。复用原bus和根ReAct，无新runner；正文与回执sync WAL后ACK，根独占claim，保存上下文后Applied，结束未取Unconsumed，崩溃/保存未知不重放。Web/CLI能力检查、原稿恢复、固定模式/turn与简短状态配套；监督和控制/审批durable回执仍待实施。
 - 检查均exit0：Windows存储14（live-input-ledger-first.log）、bus6（live-input-bus-second.log）、RPC最终15（live-input-rpc-final.log，含无owner对账/源删除/重复/确切原文上下文）；客户端32（live-input-controllers-third.log）；L2最终3（live-input-browser-final.log，实际sendChat回调的assistant活动不会冒充消费），受影响聊天/IME/分离/网关23（live-input-affected-first.log）。app/node类型和定向lint exit0（live-input-final-*.log）；全workspace/all-targets clippy最终exit0，仅既有27 lib及1旧diagnostics测试警告（live-input-workspace-clippy-final.log）。正式前端构建exit0（live-input-production-final-build.log），产物live-input-production-final，未替换运行中的生产入口、不计L3。所有轮次重叠不加总为AC，模型调用0，无push/合并。
 - 首轮失败保留：host check三处Rust类型错误修复后通过；新增控制器测试误用restore方法，改loadAsNewCopy后通过；L2切换连接导致配置重载，按键时ready=false，诊断trace保留在live-input-browser-debug*，补充ready前置后通过，未放松产品守卫；初轮clippy新增bus嵌套if警告已修正。无额外产品决策或IDE布局变更。
