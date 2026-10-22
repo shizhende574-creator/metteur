@@ -29,6 +29,10 @@ import { wurl } from '@/lib/workspace-url'
 import { useDocumentsStore } from '@/stores/documents'
 import { usePromptResourcesStore } from '@/stores/prompt-resources'
 import { useSurfaceNavigation } from '@/lib/surface'
+import RecoveryCopies from '@/components/RecoveryCopies.vue'
+import { useRecoveryStore } from '@/stores/recovery'
+import type { RecoveryRecord } from '@/core/recovery'
+import { hash } from 'ohash'
 
 const route = useRoute()
 const router = useRouter()
@@ -73,6 +77,103 @@ const modelId = computed(() =>
 )
 
 const documents = useDocumentsStore()
+const recovery = useRecoveryStore()
+const recoveryOpen = ref(false)
+const backup = computed(() =>
+  recovery.status(
+    workspace.active?.path ?? '',
+    documents.recoveryKind(filePath.value),
+    filePath.value,
+  ),
+)
+const backupLabel = computed(() => {
+  if (!backup.value) return 'No Unsaved Recovery Copy'
+  if (backup.value.state === 'backed_up')
+    return gateway.connected.value ? 'Backed Up on Host' : 'Backed Up on Host · Offline'
+  if (backup.value.state === 'backing_up') return 'Backing Up…'
+  if (backup.value.state === 'unsupported') return 'Recovery Unavailable'
+  if (backup.value.state === 'unknown') return 'Backup Unconfirmed'
+  if (backup.value.state === 'conflict') return 'Review Recovery Conflict'
+  if (/capacity|storage.full/i.test(backup.value.error)) return 'Not Backed Up · Storage Full'
+  return gateway.connected.value ? 'Not Backed Up' : 'Not Backed Up · Offline'
+})
+async function restoreRecovery(record: RecoveryRecord) {
+  const target = workspace.active?.path,
+    path = filePath.value
+  if (
+    !target ||
+    record.input.entity !== path ||
+    record.input.kind !== documents.recoveryKind(path)
+  ) {
+    feedback.toast(
+      'error',
+      'Different Recovery Source',
+      'Open the matching source or export this copy for manual recovery.',
+    )
+    return
+  }
+  const doc = documents.get(target, path)
+  const localRevision = doc.revision
+  if (documents.dirty(doc) && !(await recovery.flush(target, documents.recoveryKind(path), path))) {
+    feedback.toast(
+      'error',
+      'Current Draft Not Backed Up',
+      'Keep or export the current input before replacing it with a recovery copy.',
+    )
+    return
+  }
+  await documents.sync(target, path)
+  if (workspace.active?.path !== target || filePath.value !== path) return
+  if (doc.revision !== localRevision) {
+    feedback.toast(
+      'error',
+      'Newer Draft Kept',
+      'Your input changed while the recovery copy was loading. Review it before replacing it.',
+    )
+    return
+  }
+  const view = record.input.view as { baseline_content?: unknown } | null
+  if (
+    typeof view?.baseline_content === 'string' &&
+    `xxh3:${hash(view.baseline_content)}` === record.input.baseline_identity
+  )
+    doc.baseline = view.baseline_content
+  recovery.fork(target, documents.recoveryKind(path), path, record)
+  documents.edit(target, path, record.input.raw)
+  doc.conflict = doc.deleted || (doc.disk !== doc.baseline && doc.disk !== doc.content)
+  recoveryOpen.value = false
+}
+async function discardRecovery() {
+  const target = workspace.active?.path,
+    path = filePath.value
+  if (!target) return
+  const localRevision = documents.get(target, path).revision
+  const confirmed = await feedback.confirm({
+    header: 'Discard This Draft?',
+    message:
+      'Discard this recovery copy and local edits. The saved file and other windows keep their contents.',
+    acceptLabel: 'Discard This Copy',
+    rejectLabel: 'Keep Editing',
+    danger: true,
+  })
+  if (!confirmed) return
+  if (
+    workspace.active?.path !== target ||
+    filePath.value !== path ||
+    documents.get(target, path).revision !== localRevision
+  )
+    return
+  const ok = await recovery.discard(target, documents.recoveryKind(path), path)
+  if (!ok) {
+    feedback.toast(
+      'error',
+      'Discard Outcome Unconfirmed',
+      'The input was kept. Reconcile the backup before trying again.',
+    )
+    return
+  }
+  documents.discard(target, path)
+}
 const buffer = computed(() => documents.get(workspace.active?.path ?? '', filePath.value))
 const content = computed({
   get: () => buffer.value.content,
@@ -399,6 +500,51 @@ async function compileToBlueprint() {
 
 <template>
   <div ref="pane" data-editor-pane class="flex h-full flex-col bg-background">
+    <div
+      v-if="loaded && filePath"
+      class="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-1.5 text-[13px]"
+    >
+      <span
+        v-if="backup"
+        role="status"
+        :title="backup.error"
+        :class="backup.state === 'backed_up' ? 'text-muted-foreground' : 'text-status-warning'"
+        >{{ backupLabel }}</span
+      >
+      <button
+        v-if="backup && !['backed_up', 'backing_up'].includes(backup.state)"
+        class="btn"
+        type="button"
+        @click="
+          recovery.flush(workspace.active?.path ?? '', documents.recoveryKind(filePath), filePath)
+        "
+      >
+        Back Up
+      </button>
+      <button class="btn" type="button" @click="recoveryOpen = true">Recovery Copies</button>
+      <details v-if="dirty || backup?.error" class="relative">
+        <summary class="cursor-pointer text-muted-foreground">Draft Options</summary>
+        <div
+          class="absolute left-0 top-full z-30 mt-2 w-72 rounded-lg border border-border bg-popover p-3 shadow-popover"
+        >
+          <p v-if="backup?.error" class="mb-3 break-words text-[13px] text-muted-foreground">
+            {{ backup.error }}
+          </p>
+          <button v-if="dirty" class="btn" type="button" @click="discardRecovery">
+            Discard Draft
+          </button>
+        </div>
+      </details>
+    </div>
+    <RecoveryCopies
+      v-if="recoveryOpen"
+      :key="`${workspace.active?.path}:${filePath}`"
+      :workspace="workspace.active?.path ?? ''"
+      :scope="recovery.scopeFor(filePath)"
+      :entity="filePath"
+      @close="recoveryOpen = false"
+      @restore="restoreRecovery"
+    />
     <p v-if="!loaded" class="px-4 py-3 text-[13px] text-muted-foreground" role="status">
       Loading {{ fileName }}…
     </p>

@@ -3,6 +3,8 @@ import { reactive } from 'vue'
 import { gateway } from '@/core'
 import { readDocument, writeDocument, parsePromptFile } from '@/lib/prompt-file'
 import type { PromptEntry, ResourceRef } from '@/core/resources'
+import { useRecoveryStore } from './recovery'
+import { hash } from 'ohash'
 
 export interface EditorDocument {
   workspace: string
@@ -22,6 +24,9 @@ export interface EditorDocument {
 
 /** Buffers belong to workspace documents, never to a mounted editor component. */
 export const useDocumentsStore = defineStore('documents', () => {
+  const recovery = useRecoveryStore()
+  const recoveryKind = (path: string) =>
+    path.endsWith('.blueprint') ? ('canvas' as const) : ('text' as const)
   const records = reactive(new Map<string, EditorDocument>())
   const reads = new Map<string, Promise<EditorDocument>>()
   const pendingSync = new Set<EditorDocument>()
@@ -57,6 +62,11 @@ export const useDocumentsStore = defineStore('documents', () => {
     if (doc.content !== content) {
       doc.content = content
       doc.revision++
+      recovery.edit(workspace, recoveryKind(path), path, {
+        raw: content,
+        baseline_identity: `xxh3:${hash(doc.baseline)}`,
+        view: { baseline_content: doc.baseline },
+      })
     }
   }
   async function open(workspace: string, path: string) {
@@ -133,6 +143,11 @@ export const useDocumentsStore = defineStore('documents', () => {
   async function save(workspace: string, path: string, overwrite = false) {
     const doc = get(workspace, path)
     if (doc.saving) return false
+    if (doc.conflict && !doc.deleted && !overwrite) {
+      doc.error =
+        'File content changed on disk; review the current version before saving this draft.'
+      return false
+    }
     const content = doc.content
     invalidateSync(doc)
     doc.saving = true
@@ -158,6 +173,9 @@ export const useDocumentsStore = defineStore('documents', () => {
       doc.conflict = false
       doc.error = ''
       if (result.data) doc.resource = doc.diskResource = result.data
+      // Cleanup is conditional on the exact saved content. A newer edit or
+      // an unknown backup receipt keeps its recovery copy intact.
+      void recovery.saved(workspace, recoveryKind(path), path, content)
       return true
     } finally {
       doc.saving = false
@@ -202,6 +220,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     records.delete(key(workspace, path))
   }
   function rename(workspace: string, from: string, to: string) {
+    recovery.renamed(workspace, from, to)
     for (const [id, doc] of [...records]) {
       if (doc.workspace !== workspace || (doc.path !== from && !doc.path.startsWith(from + '/')))
         continue
@@ -224,5 +243,6 @@ export const useDocumentsStore = defineStore('documents', () => {
     adoptReviewedResource,
     forget,
     rename,
+    recoveryKind,
   }
 })

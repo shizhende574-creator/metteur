@@ -19,6 +19,7 @@ mod launches;
 mod prompts;
 mod registry;
 mod reports;
+mod recovery;
 mod resources;
 mod sandbox;
 mod state;
@@ -84,6 +85,12 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn recovery(
+        &self,
+        request: Request<super::proto::ResourceRequest>,
+    ) -> Result<Response<super::proto::ResourceResponse>, Status> {
+        self.recovery(request).await
+    }
     async fn select_prompt_resource(
         &self,
         request: Request<super::proto::ResourceRequest>,

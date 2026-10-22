@@ -479,7 +479,8 @@ const msgId = () => `m-${Date.now()}-${msgSeq++}`
  * built and validated before the real Connect transport lands.
  */
 export class MockGateway implements DaemonGateway {
-  async resourceRequest(): Promise<Result<unknown>> {
+  async resourceRequest(method?: import('./resources').ResourceMethod): Promise<Result<unknown>> {
+    if (method === 'recovery') return err('Unimplemented: recovery requires a daemon; mock input is not durably backed up.')
     return err(
       'Project resources require a daemon connection. Use the isolated NX preview for fixture interactions.',
     )

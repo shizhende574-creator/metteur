@@ -60,6 +60,12 @@ fn pump_stream<T: Send + 'static>(
 
 #[tonic::async_trait]
 impl Daemon for ForwardService {
+    async fn recovery(
+        &self,
+        request: Request<metteur_proto::proto::ResourceRequest>,
+    ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
+        self.client.clone().recovery(request).await
+    }
     async fn addon_pages(
         &self,
         request: Request<metteur_proto::proto::ResourceRequest>,
@@ -612,6 +618,12 @@ mod tests {
 
     #[tonic::async_trait]
     impl Daemon for TestBackend {
+        async fn recovery(
+            &self,
+            _: Request<metteur_proto::proto::ResourceRequest>,
+        ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
+            Err(Status::unimplemented("recovery"))
+        }
         async fn write_schedule(
             &self,
             _: Request<metteur_proto::proto::ResourceRequest>,

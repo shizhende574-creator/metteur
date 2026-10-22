@@ -7,6 +7,9 @@ import { useSurfaceNavigation, type SurfaceKey } from '@/lib/surface'
 import { wurl } from '@/lib/workspace-url'
 import ContextMenu, { type MenuGroup } from '@/components/ContextMenu.vue'
 import { useFeedbackStore } from '@/stores/feedback'
+import { useRecoveryStore } from '@/stores/recovery'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useDocumentsStore } from '@/stores/documents'
 
 /**
  * IDE-style file tab strip (single-workspace shell).
@@ -21,18 +24,44 @@ import { useFeedbackStore } from '@/stores/feedback'
 const router = useRouter()
 const tabs = useTabsStore()
 const feedback = useFeedbackStore()
+const recovery = useRecoveryStore(),
+  workspace = useWorkspaceStore(),
+  documents = useDocumentsStore()
 async function canClose(list: TabItem[]) {
   const dirty = list.filter((t) => t.path && tabs.isDirty(t.path))
-  return (
-    !dirty.length ||
-    feedback.confirm({
-      header: 'Discard Unsaved Changes?',
-      message: `${dirty.map((t) => t.label).join(', ')} has unsaved changes. Closing discards the buffer.`,
-      acceptLabel: 'Discard Changes',
-      rejectLabel: 'Keep Editing',
-      danger: true,
-    })
+  const target = workspace.active?.path
+  const revisions = dirty.map((tab) => documents.get(target ?? '', tab.path).revision)
+  if (!dirty.length) return true
+  const confirmed = await feedback.confirm({
+    header: 'Discard Unsaved Changes?',
+    message: `${dirty.map((t) => t.label).join(', ')} has unsaved changes. Closing discards the buffer.`,
+    acceptLabel: 'Discard Changes',
+    rejectLabel: 'Keep Editing',
+    danger: true,
+  })
+  if (!confirmed || target !== workspace.active?.path) return false
+  if (
+    dirty.some((tab, index) => documents.get(target ?? '', tab.path).revision !== revisions[index])
   )
+    return false
+  for (const tab of dirty) {
+    if (target && !(await recovery.discard(target, documents.recoveryKind(tab.path), tab.path))) {
+      feedback.toast(
+        'error',
+        'Draft Kept',
+        'The recovery discard could not be confirmed. Reconcile the backup before closing.',
+      )
+      return false
+    }
+    if (
+      workspace.active?.path !== target ||
+      dirty.some(
+        (item, index) => documents.get(target ?? '', item.path).revision !== revisions[index],
+      )
+    )
+      return false
+  }
+  return true
 }
 
 const dragId = ref<string | null>(null)

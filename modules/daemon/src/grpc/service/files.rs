@@ -247,6 +247,7 @@ impl DaemonService {
         &self,
         request: Request<RenameFileRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let subject = super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws = self
             .state
@@ -266,6 +267,13 @@ impl DaemonService {
             return Err(Status::already_exists("Rename destination already exists"));
         }
         std::fs::rename(&from, &to).map_err(io_status)?;
+        let identity = format!("project:{}", ws.root().to_string_lossy());
+        let store = crate::storage::recovery::RecoveryStore::new(ws.db.clone(), &identity, &subject)
+            .map_err(|_| Status::internal("File renamed; recovery copies require reconciliation"))?;
+        let from_relative = from.strip_prefix(ws.root()).map_err(|_| Status::internal("Rename source unavailable"))?.to_string_lossy().replace('\\', "/");
+        let to_relative = to.strip_prefix(ws.root()).map_err(|_| Status::internal("Rename destination unavailable"))?.to_string_lossy().replace('\\', "/");
+        store.rename_entity(&from_relative, &to_relative, chrono::Utc::now().timestamp_millis() as u64)
+            .map_err(|_| Status::internal("File renamed; recovery transfer failed. Original recovery copies were retained for manual review"))?;
         Ok(Response::new(Empty {}))
     }
 

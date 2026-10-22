@@ -43,6 +43,8 @@ pub struct Db {
     pub(crate) oversight_gate: Arc<std::sync::Mutex<()>>,
     pub(crate) oversight_notify: Arc<tokio::sync::Notify>,
     changes: tokio::sync::watch::Sender<u64>,
+    #[cfg(test)]
+    pub(crate) fail_recovery_write: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Db {
@@ -236,6 +238,8 @@ impl Db {
             oversight_gate: Arc::new(std::sync::Mutex::new(())),
             oversight_notify: Arc::new(tokio::sync::Notify::new()),
             changes: tokio::sync::watch::channel(0).0,
+            #[cfg(test)]
+            fail_recovery_write: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -251,6 +255,20 @@ impl Db {
 
     /// Commits a small resource transaction with synchronous WAL durability.
     pub(crate) fn resource_batch(&self, values: &[(Vec<u8>, Vec<u8>)]) -> DaemonResult<()> {
+        self.durable_resource_batch(values, true)
+    }
+
+    /// Recovery input is not an execution/resource change. Backups must not
+    /// wake every workspace subscriber or the continuation dispatcher.
+    pub(crate) fn recovery_batch(&self, values: &[(Vec<u8>, Vec<u8>)]) -> DaemonResult<()> {
+        #[cfg(test)]
+        if self.fail_recovery_write.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(DaemonError::Persistence("injected recovery WAL failure".into()));
+        }
+        self.durable_resource_batch(values, false)
+    }
+
+    fn durable_resource_batch(&self, values: &[(Vec<u8>, Vec<u8>)], notify: bool) -> DaemonResult<()> {
         let handle = self
             .inner
             .cf_handle(cf::EXECUTION_STATE)
@@ -264,7 +282,9 @@ impl Db {
         self.inner
             .write_opt(batch, &options)
             .map_err(|e| DaemonError::Persistence(e.to_string()))?;
-        self.notify_changes();
+        if notify {
+            self.notify_changes();
+        }
         Ok(())
     }
 
