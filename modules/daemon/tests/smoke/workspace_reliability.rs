@@ -100,6 +100,7 @@ async fn idle_subscriptions_do_not_keep_the_workspace_locked_after_close() {
         .unwrap();
     let request = proto::WatchWorkspaceRequest {
         workspace_path: ws.clone(),
+        ..Default::default()
     };
     let mut changes = client.watch_workspace_changes(request.clone()).await.unwrap().into_inner();
     changes.message().await.unwrap().unwrap();
@@ -165,6 +166,7 @@ async fn workspace_stream_pushes_committed_changes_and_is_idle_without_changes()
     let mut stream = client
         .watch_workspace_changes(proto::WatchWorkspaceRequest {
             workspace_path: ws.clone(),
+            ..Default::default()
         })
         .await
         .unwrap()

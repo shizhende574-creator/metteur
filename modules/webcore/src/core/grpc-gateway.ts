@@ -1,5 +1,6 @@
 import type { OversightReports } from './oversight'
 import { submitWorkflow } from './workflow-receipts'
+import { WorkspaceActivity } from './workspace-activity'
 import { validFileReference, fileTextDigest } from './file-reference'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
@@ -425,6 +426,14 @@ export class GrpcGateway implements DaemonGateway {
   readonly connected: Ref<boolean> = ref(true)
   readonly demo = false
   private client: Client<typeof Daemon>
+  readonly liveUpdateError = ref('')
+  private activity = new WorkspaceActivity(
+    (workspacePath, signal) =>
+      this.client.watchWorkspaceChanges({ workspacePath, includeActivity: true }, { signal }),
+    (error) => {
+      this.liveUpdateError.value = error
+    },
+  )
   /** Same origin as the grpc-web transport, used by the SSE chat endpoint. */
   private baseUrl: string
 
@@ -658,18 +667,18 @@ export class GrpcGateway implements DaemonGateway {
     onEvent: (e: WatchEvent) => void,
     signal?: AbortSignal,
   ): Promise<Result<void>> {
-    try {
-      for await (const ev of this.client.watchWorkspace({ workspacePath }, { signal })) {
-        if (ev.kind === 'created' || ev.kind === 'modified' || ev.kind === 'removed') {
-          onEvent({ path: ev.path, kind: ev.kind })
+    return this.activity.subscribe(
+      workspacePath,
+      (activity) => {
+        const ev = activity.fileEvent
+        if (ev) {
+          if (ev.kind === 'created' || ev.kind === 'modified' || ev.kind === 'removed') {
+            onEvent({ path: ev.path, kind: ev.kind })
+          }
         }
-      }
-      return ok(undefined)
-    } catch (e) {
-      // Aborting the subscription is not a failure.
-      if (signal?.aborted) return ok(undefined)
-      return toErr(e)
-    }
+      },
+      signal,
+    )
   }
 
   async watchWorkspaceChanges(
@@ -677,13 +686,13 @@ export class GrpcGateway implements DaemonGateway {
     onChange: () => void,
     signal?: AbortSignal,
   ): Promise<Result<void>> {
-    try {
-      for await (const _ of this.client.watchWorkspaceChanges({ workspacePath }, { signal }))
-        onChange()
-      return ok(undefined)
-    } catch (cause) {
-      return signal?.aborted ? ok(undefined) : toErr(cause)
-    }
+    return this.activity.subscribe(
+      workspacePath,
+      (event) => {
+        if (!event.fileEvent && !event.jobEvent) onChange()
+      },
+      signal,
+    )
   }
 
   // Background commands (jobs) ---------------------------------------------------
@@ -714,23 +723,23 @@ export class GrpcGateway implements DaemonGateway {
     onEvent: (e: JobNotice) => void,
     signal?: AbortSignal,
   ): Promise<Result<void>> {
-    try {
-      for await (const event of this.client.watchJobs({ workspacePath }, { signal })) {
-        onEvent({
-          jobId: event.jobId,
-          kind: jobNoticeKindOf(event.kind),
-          chunk: event.chunk,
-          state: jobStateOf(event.state),
-          exitCode: event.exitCode,
-          summary: event.summary,
-        })
-      }
-      return ok(undefined)
-    } catch (e) {
-      // Aborting the subscription is not a failure.
-      if (signal?.aborted) return ok(undefined)
-      return toErr(e)
-    }
+    return this.activity.subscribe(
+      workspacePath,
+      (activity) => {
+        const event = activity.jobEvent
+        if (event) {
+          onEvent({
+            jobId: event.jobId,
+            kind: jobNoticeKindOf(event.kind),
+            chunk: event.chunk,
+            state: jobStateOf(event.state),
+            exitCode: event.exitCode,
+            summary: event.summary,
+          })
+        }
+      },
+      signal,
+    )
   }
 
   async killJob(

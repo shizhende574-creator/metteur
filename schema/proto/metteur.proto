@@ -634,6 +634,8 @@ message RevealInExplorerRequest {
 
 message WatchWorkspaceRequest {
   string workspace_path = 1;
+  // Opt in to one bounded stream for business changes, files and jobs.
+  bool include_activity = 2;
 }
 
 message WatchEvent {
@@ -646,6 +648,10 @@ message WatchEvent {
 message WorkspaceChange {
   // Connection-local invalidation sequence, not a persisted database revision.
   uint64 sequence = 1;
+  WatchEvent file_event = 2;
+  JobEvent job_event = 3;
+  // Explicit acknowledgement: old hosts return false, never silently lose events.
+  bool activity_supported = 4;
 }
 
 // ---- Background commands (jobs) ------------------------------------------------

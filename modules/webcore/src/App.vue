@@ -269,6 +269,7 @@ onMounted(async () => {
 
 const switchOpen = ref(false)
 const connectionLabel = computed(() => (gateway.connected.value ? 'Connected' : 'Offline | demo'))
+const liveUpdateError = computed(() => gateway.liveUpdateError?.value || '')
 /** Real-gateway outage: blocks the UI until the heartbeat reconnects. */
 const connectionLost = computed(() => !gateway.connected.value && !gateway.demo)
 
@@ -648,6 +649,17 @@ function onRightResizeStart(e: MouseEvent) {
           :class="gateway.connected.value ? 'bg-emerald-500' : 'bg-subtle'"
         />
         {{ connectionLabel }}
+        <span
+          v-if="liveUpdateError && gateway.connected.value"
+          class="text-[13px] text-status-error"
+          :title="liveUpdateError"
+          role="status"
+          >{{
+            liveUpdateError.includes('Update the host')
+              ? 'Update the host for live updates'
+              : 'Live updates reconnecting…'
+          }}</span
+        >
       </span>
     </footer>
 

@@ -56,6 +56,7 @@ export interface DaemonGateway {
   ): Promise<Result<unknown>>
   /** Live daemon connection state (reactive; heartbeat-driven). */
   readonly connected: Ref<boolean>
+  readonly liveUpdateError?: Ref<string>
   /** True when the in-memory demo gateway backs the app (never blocks). */
   readonly demo: boolean
 

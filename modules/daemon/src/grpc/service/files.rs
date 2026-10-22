@@ -27,7 +27,36 @@ impl DaemonService {
         Response<tokio_stream::wrappers::ReceiverStream<Result<WorkspaceChange, Status>>>,
         Status,
     > {
-        let root = PathBuf::from(request.into_inner().workspace_path);
+        let subject =
+            super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
+        let req = request.into_inner();
+        if req.include_activity {
+            let allowed = {
+                let acl = self.state.acl_store.read().unwrap();
+                [
+                    "/metteur.Daemon/WatchWorkspaceChanges",
+                    "/metteur.Daemon/WatchWorkspace",
+                    "/metteur.Daemon/WatchJobs",
+                ]
+                .iter()
+                .all(|path| acl.is_allowed(&subject, path))
+            };
+            if !allowed {
+                return Err(Status::permission_denied(
+                    "Workspace activity requires current business, file and job watch permissions",
+                ));
+            }
+            return self.watch_workspace_activity(req.workspace_path).await;
+        }
+        self.watch_business_changes(PathBuf::from(req.workspace_path)).await
+    }
+    async fn watch_business_changes(
+        &self,
+        root: PathBuf,
+    ) -> Result<
+        Response<tokio_stream::wrappers::ReceiverStream<Result<WorkspaceChange, Status>>>,
+        Status,
+    > {
         let ws = self
             .state
             .workspaces
@@ -47,6 +76,7 @@ impl DaemonService {
                 if tx
                     .send(Ok(WorkspaceChange {
                         sequence,
+                        ..Default::default()
                     }))
                     .await
                     .is_err()
@@ -59,6 +89,66 @@ impl DaemonService {
                     change = async { match personal.as_mut() { Some(personal) => personal.changed().await, None => std::future::pending().await } } => if change.is_err() { break; },
                 }
                 sequence = sequence.wrapping_add(1);
+            }
+        });
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+    }
+    async fn watch_workspace_activity(
+        &self,
+        workspace_path: String,
+    ) -> Result<
+        Response<tokio_stream::wrappers::ReceiverStream<Result<WorkspaceChange, Status>>>,
+        Status,
+    > {
+        use tokio_stream::StreamExt;
+        let business =
+            self.watch_business_changes(PathBuf::from(&workspace_path)).await?.into_inner();
+        let files = self
+            .watch_workspace(Request::new(WatchWorkspaceRequest {
+                workspace_path: workspace_path.clone(),
+                ..Default::default()
+            }))
+            .await?
+            .into_inner();
+        let jobs = self
+            .watch_jobs(Request::new(WatchJobsRequest {
+                workspace_path,
+            }))
+            .await?
+            .into_inner();
+        let mut events = business
+            .map(|result| {
+                result.map(|mut event| {
+                    event.activity_supported = true;
+                    event
+                })
+            })
+            .merge(files.map(|result| {
+                result.map(|file| WorkspaceChange {
+                    file_event: Some(file),
+                    activity_supported: true,
+                    ..Default::default()
+                })
+            }))
+            .merge(jobs.map(|result| {
+                result.map(|job| WorkspaceChange {
+                    job_event: Some(job),
+                    activity_supported: true,
+                    ..Default::default()
+                })
+            }));
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        tokio::spawn(async move {
+            loop {
+                let event =
+                    tokio::select! { _ = tx.closed() => break, event = events.next() => event };
+                let Some(event) = event else {
+                    break;
+                };
+                let failed = event.is_err();
+                if tx.send(event).await.is_err() || failed {
+                    break;
+                }
             }
         });
         Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
