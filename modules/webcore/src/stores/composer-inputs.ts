@@ -7,8 +7,10 @@ import type { RecoveryInput, RecoveryRecord } from '@/core/recovery'
 import type { ChatDeliveryReceipt, FileTreeNode, Result } from '@/core/types'
 import type { PromptSnapshot } from '@/core/resources'
 import { useRecoveryStore } from './recovery'
+import { validResultReference, type ResultChoice } from '@/core/workflow'
 
 export type ComposerSelection =
+  | { kind: 'result'; result: ResultChoice }
   | { kind: 'file'; file: FileTreeNode }
   | {
       kind: 'prompt'
@@ -133,6 +135,12 @@ export const useComposerInputsStore = defineStore('composer-inputs', () => {
       .filter((value): value is ComposerSelection => {
         if (!value || typeof value !== 'object') return false
         const entry = value as Partial<ComposerSelection>
+        if (entry.kind === 'result')
+          return (
+            'result' in entry &&
+            typeof entry.result?.label === 'string' &&
+            validResultReference(entry.result?.reference)
+          )
         if (entry.kind === 'file')
           return (
             'file' in entry && typeof entry.file?.path === 'string' && entry.file.kind === 'file'
@@ -150,6 +158,9 @@ export const useComposerInputsStore = defineStore('composer-inputs', () => {
         )
       })
       .map((value) => JSON.parse(JSON.stringify(value)))
+  }
+  function currentSelections(workspace: string, entity: string) {
+    return selections(controller(workspace, entity).primary.input)
   }
   function localCopies(workspace: string): RecoveryRecord[] {
     const result = new Map<string, RecoveryRecord>()
@@ -193,6 +204,7 @@ export const useComposerInputsStore = defineStore('composer-inputs', () => {
     discard,
     restore,
     selections,
+    currentSelections,
     localCopies,
     hasUnbackedInput: () =>
       [...new Set([...entries.values(), ...retired])].some(

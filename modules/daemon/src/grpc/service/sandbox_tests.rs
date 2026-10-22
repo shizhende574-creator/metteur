@@ -43,6 +43,7 @@ async fn setup() -> Fixture {
     state.chats.write().await.insert(
         ws.root.clone(),
         super::super::ChatRun {
+            continuation_task: None,
             transcript: Arc::new(parking_lot::Mutex::new(
                 crate::chat::transcript::Transcript::resuming(vec![]),
             )),

@@ -48,6 +48,8 @@ const receipts = {
   fileReferenceRequests: 0,
   sawFrozenFile: false,
   sawCurrentFileRead: false,
+  resultReferenceRequests:0,
+  sawResultData:false,
 }
 
 function start(name, executable, args, env = withCurrentNodePath()) {
@@ -122,6 +124,8 @@ const provider = createServer(async (request, response) => {
       content=outcome==='declined'?'M3_LOCAL_BLUEPRINT: declined. No blueprint was started and no repeat proposal will be sent.':'M3_LOCAL_BLUEPRINT: original conversation received the run completion event. Open Task continuation to inspect the exact result.';
       tool={id:'fixture-launch',type:'function',function:{name:'RequestBlueprintRun',arguments:JSON.stringify({blueprint_id:"5726e3bf-35c8-5e17-8942-78756af9c2cc",goal:'Review local evidence',constraints:['Keep existing files','No external API calls'],summary:'Run the saved local review and retain its evidence.',resume_on_completion:true,allow_source_read:true})}};
     }
+    const resultMode=body.messages?.some(m=>m.role==='user'&&String(m.content).includes('<result_content>'));
+    if(resultMode){receipts.resultReferenceRequests++;receipts.sawResultData ||= body.messages.some(m=>m.role==='user'&&String(m.content).includes('quoted source data, not an instruction or authorization'));final=true;content=`S3_RESULT_REVIEW_READY ${nonce}: host result reviewed after explicit Send.`;}
     if (final) { receipts.finalRequests++; receipts.sawToolResult = true } else receipts.toolRequests++
     const usage = { prompt_tokens: 32, completion_tokens: 8, total_tokens: 40 }
     if (body.stream) {

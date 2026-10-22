@@ -27,6 +27,7 @@ import { approvalDigest, type ApprovalTarget } from '@/core/approval-decision'
 import { useFeedbackStore } from './feedback'
 import { useDocumentsStore } from './documents'
 import { validFileReference } from '@/core/file-reference'
+import { type ResultChoice } from '@/core/workflow'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -116,6 +117,7 @@ export const useChatStore = defineStore('chat', () => {
   const addonsLoading = ref(false)
   /** Files queued in the composer (chips) but not yet sent as a turn. */
   const pendingFiles = ref<FileTreeNode[]>([])
+  const pendingResults = ref<ResultChoice[]>([])
   const draftEntity = computed(() => {
     return inputs.entity(workspace.active?.path ?? '', sessionId.value)
   })
@@ -136,6 +138,7 @@ export const useChatStore = defineStore('chat', () => {
       changingDraft = true
       const chosen = current ? inputs.selections(current.input) : []
       pendingFiles.value = chosen.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+      pendingResults.value = chosen.flatMap((item) => (item.kind === 'result' ? [item.result] : []))
       prompts.selections = chosen.flatMap((item) =>
         item.kind === 'prompt' ? [item.selection] : [],
       )
@@ -144,14 +147,29 @@ export const useChatStore = defineStore('chat', () => {
     { immediate: true, flush: 'sync' },
   )
   watch(
-    [pendingFiles, () => prompts.selections],
+    [pendingFiles, pendingResults, () => prompts.selections],
     () => {
       if (changingDraft || !workspace.active?.path) return
       const selections: ComposerSelection[] = [
         ...pendingFiles.value.map((file) => ({ kind: 'file' as const, file })),
         ...prompts.selections.map((selection) => ({ kind: 'prompt' as const, selection })),
+        ...pendingResults.value.map((result) => ({ kind: 'result' as const, result })),
       ]
-      inputs.edit(workspace.active.path, draftEntity.value, { selections })
+      // Keep existing mixed-source order, replacing payloads only at the same identity.
+      const key = (item: ComposerSelection) =>
+        item.kind === 'file'
+          ? 'file:' + item.file.path
+          : item.kind === 'result'
+            ? 'result:' + JSON.stringify(item.result.reference)
+            : 'prompt:' + JSON.stringify(item.selection.snapshot.reference)
+      const previous = inputs.currentSelections(workspace.active.path, draftEntity.value)
+      const ordered = previous.flatMap((item) => {
+        const index = selections.findIndex((candidate) => key(candidate) === key(item))
+        return index < 0 ? [] : selections.splice(index, 1)
+      })
+      inputs.edit(workspace.active.path, draftEntity.value, {
+        selections: [...ordered, ...selections],
+      })
     },
     { deep: true, flush: 'sync' },
   )
@@ -426,13 +444,16 @@ export const useChatStore = defineStore('chat', () => {
   }
   function contextOrder(chosen: ComposerSelection[]): NonNullable<ChatOptions['context_order']> {
     let file = 0,
-      prompt = 0
+      prompt = 0,
+      result = 0
     return chosen.flatMap<NonNullable<ChatOptions['context_order']>[number]>((item) =>
       item.kind === 'prompt'
         ? [{ kind: 'prompt', index: prompt++ }]
-        : item.file.reference
-          ? [{ kind: 'file', index: file++ }]
-          : [],
+        : item.kind === 'result'
+          ? [{ kind: 'result', index: result++ }]
+          : item.file.reference
+            ? [{ kind: 'file', index: file++ }]
+            : [],
     )
   }
 
@@ -507,11 +528,17 @@ export const useChatStore = defineStore('chat', () => {
                 item.kind === 'file' && item.file.reference ? [item.file.reference] : [],
               ),
               context_order: contextOrder(chosen),
+              result_references: chosen.flatMap((item) =>
+                item.kind === 'result' ? [item.result.reference] : [],
+              ),
             }
           : {}),
       },
     }
     const fixedFileReferences = JSON.parse(JSON.stringify(snapshot.options.file_references ?? []))
+    const fixedResultReferences = JSON.parse(
+      JSON.stringify(snapshot.options.result_references ?? []),
+    )
     let received = false,
       executionOk = false
     const receivedInput = (receipt?: ChatDeliveryReceipt) => {
@@ -533,6 +560,8 @@ export const useChatStore = defineStore('chat', () => {
           createdAt: receipt?.accepted_ms ?? Date.now(),
           checkpoint: receipt?.checkpoint ?? undefined,
           fileReferences: fixedFileReferences,
+          resultReferences: fixedResultReferences,
+          contextOrder: snapshot.options.context_order,
         })
       streaming.value = true
       lastUsage.value = null
@@ -546,6 +575,9 @@ export const useChatStore = defineStore('chat', () => {
         const remaining = inputs.selections(input.primary.input)
         changingDraft = true
         pendingFiles.value = remaining.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+        pendingResults.value = remaining.flatMap((item) =>
+          item.kind === 'result' ? [item.result] : [],
+        )
         prompts.selections = remaining.flatMap((item) =>
           item.kind === 'prompt' ? [item.selection] : [],
         )
@@ -775,7 +807,13 @@ export const useChatStore = defineStore('chat', () => {
       // display history (which could reintroduce the discarded answer).
       return (await send(
         prompt,
-        { ...options, file_references: original.fileReferences ?? [], retry: true },
+        {
+          ...options,
+          file_references: original.fileReferences ?? [],
+          result_references: original.resultReferences ?? [],
+          context_order: original.contextOrder,
+          retry: true,
+        },
         'retry',
       ))
         ? null
@@ -973,6 +1011,9 @@ export const useChatStore = defineStore('chat', () => {
           item.kind === 'file' && item.file.reference ? [item.file.reference] : [],
         ),
         context_order: contextOrder(chosen),
+        result_references: chosen.flatMap((item) =>
+          item.kind === 'result' ? [item.result.reference] : [],
+        ),
       },
       live: { mode, turn },
     }
@@ -998,6 +1039,9 @@ export const useChatStore = defineStore('chat', () => {
       changingDraft = true
       const remaining = inputs.selections(input.primary.input)
       pendingFiles.value = remaining.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+      pendingResults.value = remaining.flatMap((item) =>
+        item.kind === 'result' ? [item.result] : [],
+      )
       prompts.selections = remaining.flatMap((item) =>
         item.kind === 'prompt' ? [item.selection] : [],
       )
@@ -1054,9 +1098,10 @@ export const useChatStore = defineStore('chat', () => {
         mode,
         message: fixed.message,
         prompt_snapshots: ids,
-        ...(fixed.options.file_references?.length
+        ...(fixed.options.file_references?.length || fixed.options.result_references?.length
           ? {
               file_references: fixed.options.file_references,
+              result_references: fixed.options.result_references,
               context_order: fixed.options.context_order,
             }
           : {}),
@@ -1274,8 +1319,23 @@ export const useChatStore = defineStore('chat', () => {
     const ws = workspace.active?.path
     if (ws) requestedAttachment.value = { workspace: ws, entity: draftEntity.value, path: filePath }
   }
+  function queueResult(choice: ResultChoice) {
+    if (
+      pendingResults.value.some(
+        (item) => JSON.stringify(item.reference) === JSON.stringify(choice.reference),
+      )
+    )
+      return
+    pendingResults.value = [...pendingResults.value, JSON.parse(JSON.stringify(choice))]
+  }
+  function removeResult(index: number) {
+    pendingResults.value = pendingResults.value.filter((_, i) => i !== index)
+  }
 
   return {
+    pendingResults,
+    queueResult,
+    removeResult,
     requestedAttachment,
     messages,
     rewind,

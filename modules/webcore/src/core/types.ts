@@ -99,6 +99,9 @@ export interface FileContent {
 export interface ChatMessage {
   id: string
   fileReferences?: SavedFileReference[]
+  resultReferences?: import('./workflow').SavedResultReference[]
+  contextOrder?: ChatOptions['context_order']
+  displayContent?: string
   role: 'user' | 'assistant' | 'tool' | 'error' | 'notice'
   /** Role header for tool messages, e.g. the tool name. */
   actor?: string
@@ -166,7 +169,8 @@ export interface ChatOptions {
   }
   prompt_snapshots?: string[]
   file_references?: SavedFileReference[]
-  context_order?: { kind: 'file' | 'prompt'; index: number }[]
+  result_references?: import('./workflow').SavedResultReference[]
+  context_order?: { kind: 'file' | 'prompt' | 'result'; index: number }[]
   model?: string
   system?: string
   temperature?: number

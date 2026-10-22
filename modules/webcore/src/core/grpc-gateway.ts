@@ -136,6 +136,7 @@ function parseTranscript(raw: string): ChatMessage[] {
       id: `u-${index}`,
       role: 'user' as const,
       content,
+      displayContent: typeof entry.display_content === 'string' ? entry.display_content : undefined,
       createdAt: at,
       checkpoint: String(entry.checkpoint ?? '') || undefined,
     }

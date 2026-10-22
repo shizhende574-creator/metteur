@@ -25,6 +25,14 @@ enum Query {
     Read {
         id: Uuid,
     },
+    Result {
+        id: Uuid,
+        source: String,
+        offset: usize,
+    },
+    CaptureResult {
+        reference: super::result_references::ResultReference,
+    },
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -63,15 +71,30 @@ impl DaemonService {
             .get(Path::new(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace is not open"))?;
-        let store = ContinuationStore::new(ws.db.clone(), ws.root()).map_err(to_status)?;
+        let store = ContinuationStore::inspect(ws.db.clone(), ws.root()).map_err(to_status)?;
         let live = self.state.chats.read().await.get(ws.root()).cloned();
-        let project = |record: &crate::continuation::store::TaskRecord| {
-            let mut value = projection(record);
-            if let Some(chat) = &live {
-                if chat.session_id == Some(record.task.session) {
-                    if let Some(broker) = &chat.approvals {
-                        let details = chat.approval_details.lock();
-                        value["pending_approvals"] = serde_json::json!(
+        let project =
+            |record: &crate::continuation::store::TaskRecord| -> Result<serde_json::Value, Status> {
+                let mut value = projection(record);
+                let current_revision =
+                    ws.db.chat_revision(record.task.session.as_bytes()).map_err(to_status)?;
+                let may_send = self
+                    .state
+                    .acl_store
+                    .read()
+                    .unwrap()
+                    .is_allowed(&subject, "/metteur.Daemon/SendChat");
+                value["workflow"] = crate::continuation::presentation::workflow(
+                    record,
+                    current_revision,
+                    may_send,
+                    now_ms(),
+                );
+                if let Some(chat) = &live {
+                    if chat.session_id == Some(record.task.session) {
+                        if let Some(broker) = &chat.approvals {
+                            let details = chat.approval_details.lock();
+                            value["pending_approvals"] = serde_json::json!(
                             broker
                                 .pending_ids()
                                 .into_iter()
@@ -80,11 +103,11 @@ impl DaemonService {
                                 ))
                                 .collect::<Vec<_>>()
                         );
+                        }
                     }
                 }
-            }
-            value
-        };
+                Ok(value)
+            };
         let value = match decode::<Query>(&req)? {
             Query::List {
                 after,
@@ -95,7 +118,12 @@ impl DaemonService {
                 } else {
                     None
                 };
-                serde_json::json!({"items":page.iter().filter(|r|r.owner_subject==subject).map(&project).collect::<Vec<_>>(),"next":next})
+                let items = page
+                    .iter()
+                    .filter(|r| r.owner_subject == subject)
+                    .map(&project)
+                    .collect::<Result<Vec<_>, _>>()?;
+                serde_json::json!({"items":items,"next":next})
             }
             Query::Read {
                 id,
@@ -107,7 +135,27 @@ impl DaemonService {
                 if r.owner_subject != subject {
                     return Err(Status::permission_denied("Task owner mismatch"));
                 }
-                project(&r)
+                project(&r)?
+            }
+            Query::Result {
+                id,
+                source,
+                offset,
+            } => {
+                let r = store
+                    .get(id)
+                    .map_err(to_status)?
+                    .ok_or_else(|| Status::not_found("Task not found"))?;
+                if r.owner_subject != subject {
+                    return Err(Status::permission_denied("Task owner mismatch"));
+                }
+                store.read_result_artifact(id, &source, offset).map_err(to_status)?
+            }
+            Query::CaptureResult {
+                reference,
+            } => {
+                let (reference, content) = self.result_document(&ws, &subject, &reference, true)?;
+                serde_json::json!({"reference":reference,"content":content,"origin":"source_data"})
             }
         };
         Ok(response(value))
@@ -126,7 +174,8 @@ impl DaemonService {
             .get(Path::new(&req.workspace_path))
             .await
             .ok_or_else(|| Status::not_found("Workspace is not open"))?;
-        let _gate = ws.admit().await.map_err(to_status)?;
+        // Policy controls only mutate the existing task ledger. Stop must not
+        // wait behind the execution it is meant to cancel.
         let store = ContinuationStore::new(ws.db.clone(), ws.root()).map_err(to_status)?;
         let r = store
             .update(input.id, req.expected_revision, |r| {
@@ -185,6 +234,28 @@ impl DaemonService {
                         }
                     }
                     "resume" => {
+                        let current = ws.db.chat_revision(r.task.session.as_bytes())?;
+                        let may_send = self
+                            .state
+                            .acl_store
+                            .read()
+                            .unwrap()
+                            .is_allowed(&subject, "/metteur.Daemon/SendChat");
+                        let facts = crate::continuation::presentation::workflow(
+                            r,
+                            current,
+                            may_send,
+                            now_ms(),
+                        );
+                        if !facts["allowed_actions"]
+                            .as_array()
+                            .is_some_and(|a| a.iter().any(|v| v == "resume"))
+                        {
+                            return Err(DaemonError::Execution(format!(
+                                "Automatic continuation remains blocked: {}",
+                                facts["reason"]
+                            )));
+                        }
                         if matches!(
                             r.task.state,
                             TaskState::Stopped | TaskState::Completed | TaskState::NeedsAttention
@@ -220,7 +291,9 @@ impl DaemonService {
             }
 
             if let Some(chat) = self.state.chats.read().await.get(ws.root()) {
-                if chat.session_id == Some(r.task.session) {
+                if chat.continuation_task == Some(input.id)
+                    && chat.session_id == Some(r.task.session)
+                {
                     chat.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
                     if let Some(b) = &chat.approvals {
                         b.close();
@@ -234,7 +307,14 @@ impl DaemonService {
                 }
             }
         }
-        Ok(response(projection(&r)))
+        let mut value = projection(&r);
+        value["workflow"] = crate::continuation::presentation::workflow(
+            &r,
+            ws.db.chat_revision(r.task.session.as_bytes()).map_err(to_status)?,
+            self.state.acl_store.read().unwrap().is_allowed(&subject, "/metteur.Daemon/SendChat"),
+            now_ms(),
+        );
+        Ok(response(value))
     }
 }
 pub(super) fn now_ms() -> u64 {

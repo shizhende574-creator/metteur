@@ -15,8 +15,8 @@ mod concierge_delivery;
 mod config;
 mod continuations;
 mod delivery;
-mod files;
 mod file_references;
+mod files;
 mod foreground;
 mod jobs;
 mod launches;
@@ -26,11 +26,14 @@ mod recovery;
 mod registry;
 mod reports;
 mod resources;
+mod result_references;
 mod sandbox;
 mod state;
 mod versioning;
-mod workspace;
 mod workflow_receipts;
+#[cfg(test)]
+mod workflow_tests;
+mod workspace;
 
 use std::sync::Arc;
 

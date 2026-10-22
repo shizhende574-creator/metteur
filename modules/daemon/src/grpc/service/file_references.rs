@@ -12,6 +12,9 @@ pub(super) struct FileReference {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum ContextOrder {
+    Result {
+        index: usize,
+    },
     Prompt {
         index: usize,
     },
@@ -19,15 +22,24 @@ pub(super) enum ContextOrder {
         index: usize,
     },
 }
+#[cfg(test)]
 pub(super) fn ordered_text(
     prompts: &[String],
     files: &[String],
     order: &[ContextOrder],
 ) -> Result<String, tonic::Status> {
+    ordered_context(prompts, files, &[], order)
+}
+pub(super) fn ordered_context(
+    prompts: &[String],
+    files: &[String],
+    results: &[String],
+    order: &[ContextOrder],
+) -> Result<String, tonic::Status> {
     if order.is_empty() {
-        return Ok(prompts.iter().chain(files).cloned().collect());
+        return Ok(prompts.iter().chain(files).chain(results).cloned().collect());
     }
-    if order.len() != prompts.len() + files.len() {
+    if order.len() != prompts.len() + files.len() + results.len() {
         return Err(tonic::Status::invalid_argument(
             "selected context order does not cover its sources",
         ));
@@ -36,6 +48,9 @@ pub(super) fn ordered_text(
     let mut text = String::new();
     for item in order {
         let (kind, index, chunk) = match item {
+            ContextOrder::Result {
+                index,
+            } => (2, *index, results.get(*index)),
             ContextOrder::Prompt {
                 index,
             } => (0, *index, prompts.get(*index)),

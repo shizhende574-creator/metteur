@@ -4,6 +4,15 @@
 
 ## 当前进展
 
+- S3当前Windows交接/结果功能链已通过，契约RESULTS.md；基线190b48d，最终源码摘要s3-source-production.json。首轮L2 7通过/4失败，失败4项修复后窄复测通过（s3-browser-narrow-second），未重跑原7项。新同步选择回写读composerInput computed形成依赖环，CDP栈保留s3-draft-cdp-stack.log，改用控制器currentSelections；格式化后的dblclick非法表达式已提取reset。app类型/窄能力拒绝/最终lint/生产构建exit0，全部原始失败保留。
+- native首轮仅夹具private finish_source编译失败，改用现有TaskHandle.finish后dw_results2、dw_delivery15、nx_launch_live4通过；完整clippy/Task Stop unit首次因缺导入失败，补齐后s3-clippy-fixture-retest exit0，仅既有27 lib及1旧测试告警；task-stop-unit-retest1通过，证明持有准入时Stop可完成且不误停同session其他task。
+- L3首轮完整故事通过（s3-live-browser-first）：生产新建Task的可靠Send→精确蓝图版本/交接/只保留结果确认→一次真实解释器执行→Task和独立run共享结果→带入当前草稿零调用→显式Send重新核验结果来源→刷新不重跑且长上下文折叠。当前入口http://127.0.0.1:19089，launcher exec session34278，daemon44340/web33836；实际数据daily-workflow-evidence/20261022/s3-live-first/live-r0ImG1/workspace，ready同父目录；冻结bin s3-runtime-20261023-r1/bin，Web s3-production-first。s3-production-visual.png已只读检查，pageerrors=[]。旧19088/DW-04仍保留；仅19087首轮失败实例已定向停止，数据/trace未删除。
+- 后续仍需无终态source的异常新计划入口、完整两故事/事件源/生命周期、固定样本性能与平台迁移、候选模型授权/用户体验/持续观察。DW-06/07与全部AC仍不关闭；当前原生与本地HTTP provider证据不能替代L4/L5。继续推进，不逐包等待授权；无付费调用、push或合并。
+
+- 当前未提交S3工作树基线190b48d，请保留全部差异。新增宿主WorkflowFacts原因码/允许动作、只读结果引用及发送/Queue/Steer再验证、共享WorkflowResult与带来源草稿芯片、历史长上下文折叠；Task Stop不等准入且按task绑定当前turn，新Task复用主聊天可靠提交。Reviews及Usage固定业务轮询已改共享事件刷新。19088仍冻结DW-04，尚不是S3生产版。
+- S3首轮app类型/lint通过（早期WorkflowResult thread.id改sessionId，s3-app-structural-first保留）。native首轮仅夹具调用private finish_source编译失败，改用现有TaskHandle.finish后实际dw_results2、dw_delivery及nx_launch_live4通过；日志s3-batch-native-{first,fixture-fix}。完整消费者clippy/Task Stop unit首轮因新unit缺Uuid/ResourceRequest导入未通过，已补导入，尚待复测。
+- L2首轮11中7通过/4失败，s3-batch-browser-first与trace保留。新结果三例在同步设置chat.draft时卡住，CDP栈定位到Vue checkDirty/composerInput环；已避免在同步选择写回watch内读取composerInput computed，改用控制器currentSelections。其余Usage失败由oxfmt把已有多语句dblclick展开成非法Vue表达式，已提取reset函数。当前仅复测失败4例（s3-browser-narrow-second，运行结果不得猜测）；过关7例未重跑。额外诊断s3-browser-diagnostic*及s3-draft-cdp-stack.log保留；诊断临时日志/拦截器已移除，诊断浏览器和19084自建Vite已定向停止。后续按实测继续修复并完成S3生产链、S4完整矩阵，不停工、无付费调用、无远端操作。
+
 - S2/DW-04当前Windows文件场景已完成：FILES.md、schema增量/消费者、统一版本选择与冲突流程。首轮native dw_files3及蓝图历史/文件意图/恢复通过；上下文顺序unit1通过；L2新文件与受影响入口22首轮通过。workspace/all-targets clippy exit0，仅既有27 lib及1旧测试告警，app/node类型通过。夹具no-shadow已清理，最终窄lint无告警。
 - 保留真实首轮失败：dw04-live-browser-first暴露protobuf JS string解码吞UTF-8 BOM；ReadFileResponse新增可选content_utf8，网关fatal/ignoreBOM解码。仅受影响RPC1和生产文件故事复测通过（dw04-bom-rpc-narrow、dw04-live-browser-bom），首轮trace/截图未覆盖；此前已过L2不重跑。控制器首轮13通过/新增1项仅断言错误文案失配，窄修后通过；dw04-controller-{first,narrow}。全部范围不累加为AC。
 - 当前可操作文件运行版 http://127.0.0.1:19088，launcher exec session25992，daemon32804/web56940；数据daily-workflow-evidence/20261022/dw04-live-bom/live-dbyo92/workspace，ready同父目录。冻结bin dw04-runtime-20261023-r2/bin，Web dw04-production-bom，清单manifest/source-bom记录内容身份。原19086保持DW-03；19087保留首轮失败现场。文件故事实际2次本地provider请求，固定旧引用与当前ReadFile确证不同；无付费模型调用。只读截图dw04-production-visual.png已检查，原IDE保留，历史引用长正文仍展开，DW-06必须收进共享可读详情。最终用户体验/全AC未代签。下一继续S3/DW-05/06/07，按同场景收齐后集中检查，不停工等待授权。

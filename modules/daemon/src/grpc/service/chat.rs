@@ -152,9 +152,17 @@ impl DaemonService {
             .unwrap_or_else(|| serde_json::json!([]));
         let order: Vec<super::file_references::ContextOrder> = serde_json::from_value(order)
             .map_err(|_| Status::invalid_argument("invalid selected context order"))?;
-        selected_text = super::file_references::ordered_text(
+        let result_refs: Vec<super::result_references::ResultReference> = serde_json::from_value(
+            serde_json::from_str::<serde_json::Value>(&req.options_json)
+                .ok()
+                .and_then(|o| o.get("result_references").cloned())
+                .unwrap_or_else(|| serde_json::json!([])),
+        )
+        .map_err(|_| Status::invalid_argument("Invalid selected results"))?;
+        selected_text = super::file_references::ordered_context(
             &prompt_parts,
             &self.selected_file_parts(&ws, &subject, &files)?,
+            &self.selected_result_parts(&ws, &subject, &result_refs)?,
             &order,
         )?;
         if req.message.len().saturating_add(selected_text.len()) > 1024 * 1024 {
@@ -443,6 +451,9 @@ impl DaemonService {
             accepted.context.push_message(Message::text(Role::User, message.clone()));
             let mut journal = Transcript::resuming(accepted.transcript);
             journal.push_user(message.clone(), now);
+            if !selected_text.is_empty() {
+                journal.set_user_display(&req.message);
+            }
             journal.set_user_checkpoint(&checkpoint_id);
             accepted.transcript = journal.finish();
             accepted.updated_at = now;
@@ -479,12 +490,16 @@ impl DaemonService {
             transcript.push_notice("Task resumed from a host event", now);
         } else {
             transcript.push_user(message.clone(), now);
+            if !selected_text.is_empty() {
+                transcript.set_user_display(&req.message);
+            }
         }
         transcript.set_user_checkpoint(&checkpoint_id);
         let transcript = Arc::new(parking_lot::Mutex::new(transcript));
         self.state.chats.write().await.insert(
             ws_key.clone(),
             ChatRun {
+                continuation_task: task_handle.as_ref().map(|handle| handle.id),
                 transcript: transcript.clone(),
                 turn_id: run_id,
                 approval_details: approval_details.clone(),

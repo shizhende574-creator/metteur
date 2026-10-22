@@ -15,7 +15,9 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
-    Workflow { action: super::workflow_receipts::Query },
+    Workflow {
+        action: super::workflow_receipts::Query,
+    },
     Admission,
     ControlTarget,
     Capabilities,
@@ -71,7 +73,7 @@ impl DaemonService {
         // before a concrete Stop can be sent. It reads no ledger or content.
         if matches!(query, Query::Capabilities) {
             return Ok(response(Ok(
-                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"conditional_files":true,"frozen_file_references":true,"targeted_controls":true,"durable_queue":true,"durable_queue_channel":"chat","max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
+                serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"conditional_files":true,"frozen_file_references":true,"frozen_result_references":true,"targeted_controls":true,"durable_queue":true,"durable_queue_channel":"chat","max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
             )));
         }
         if matches!(query, Query::ControlTarget) {
@@ -81,7 +83,10 @@ impl DaemonService {
                 }),
             ));
         }
-        if let Query::Workflow { action } = query {
+        if let Query::Workflow {
+            action,
+        } = query
+        {
             return Ok(response(self.workflow_query(&ws, &subject, action).await));
         }
         let _guard = ws.admit().await.map_err(super::to_status)?;
@@ -132,7 +137,10 @@ impl DaemonService {
                 Ok(serde_json::json!({"receipt":receipt,"source_available":source_available}))
             };
             match query {
-                Query::LiveSubmit(_) | Query::Workflow { .. } => unreachable!("handled asynchronously"),
+                Query::LiveSubmit(_)
+                | Query::Workflow {
+                    ..
+                } => unreachable!("handled asynchronously"),
                 Query::LiveBody {
                     id,
                 } => Ok(serde_json::json!({"id":id,"body":store.live_body(id)?})),

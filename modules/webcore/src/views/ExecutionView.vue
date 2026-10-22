@@ -20,6 +20,7 @@ import { useSurfaceNavigation } from '@/lib/surface'
 import { useVersionStore } from '@/stores/version'
 import ExecutionLayout from '@/components/execution/ExecutionLayout.vue'
 import FilePickerDialog, { type FilePick } from '@/components/FilePickerDialog.vue'
+import WorkflowResult from '@/components/WorkflowResult.vue'
 const execution = useExecutionStore(),
   workspace = useWorkspaceStore(),
   tabs = useTabsStore()
@@ -306,7 +307,20 @@ function openSource() {
         @version="proposalVersion"
     /></template>
     <template #details="{ tab }">
-      <div v-if="tab === 'Node details'" class="details node-details">
+      <div v-if="tab === 'Result'" class="details">
+        <WorkflowResult
+          v-if="execution.runId && !selected && !execution.active"
+          :reference="{ kind: 'run', runId: execution.runId, digest: '' }"
+          label="Blueprint run"
+          source-label="Recorded run. Conversation handoffs, when present, are retained in Tasks."
+          expanded
+        />
+        <p v-else>
+          The saved result is available after this run ends. Current progress remains in the
+          execution graph.
+        </p>
+      </div>
+      <div v-else-if="tab === 'Node details'" class="details node-details">
         <p v-if="execution.runId">Run: {{ execution.runId }}</p>
         <section v-if="proposalTarget" aria-label="Proposal target details">
           <strong>Proposal target · {{ proposalTarget.nodeId }}</strong>

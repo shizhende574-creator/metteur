@@ -178,6 +178,7 @@ defineExpose({ scrollToBottom })
             v-else-if="row.message.role === 'user'"
             :read-only="readOnly"
             :content="row.message.content"
+            :display-content="row.message.displayContent"
             :created-at="row.message.createdAt"
             :queued="row.message.queued === true"
             :input-status="row.message.inputStatus"

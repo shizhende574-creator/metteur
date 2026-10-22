@@ -14,6 +14,8 @@ import type { TaskRecord, TaskPage } from '@/core/continuations'
 import { stateLabel } from '@/core/continuations'
 import './continuations.css'
 import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
+import WorkflowResult from '@/components/WorkflowResult.vue'
+import { useComposerInputsStore } from '@/stores/composer-inputs'
 defineProps<{ embedded?: boolean }>()
 const chat = useChatStore(),
   workspace = useWorkspaceStore(),
@@ -26,6 +28,23 @@ const chat = useChatStore(),
   confirm = ref(false),
   next = ref<string | null>(null)
 const entry = computed(() => rows.value.find((r) => r.task.id === selected.value) ?? rows.value[0])
+const facts = computed(() => entry.value?.workflow)
+const allowed = (action: string) => !!facts.value?.allowed_actions.includes(action)
+const stopTarget = ref<{ root: string; id: string; revision: number; goal: string } | null>(null)
+const taskPrepared = ref<{ root: string; entity: string } | null>(null)
+function requestStop() {
+  const r = entry.value,
+    root = workspace.active?.path
+  if (r && root) {
+    stopTarget.value = {
+      root,
+      id: r.task.id,
+      revision: r.revision,
+      goal: r.policy?.purpose || 'Task',
+    }
+    confirm.value = true
+  }
+}
 interface LaunchReceipt {
   id: string
   state: string
@@ -141,6 +160,8 @@ watch(
     confirm.value = false
     starting.value = false
     launching.value = false
+    taskPrepared.value = null
+    stopTarget.value = null
   },
   { immediate: true },
 )
@@ -153,14 +174,17 @@ async function control(action: string) {
   const r = entry.value,
     root = workspace.active?.path
   if (!r || !root || !available.value) return
+  const target =
+    action === 'stop' ? stopTarget.value : { root, id: r.task.id, revision: r.revision, goal: '' }
+  if (!target || target.root !== root) return
   const ticket = generation
   busy.value = true
   try {
     const res = await gateway.resourceRequest(
       'controlContinuation',
       root,
-      { id: r.task.id, action },
-      r.revision,
+      { id: target.id, action },
+      target.revision,
     )
     if (ticket !== generation) return
     if (!res.ok) {
@@ -177,13 +201,17 @@ async function control(action: string) {
 }
 async function openSession() {
   if (!entry.value) return
+  const target = entry.value.task.session,
+    root = workspace.active?.path,
+    ticket = generation
   if (chat.streaming) {
     error.value = 'A chat turn is active. Finish or stop it before switching sessions.'
     return
   }
   await chat.refreshThreads()
-  await chat.switchTo(entry.value.task.session)
-  openSurface('chat')
+  if (root !== workspace.active?.path || ticket !== generation) return
+  await chat.switchTo(target)
+  if (root === workspace.active?.path && chat.sessionId === target) openSurface('chat')
 }
 async function startTask(input: {
   goal: string
@@ -193,51 +221,81 @@ async function startTask(input: {
   minutes: number
   detached: boolean
 }) {
-  const root = workspace.active?.path
+  const root = workspace.active?.path,
+    ticket = generation
   if (!root || launching.value) return
-  const ticket = generation
+  if (chat.streaming || chat.busy) {
+    error.value = 'Finish or stop the active chat before starting another task.'
+    return
+  }
+  if (!chat.composerInput?.canSubmit) {
+    error.value = 'Reconcile the pending input in Chat before starting a task.'
+    return
+  }
   launching.value = true
   error.value = ''
-  const result = await gateway.sendChat(
-    root,
-    input.goal,
-    [],
-    () => {},
-    {
-      model: input.model,
-      max_tokens: 4096,
-      permission_mode: 'ask',
-      continuation_policy: {
-        purpose: input.goal,
-        detached: input.detached,
-        max_turns: input.maxTurns,
-        token_limit: input.tokenLimit,
-        expires_ms: Date.now() + input.minutes * 60000,
-      },
-    },
-    (sessionId) => {
-      if (ticket === generation) {
-        preferredSession = sessionId
-        starting.value = false
-        void load()
+  try {
+    if (!taskPrepared.value) {
+      const previous = chat.draftEntity
+      if (!(await useComposerInputsStore().backup(root, previous))) {
+        error.value = 'The current chat draft could not be protected.'
+        return
       }
-    },
-    '',
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    (request) => {
-      if (ticket === generation && workspace.active?.path === root) chat.approval = request
-    },
-  )
-  if (ticket === generation) {
-    launching.value = false
-    if (!result.ok) error.value = result.error
+      if (root !== workspace.active?.path || ticket !== generation || chat.draftEntity !== previous)
+        return
+      await chat.clear()
+      if (root !== workspace.active?.path || ticket !== generation) return
+      taskPrepared.value = { root, entity: chat.draftEntity }
+    }
+    if (taskPrepared.value.root !== root || taskPrepared.value.entity !== chat.draftEntity) {
+      error.value = 'The destination conversation changed. Review it in Chat before starting.'
+      return
+    }
+    chat.draft = input.goal
+    const accepted = await chat.send(
+      input.goal,
+      {
+        model: input.model,
+        max_tokens: Math.max(
+          1,
+          Math.min(
+            4096,
+            config.effective.llm?.models?.[input.model]?.context_window_output ?? 4096,
+          ),
+        ),
+        permission_mode: 'ask',
+        continuation_policy: {
+          purpose: input.goal,
+          detached: input.detached,
+          max_turns: input.maxTurns,
+          token_limit: input.tokenLimit,
+          expires_ms: Date.now() + input.minutes * 60000,
+        },
+      },
+      'normal',
+      () => {
+        if (ticket === generation && workspace.active?.path === root) {
+          preferredSession = taskPrepared.value?.entity ?? ''
+          starting.value = false
+          void load()
+        }
+      },
+    )
+    if (ticket !== generation || workspace.active?.path !== root) return
+    if (!accepted)
+      error.value =
+        chat.sendError ||
+        chat.composerInput?.error ||
+        'The task was not confirmed. Review the retained input in Chat.'
+    else if (chat.sessionId) preferredSession = chat.sessionId
     await load()
+  } catch (cause) {
+    if (ticket === generation) error.value = String(cause)
+  } finally {
+    if (ticket === generation) launching.value = false
   }
 }
+
 function reviewApproval(request: {
   request_id: string
   detail: string
@@ -338,7 +396,27 @@ function reviewApproval(request: {
             <pre>{{ JSON.stringify(launchReceipt.result, null, 2) }}</pre>
           </details>
         </section>
-        <p v-if="entry.task.attention" class="nx-live-alert">{{ entry.task.attention }}</p>
+        <section
+          v-if="facts"
+          class="nx-live-source"
+          style="display: block"
+          aria-label="Task next action"
+        >
+          <strong>{{ facts.reason }}</strong>
+          <p>{{ facts.next_action }}</p>
+          <button v-if="allowed('open_settings')" class="btn" @click="openSurface('settings')">
+            Review settings
+          </button>
+        </section>
+        <p v-else-if="entry.task.attention" class="nx-live-alert">{{ entry.task.attention }}</p>
+        <WorkflowResult
+          v-for="source in Object.values(entry.task.sources).filter((source) => !!source.terminal)"
+          :key="source.id"
+          :reference="{ kind: 'task', taskId: entry.task.id, sourceId: source.id, digest: '' }"
+          :label="source.kind"
+          source-label="Result from the original task conversation"
+          :allow-new-plan="allowed('new_plan')"
+        />
         <div
           v-for="source in Object.values(entry.task.sources)"
           :key="source.id"
@@ -353,38 +431,45 @@ function reviewApproval(request: {
             }}</strong
           ><span>{{ source.terminal ? stateLabel(source.terminal) : 'Running / pending' }}</span>
         </div>
-        <dl class="nx-live-facts">
-          <dt>Waiting policy</dt>
-          <dd>
-            {{ entry.task.wait?.mode ?? 'No active wait'
-            }}<span v-if="entry.task.wait">
-              · until
+        <details class="nx-live-disclosure">
+          <summary>Wait policy &amp; remaining budget</summary>
+          <dl class="nx-live-facts">
+            <dt>Waiting policy</dt>
+            <dd>
+              {{ entry.task.wait?.mode ?? 'No active wait'
+              }}<span v-if="entry.task.wait">
+                · until
+                {{
+                  new Date(entry.task.wait.deadline_ms).toLocaleString(undefined, {
+                    timeZoneName: 'short',
+                  })
+                }}</span
+              >
+            </dd>
+            <dt>Remaining budget</dt>
+            <dd>
+              {{ Math.max(0, entry.task.budget.max_turns - entry.task.budget.used_turns) }} turns ·
               {{
-                new Date(entry.task.wait.deadline_ms).toLocaleString(undefined, {
-                  timeZoneName: 'short',
-                })
-              }}</span
-            >
-          </dd>
-          <dt>Remaining budget</dt>
-          <dd>
-            {{ Math.max(0, entry.task.budget.max_turns - entry.task.budget.used_turns) }} turns ·
-            {{
-              Math.max(
-                0,
-                entry.task.budget.token_limit -
-                  entry.task.budget.consumed_tokens -
-                  entry.task.budget.reserved_tokens,
-              ).toLocaleString()
-            }}
-            tokens<span v-if="entry.task.budget.unknown_usage">
-              · usage unknown, continuation blocked</span
-            >
-          </dd>
-        </dl>
+                Math.max(
+                  0,
+                  entry.task.budget.token_limit -
+                    entry.task.budget.consumed_tokens -
+                    entry.task.budget.reserved_tokens,
+                ).toLocaleString()
+              }}
+              tokens<span v-if="entry.task.budget.unknown_usage">
+                · usage unknown, continuation blocked</span
+              >
+            </dd>
+          </dl>
+        </details>
         <details class="nx-live-disclosure">
           <summary>Task details and source results</summary>
           <p>Session {{ entry.task.session }} · generation {{ entry.task.generation }}</p>
+          <p v-if="entry.task.attention">Recorded reason: {{ entry.task.attention }}</p>
+          <p v-if="facts">
+            Reason code: {{ facts.reason_code }} · host revision {{ facts.target.revision }}
+          </p>
           <pre>{{
             JSON.stringify(
               { params: entry.task.wait?.params, sources: entry.task.sources },
@@ -410,9 +495,7 @@ function reviewApproval(request: {
         <div class="nx-live-actions">
           <button
             class="btn btn-outline"
-            :disabled="
-              !available || ['stopped', 'completed', 'needs_attention'].includes(entry.task.state)
-            "
+            :disabled="!available || !allowed(entry.task.paused ? 'resume' : 'pause')"
             @click="control(entry.task.paused ? 'resume' : 'pause')"
           >
             <Play v-if="entry.task.paused" :size="15" /><Pause v-else :size="15" />{{
@@ -421,7 +504,7 @@ function reviewApproval(request: {
           ><button
             class="btn nx-live-danger"
             :disabled="!available || ['stopped', 'completed'].includes(entry.task.state)"
-            @click="confirm = true"
+            @click="requestStop"
           >
             <Square :size="14" />Stop task
           </button>
@@ -442,6 +525,7 @@ function reviewApproval(request: {
         class="nx-live-modal"
       >
         <h2>Stop This Task?</h2>
+        <p>{{ stopTarget?.goal }}</p>
         <p>
           Invalidate future triggers and request cancellation of this task’s sources. Other tasks
           are unaffected. Unknown write effects remain blocked for review.

@@ -43,6 +43,28 @@ function liveSnapshot() {
   }
 }
 
+test('saved result context cannot downgrade to an old host', async () => {
+  const fixed = snapshot()
+  fixed.options.result_references = [
+    { kind: 'run', runId: crypto.randomUUID(), digest: 'a'.repeat(64) },
+  ]
+  let sends = 0
+  const attempt = new DeliveryAttempt(
+    transport(() => {
+      throw Error('unexpected query')
+    }),
+    fixed,
+  )
+  assert.equal(
+    await attempt.submit(async () => {
+      sends++
+      return { ok: true, data: undefined }
+    }),
+    false,
+  )
+  assert.equal(sends, 0)
+})
+
 test('saved file context cannot silently downgrade on an older host', async () => {
   const fixed = snapshot()
   fixed.options.file_references = [

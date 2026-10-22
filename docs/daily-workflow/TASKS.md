@@ -35,8 +35,8 @@
 | DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包AC最终验收保留） |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | VERIFIED（当前Windows文件场景及生产链；跨包AC最终验收保留） |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
-| DW-06 | 交接、可读结果与分类处置 | DW-03/05 | PLANNED |
-| DW-07 | 状态事件刷新与有界开销 | DW-00 | PLANNED |
+| DW-06 | 交接、可读结果与分类处置 | DW-03/05 | IN_PROGRESS（共享结果/草稿引用/宿主原因码/控制边界已接入，集中检查中） |
+| DW-07 | 状态事件刷新与有界开销 | DW-00 | IN_PROGRESS（评审/用量事件刷新已接入，性能/持续运行待验） |
 | DW-08 | 完整工作流与生命周期回归 | DW-02～07 必要接入完成 | PLANNED |
 | DW-09 | 候选验证、用户试用与可恢复交付 | DW-00～08 相关退出条件满足 | PLANNED |
 
@@ -154,7 +154,7 @@
 
 ### DW-06 · 交接、可读结果与分类处置
 
-**状态**：PLANNED。**依赖**：DW-03/05；文件证据接 DW-04；WF-PV-03 获批。
+**状态**：IN_PROGRESS。**依赖**：DW-03/05；文件证据接 DW-04；WF-PV-03 获批。
 
 **实现定位**：modules/webcore/src/components/continuations/TaskPanel.vue、BlueprintLaunchReview.vue；stores/chat.ts；modules/daemon/src/grpc/service/continuations.rs；continuation、oversight、现有资源服务。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -168,11 +168,11 @@
 
 **验收**：AC-10/11/12/13/14/15/17/26/30。**证据交付**：正常/预算/过期/撤权/未知/停止分支与迟到事件的定向证据。
 
-**实际记录**：实施 NOT_STARTED；检查 NOT_RUN；提交无；预览批准范围见 PREVIEWS.md，正式行为未验收。
+**实际记录**：基线190b48d上的S3工作树已接入；当前检查、首轮失败和受影响复测见REVIEW_HANDOFF/RESULTS.md。19089已通过交接/结果生产场景；无source异常入口、完整矩阵和性能仍待收口，不能关闭本包或AC。
 
 ### DW-07 · 状态事件刷新与有界开销
 
-**状态**：PLANNED。**依赖**：DW-00；相关 DW-02/03/05/06 状态写入确定后。
+**状态**：IN_PROGRESS。**依赖**：DW-00；相关 DW-02/03/05/06 状态写入确定后。
 
 **实现定位**：modules/daemon/src/storage/persistence/db.rs、oversight；modules/webcore/src/components/execution/ConciergePanel.vue、OversightReviews.vue；共享 watch/followStream 机制。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -185,7 +185,7 @@
 
 **验收**：AC-18/19/28。**证据交付**：空闲与连续编辑请求计数、真实变更／重连、固定样本性能对比。
 
-**实际记录**：实施 NOT_STARTED；检查 NOT_RUN；提交无；预览批准范围见 PREVIEWS.md，正式行为未验收。
+**实际记录**：基线190b48d上的S3工作树已接入；当前检查、首轮失败和受影响复测见REVIEW_HANDOFF/RESULTS.md。19089已通过交接/结果生产场景；无source异常入口、完整矩阵和性能仍待收口，不能关闭本包或AC。
 
 ### DW-08 · 完整工作流与生命周期回归
 

@@ -27,6 +27,8 @@ pub(super) struct LiveInput {
     #[serde(default)]
     pub file_references: Vec<super::file_references::FileReference>,
     #[serde(default)]
+    pub result_references: Vec<super::result_references::ResultReference>,
+    #[serde(default)]
     pub context_order: Vec<super::file_references::ContextOrder>,
 }
 fn time() -> u64 {
@@ -104,6 +106,7 @@ impl DaemonService {
                 &input.message,
                 &input.prompt_snapshots,
                 &input.file_references,
+                &input.result_references,
                 &input.context_order,
             ))
             .map_err(failure)
@@ -138,8 +141,16 @@ impl DaemonService {
         let files = self
             .selected_file_parts(ws, subject, &input.file_references)
             .map_err(|error| fault("invalid_file_reference", &error.to_string()))?;
-        body = super::file_references::ordered_text(&prompt_parts, &files, &input.context_order)
-            .map_err(|error| fault("invalid_file_reference", &error.to_string()))?;
+        let results = self
+            .selected_result_parts(ws, subject, &input.result_references)
+            .map_err(|error| fault("invalid_result_reference", &error.to_string()))?;
+        body = super::file_references::ordered_context(
+            &prompt_parts,
+            &files,
+            &results,
+            &input.context_order,
+        )
+        .map_err(|error| fault("invalid_file_reference", &error.to_string()))?;
         body.push_str(&input.message);
         if body.len() > crate::storage::delivery::MAX_LIVE_BODY {
             return Err(fault("invalid_input", "Input exceeds the bounded body limit"));

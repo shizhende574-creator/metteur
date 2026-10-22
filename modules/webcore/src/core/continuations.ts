@@ -24,8 +24,14 @@ export interface Schedule {
   misfire: string
 }
 export interface TaskRecord {
-  launch_intent?: string | null;
-  pending_approvals?: { request_id: string; detail: string; content_digest?: string; target?: import('./approval-decision').ApprovalTarget }[]
+  workflow?: import('./workflow').WorkflowFacts
+  launch_intent?: string | null
+  pending_approvals?: {
+    request_id: string
+    detail: string
+    content_digest?: string
+    target?: import('./approval-decision').ApprovalTarget
+  }[]
   revision: number
   policy: { purpose: string; expires_ms: number } | null
   schedules: Schedule[]

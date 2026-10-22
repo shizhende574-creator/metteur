@@ -622,6 +622,22 @@ const starterPrompts = [
           :pending-tool="chat.pendingTool"
         />
         <PlanBar :todos="chat.todos" />
+        <div
+          v-if="chat.pendingResults.length"
+          class="flex flex-wrap gap-2 px-4 py-2 text-[13px]"
+          aria-label="Selected saved results"
+        >
+          <span
+            v-for="(result, index) in chat.pendingResults"
+            :key="JSON.stringify(result.reference)"
+            class="rounded border border-divider px-2 py-1"
+          >
+            {{ result.label }} · Saved result
+            <button :aria-label="`Remove result ${result.label}`" @click="chat.removeResult(index)">
+              ×
+            </button>
+          </span>
+        </div>
         <ChatComposer
           ref="composer"
           :draft-value="chat.draft"
