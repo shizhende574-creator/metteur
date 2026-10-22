@@ -49,7 +49,11 @@ fn pump_stream<T: Send + 'static>(
     let (tx, rx) = tokio::sync::mpsc::channel(64);
     tokio::spawn(async move {
         let mut stream = response.into_inner();
-        while let Some(item) = stream.message().await.transpose() {
+        loop {
+            let item = tokio::select! { _ = tx.closed() => break, item = stream.message() => item.transpose() };
+            let Some(item) = item else {
+                break;
+            };
             if tx.send(item).await.is_err() {
                 break;
             }

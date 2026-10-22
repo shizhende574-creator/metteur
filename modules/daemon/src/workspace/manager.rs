@@ -278,6 +278,14 @@ impl WorkspaceManager {
             return Err(DaemonError::NotFound("Workspace was already closed".into()));
         }
         workspace.set_closing(true);
+        // Background observers hold the workspace DB while writing source receipts.
+        // Join them after cancellation, before acknowledging release of its lock.
+        let jobs = workspace.jobs();
+        let killed = jobs.kill_all();
+        if let Err(error) = jobs.finish_receipts().await {
+            workspace.set_closing(false);
+            return Err(error);
+        }
         active.remove(&root);
         drop(active);
         let watcher = workspace.watcher.lock().take();
@@ -291,7 +299,6 @@ impl WorkspaceManager {
             lsp.shutdown().await;
         }
         // Background commands belong to the workspace: close it, close them.
-        let killed = workspace.jobs().kill_all();
         if killed > 0 {
             tracing::info!("workspace {} closed; terminated {killed} job(s)", root.display());
         }

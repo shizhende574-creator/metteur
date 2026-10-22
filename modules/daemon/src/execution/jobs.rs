@@ -302,6 +302,7 @@ pub struct JobManager {
     /// Lifecycle and output notices for subscribers (the web UI's job panel).
     notices: tokio::sync::broadcast::Sender<JobNotice>,
     task_owners: std::sync::Mutex<HashMap<String, (uuid::Uuid, u64)>>,
+    receipts: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl JobManager {
@@ -310,6 +311,7 @@ impl JobManager {
         Self {
             root,
             task_owners: std::sync::Mutex::new(HashMap::new()),
+            receipts: std::sync::Mutex::new(Vec::new()),
             jobs: std::sync::Mutex::new(HashMap::new()),
             notify: Arc::new(Notify::new()),
             notices: tokio::sync::broadcast::channel(NOTICE_BUFFER).0,
@@ -323,6 +325,36 @@ impl JobManager {
     /// ever additive information.
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<JobNotice> {
         self.notices.subscribe()
+    }
+
+    /// Keep background source receipt cleanup owned until workspace close completes.
+    pub(crate) fn track_receipt(
+        &self,
+        future: impl std::future::Future<Output = ()> + Send + 'static,
+    ) {
+        let mut receipts = self.receipts.lock().unwrap();
+        receipts.retain(|handle| !handle.is_finished());
+        receipts.push(tokio::spawn(future));
+    }
+    pub(crate) async fn finish_receipts(&self) -> DaemonResult<()> {
+        let mut failure = None;
+        loop {
+            let receipts = { std::mem::take(&mut *self.receipts.lock().unwrap()) };
+            if receipts.is_empty() {
+                break;
+            }
+            for receipt in receipts {
+                if let Err(error) = receipt.await {
+                    failure.get_or_insert_with(|| {
+                        format!("Background job receipt cleanup failed: {error}")
+                    });
+                }
+            }
+        }
+        match failure {
+            Some(error) => Err(DaemonError::Execution(error)),
+            None => Ok(()),
+        }
     }
 
     /// Publishes a notice, ignoring the absence of subscribers.
@@ -360,7 +392,11 @@ impl JobManager {
 
     /// Persist the source identity before starting any operating-system effect.
     pub fn start_registered(
-        &self, command: &str, cwd: &Path, owner: uuid::Uuid, output_cap: usize,
+        &self,
+        command: &str,
+        cwd: &Path,
+        owner: uuid::Uuid,
+        output_cap: usize,
         register: impl FnOnce(&str) -> DaemonResult<()>,
     ) -> DaemonResult<String> {
         let id = new_job_id();
@@ -621,17 +657,32 @@ impl JobManager {
     }
 
     /// Called only after the durable wait commit. Ordinary turn cleanup stays intact.
-    pub fn transfer_to_task(&self, ids: &[String], turn: uuid::Uuid, task: uuid::Uuid, generation: u64) -> DaemonResult<()> {
+    pub fn transfer_to_task(
+        &self,
+        ids: &[String],
+        turn: uuid::Uuid,
+        task: uuid::Uuid,
+        generation: u64,
+    ) -> DaemonResult<()> {
         let jobs = self.jobs.lock().unwrap();
         if ids.iter().any(|id| jobs.get(id).is_none_or(|j| j.view().owner != turn)) {
             return Err(DaemonError::Execution("Job ownership mismatch".into()));
         }
         let mut owners = self.task_owners.lock().unwrap();
-        for id in ids { owners.insert(id.clone(), (task, generation)); }
+        for id in ids {
+            owners.insert(id.clone(), (task, generation));
+        }
         Ok(())
     }
     pub fn kill_task(&self, task: uuid::Uuid) -> usize {
-        let ids: Vec<_> = self.task_owners.lock().unwrap().iter().filter(|(_, (owner, _))| *owner == task).map(|(id, _)| id.clone()).collect();
+        let ids: Vec<_> = self
+            .task_owners
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, (owner, _))| *owner == task)
+            .map(|(id, _)| id.clone())
+            .collect();
         ids.into_iter().filter(|id| self.kill(id)).count()
     }
 

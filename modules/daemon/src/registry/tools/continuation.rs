@@ -162,7 +162,7 @@ impl Tool for StartSubAgent {
             ..Default::default()
         };
         let id = source.clone();
-        tokio::spawn(async move {
+        ctx.jobs.track_receipt(async move {
             let control = handle.clone();
             let stop = async move {
                 let mut changes = control.store.subscribe_changes();
