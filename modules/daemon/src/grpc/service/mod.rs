@@ -14,6 +14,7 @@ mod concierge;
 mod config;
 mod continuations;
 mod files;
+mod foreground;
 mod jobs;
 mod launches;
 mod prompts;

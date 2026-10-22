@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue'
 import { useRouter } from 'vue-router'
 import { Bug, Compass, ListChecks } from '@lucide/vue'
-import ConciergePanel from '@/components/execution/ConciergePanel.vue'
 import { gateway } from '@/core'
 import { useExecutionStore } from '@/stores/execution'
 import { useChatStore } from '@/stores/chat'
@@ -23,6 +31,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useComposerInputsStore } from '@/stores/composer-inputs'
 import RecoveryCopies from '@/components/RecoveryCopies.vue'
 import type { RecoveryRecord } from '@/core/recovery'
+import { useForegroundStore } from '@/stores/foreground'
+import { useSurfaceNavigation } from '@/lib/surface'
 
 /**
  * The ReAct chat surface.
@@ -34,6 +44,46 @@ import type { RecoveryRecord } from '@/core/recovery'
  */
 const chat = useChatStore()
 const execution = useExecutionStore()
+const foreground = useForegroundStore()
+const { openSurface } = useSurfaceNavigation()
+const blueprintBusy = computed(
+  () => foreground.current.state === 'blueprint' || execution.launching || execution.active,
+)
+const inputBlocked = computed(
+  () =>
+    blueprintBusy.value ||
+    ['unknown', 'blocked'].includes(foreground.current.state) ||
+    (foreground.current.state === 'chat' &&
+      (!chat.streaming || foreground.current.session !== chat.sessionId)),
+)
+const foregroundLabel = computed(() =>
+  execution.launching ? 'Blueprint is starting' : foreground.current.reason,
+)
+const foregroundRun = computed(
+  () => foreground.current.run || (execution.active ? execution.runId : null),
+)
+async function openSupervision() {
+  const ws = workspace.active?.path,
+    run = foregroundRun.value
+  if (!ws || !run) return
+  await execution.reconcile(run)
+  if (workspace.active?.path !== ws) return
+  if (execution.current?.runId !== run || !execution.connected) {
+    feedback.toast(
+      'error',
+      'Run Unavailable',
+      execution.error || 'The selected run could not be loaded.',
+    )
+    return
+  }
+  openSurface('execution')
+}
+async function controlBlueprint(action: 'pause' | 'cancel') {
+  const run = foregroundRun.value
+  if (!run) return
+  await execution[action](run)
+  await foreground.refresh()
+}
 useWorkspaceRefresh(() => execution.reconcile())
 const config = useConfigStore()
 const tabs = useTabsStore()
@@ -108,6 +158,13 @@ async function discardInput() {
 }
 
 const composer = ref<InstanceType<typeof ChatComposer>>()
+let surfaceActive = true
+onActivated(() => {
+  surfaceActive = true
+})
+onDeactivated(() => {
+  surfaceActive = false
+})
 
 /* Models ---------------------------------------------------------------- */
 
@@ -220,6 +277,10 @@ async function edit(text: string): Promise<void> {
 
 /** Regenerates against the original pre-turn context, not the old answer. */
 async function retry(assistantId: string): Promise<void> {
+  if (inputBlocked.value) {
+    feedback.toast('error', 'Chat Input Unavailable', foregroundLabel.value)
+    return
+  }
   if (!hasModel.value) {
     openSettings()
     return
@@ -299,8 +360,8 @@ ${lines.join('\n')}
  * back in, and `Ctrl+K` focuses the composer from anywhere in the page.
  */
 function onKeydown(event: KeyboardEvent): void {
+  if (!surfaceActive) return
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat) return
-  if (execution.active) return
   const mod = event.ctrlKey || event.metaKey
   if (event.key === 'Escape' && running.value) {
     // The draft is otherwise lost on interrupt, which is the opposite of what
@@ -362,13 +423,7 @@ const starterPrompts = [
 </script>
 
 <template>
-  <div v-if="execution.active" class="chat-surface flex h-full min-w-0 flex-col bg-background">
-    <ConciergePanel
-      :run-id="execution.runId"
-      :connected="execution.connected && gateway.connected.value"
-    />
-  </div>
-  <div v-else class="chat-surface flex h-full min-w-0 flex-col bg-background">
+  <div class="chat-surface flex h-full min-w-0 flex-col bg-background">
     <ChatHeader
       :threads="chat.threads"
       :session-id="chat.sessionId"
@@ -381,6 +436,40 @@ const starterPrompts = [
       :on-new-session="() => void chat.clear()"
       :on-toggle-addon="(id, enabled) => void chat.toggleAddon(id, enabled)"
     />
+
+    <div
+      v-if="inputBlocked"
+      class="flex flex-wrap items-center gap-3 border-b border-border px-6 py-3 text-[14px]"
+      data-chat-availability
+    >
+      <span role="status" class="mr-auto">{{
+        foregroundLabel || 'Workspace availability is unconfirmed'
+      }}</span>
+      <template v-if="blueprintBusy">
+        <button class="btn" :disabled="!foregroundRun" @click="openSupervision">
+          Open Supervision
+        </button>
+        <button
+          class="btn"
+          :disabled="!foregroundRun || execution.controlBusy"
+          @click="controlBlueprint('pause')"
+        >
+          Pause
+        </button>
+        <button
+          class="btn"
+          :disabled="!foregroundRun || execution.stopping"
+          @click="controlBlueprint('cancel')"
+        >
+          Stop
+        </button>
+      </template>
+      <button v-else class="btn" @click="foreground.refresh">Check State</button>
+      <details v-if="foreground.error || execution.error">
+        <summary>Details</summary>
+        <p class="max-w-lg break-words text-[13px]">{{ foreground.error || execution.error }}</p>
+      </details>
+    </div>
 
     <ChatThread
       :key="rerender"
@@ -430,7 +519,9 @@ const starterPrompts = [
           :draft-value="chat.draft"
           :draft-identity="draftIdentity"
           :on-draft-change="(text) => (chat.draft = text)"
-          :send-blocked="(chat.busy && !chat.streaming) || !chat.composerInput?.canSubmit"
+          :send-blocked="
+            inputBlocked || (chat.busy && !chat.streaming) || !chat.composerInput?.canSubmit
+          "
           :files="chat.files"
           :pending-files="chat.pendingFiles"
           :addons="chat.addons"

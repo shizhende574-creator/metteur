@@ -39,30 +39,70 @@ export const useExecutionStore = defineStore('execution', () => {
   const launching = ref(false)
   const current = ref<ExecutionInfo | null>(null)
   const controlBusy = ref(false)
+  const stopping = ref(false),
+    controls = new Set<symbol>()
+  function beginControl() {
+    const token = Symbol()
+    controls.add(token)
+    controlBusy.value = true
+    return () => {
+      if (controls.delete(token)) controlBusy.value = controls.size > 0
+    }
+  }
   const connected = ref(false)
-  let epoch = 0, query = 0
-  let pinnedRun:string|undefined
+  let epoch = 0,
+    query = 0
+  let pinnedRun: string | undefined
   const seen = new Map<string, number>()
   const streamActive = ref(false)
   let priorRuns = new Set<string>()
-  const active = computed(() => !!current.value?.snapshot?.runtime?.active || streamActive.value && running.value)
-  watch(() => workspace.active?.path, () => {
-    epoch++; query++; pinnedRun=undefined; seen.clear(); streamActive.value = false; priorRuns = new Set()
-    blueprint.value = null; sourcePath.value = ''; error.value = ''; status.value = 'idle'
-    events.value = []; nodeAudits.value = new Map(); clearApprovals(); runId.value = null
-    current.value = null; connected.value = false; launching.value = false; controlBusy.value = false
-    contextUsage.value = null; contextByNode.value = new Map(); tree.value = null; todos.value = []
-  }, { flush: 'sync' })
+  const active = computed(
+    () => !!current.value?.snapshot?.runtime?.active || (streamActive.value && running.value),
+  )
+  watch(
+    () => workspace.active?.path,
+    () => {
+      epoch++
+      query++
+      pinnedRun = undefined
+      seen.clear()
+      streamActive.value = false
+      priorRuns = new Set()
+      blueprint.value = null
+      sourcePath.value = ''
+      error.value = ''
+      status.value = 'idle'
+      events.value = []
+      nodeAudits.value = new Map()
+      clearApprovals()
+      runId.value = null
+      current.value = null
+      connected.value = false
+      launching.value = false
+      controlBusy.value = false
+      stopping.value = false
+      controls.clear()
+      contextUsage.value = null
+      contextByNode.value = new Map()
+      tree.value = null
+      todos.value = []
+    },
+    { flush: 'sync' },
+  )
   const status = ref<ExecStatus>('idle')
   const events = ref<EventLine[]>([])
   const approval = ref<ApprovalRequest | null>(null)
   const approvalQueue: ApprovalRequest[] = []
   let approvalRevision = 0
-  function clearApprovals() { approval.value = null; approvalQueue.length = 0; approvalRevision++ }
+  function clearApprovals() {
+    approval.value = null
+    approvalQueue.length = 0
+    approvalRevision++
+  }
   function enqueueApproval(request: ApprovalRequest) {
     approvalRevision++
     if (!approval.value || approval.value.id === request.id) approval.value = request
-    else if (!approvalQueue.some(item => item.id === request.id)) approvalQueue.push(request)
+    else if (!approvalQueue.some((item) => item.id === request.id)) approvalQueue.push(request)
   }
   /** Most recent context region breakdown (from `context` events). */
   const contextUsage = ref<ContextRegion[] | null>(null)
@@ -110,25 +150,25 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   function push(ev: EventLine, limit = 500) {
-      if (ev.kind === 'approval_request') {
-        const detail = (ev.detail ?? {}) as Record<string, unknown>
-        const requestType = String(detail.request_type ?? 'sandbox')
-        const plan = blueprintApproval(detail)
-        const title =
-          requestType === 'circuit_tripped'
-            ? 'Circuit breaker: allow auto-replan?'
-            : requestType === 'replan_proposal'
-              ? 'Approve revised plan'
-              : 'Approve shell command'
-        enqueueApproval({
-          id: String(detail.requestId ?? detail.approvalId ?? ev.message ?? ''),
-          title: plan?.title ?? title,
-          tool: String(detail.tool ?? ''),
-          command: plan?.command ?? ev.message,
-          detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
-          requestType,
-        })
-      }
+    if (ev.kind === 'approval_request') {
+      const detail = (ev.detail ?? {}) as Record<string, unknown>
+      const requestType = String(detail.request_type ?? 'sandbox')
+      const plan = blueprintApproval(detail)
+      const title =
+        requestType === 'circuit_tripped'
+          ? 'Circuit breaker: allow auto-replan?'
+          : requestType === 'replan_proposal'
+            ? 'Approve revised plan'
+            : 'Approve shell command'
+      enqueueApproval({
+        id: String(detail.requestId ?? detail.approvalId ?? ev.message ?? ''),
+        title: plan?.title ?? title,
+        tool: String(detail.tool ?? ''),
+        command: plan?.command ?? ev.message,
+        detail: plan?.detail ?? (detail.command ? String(detail.command) : ev.message),
+        requestType,
+      })
+    }
     events.value.push(ev)
     const audit = ev.nodeId ? ensureAudit(ev.nodeId) : null
     if (ev.kind === 'started' && audit) audit.startedAt = Date.now()
@@ -159,25 +199,50 @@ export const useExecutionStore = defineStore('execution', () => {
     if (events.value.length > limit) events.value.splice(0, events.value.length - limit)
   }
 
-  async function reconcile(preferredRun?:string) {
-    if(preferredRun)pinnedRun=preferredRun
-    preferredRun=pinnedRun
-    const ws = workspace.active?.path, generation = epoch, ticket = ++query, approvalTicket = approvalRevision
+  async function reconcile(preferredRun?: string) {
+    if (preferredRun) pinnedRun = preferredRun
+    preferredRun = pinnedRun
+    const ws = workspace.active?.path,
+      generation = epoch,
+      ticket = ++query,
+      approvalTicket = approvalRevision
     if (!ws || launching.value) return
     try {
       const result = await gateway.listExecutions(ws)
       if (generation !== epoch || ticket !== query) return
       if (!result.ok) throw new Error(result.error)
       connected.value = true
-      const candidates = result.data.filter(r => !streamActive.value || runId.value || !priorRuns.has(r.runId))
-      const item = preferredRun ? candidates.find(r=>r.runId===preferredRun) : candidates.find(r => r.snapshot?.runtime?.active) ?? candidates.find(r => r.runId === runId.value) ?? candidates.at(-1)
-      if(preferredRun&&!item){error.value='The requested run is unavailable. No other run was selected.';return}
+      const candidates = result.data.filter(
+        (r) => !streamActive.value || runId.value || !priorRuns.has(r.runId),
+      )
+      const item = preferredRun
+        ? candidates.find((r) => r.runId === preferredRun)
+        : (candidates.find((r) => r.snapshot?.runtime?.active) ??
+          candidates.find((r) => r.runId === runId.value) ??
+          candidates.at(-1))
+      if (preferredRun && !item) {
+        error.value = 'The requested run is unavailable. No other run was selected.'
+        return
+      }
       if (!item) return
       if (current.value?.runId === item.runId && current.value.updatedAt > item.updatedAt) return
-      current.value = item; runId.value = item.runId
+      current.value = item
+      runId.value = item.runId
       const runtime = item.snapshot?.runtime
-      status.value = runtime?.active ? runtime.pause_requested ? 'paused' : 'running'
-        : ({ Running: 'running', Suspended: 'suspended', RecoveryRequired: 'suspended', Completed: 'finished', Cancelled: 'cancelled', Failed: 'failed' } as Record<string, ExecStatus>)[item.status] ?? 'unknown'
+      status.value = runtime?.active
+        ? runtime.pause_requested
+          ? 'paused'
+          : 'running'
+        : ((
+            {
+              Running: 'running',
+              Suspended: 'suspended',
+              RecoveryRequired: 'suspended',
+              Completed: 'finished',
+              Cancelled: 'cancelled',
+              Failed: 'failed',
+            } as Record<string, ExecStatus>
+          )[item.status] ?? 'unknown')
       if (item.snapshot?.view?.root) blueprint.value = item.snapshot.view.root
       else if (!streamActive.value) blueprint.value = null
       sourcePath.value = item.snapshot?.blueprint_version?.blueprint_uri ?? sourcePath.value
@@ -186,24 +251,40 @@ export const useExecutionStore = defineStore('execution', () => {
         if (!runtime?.active) clearApprovals()
         else if (Array.isArray(runtime.pending_approval_ids)) {
           const valid = new Set(runtime.pending_approval_ids)
-          for (let i = approvalQueue.length - 1; i >= 0; i--) if (!valid.has(approvalQueue[i]!.id)) approvalQueue.splice(i, 1)
-          if (approval.value && !valid.has(approval.value.id)) approval.value = approvalQueue.shift() ?? null
-          for(const pending of runtime.pending_approvals ?? []){
-            if(approval.value?.id===pending.request_id || approvalQueue.some(a=>a.id===pending.request_id)) continue
-            let detail:Record<string,unknown>={}
-            try {detail=JSON.parse(pending.detail)}catch{ /* Show a bounded generic request if legacy detail is unavailable. */ }
-            push({nodeId:'',kind:'approval_request',message:pending.request_id,detail:{...detail,requestId:pending.request_id}})
+          for (let i = approvalQueue.length - 1; i >= 0; i--)
+            if (!valid.has(approvalQueue[i]!.id)) approvalQueue.splice(i, 1)
+          if (approval.value && !valid.has(approval.value.id))
+            approval.value = approvalQueue.shift() ?? null
+          for (const pending of runtime.pending_approvals ?? []) {
+            if (
+              approval.value?.id === pending.request_id ||
+              approvalQueue.some((a) => a.id === pending.request_id)
+            )
+              continue
+            let detail: Record<string, unknown> = {}
+            try {
+              detail = JSON.parse(pending.detail)
+            } catch {
+              /* Show a bounded generic request if legacy detail is unavailable. */
+            }
+            push({
+              nodeId: '',
+              kind: 'approval_request',
+              message: pending.request_id,
+              detail: { ...detail, requestId: pending.request_id },
+            })
           }
         }
       }
     } catch (e) {
       if (generation !== epoch || ticket !== query) return
-      connected.value = false; error.value = String(e)
+      connected.value = false
+      error.value = String(e)
     }
   }
 
   async function run(blueprintId: string, graph?: Blueprint, filePath = '') {
-    pinnedRun=undefined
+    pinnedRun = undefined
     const ws = workspace.active
     if (!ws || running.value || launching.value) return
     const generation = ++epoch
@@ -213,15 +294,24 @@ export const useExecutionStore = defineStore('execution', () => {
       const runsBefore = await gateway.listExecutions(ws.path)
       if (generation !== epoch) return
       if (!runsBefore.ok) throw new Error(runsBefore.error)
-      if (runsBefore.data.some(r => r.snapshot?.runtime?.active || r.status === 'Running')) {
-        error.value = 'A run is already active in this workspace.'; launching.value = false; await reconcile(); return
+      if (runsBefore.data.some((r) => r.snapshot?.runtime?.active || r.status === 'Running')) {
+        error.value = 'A run is already active in this workspace.'
+        launching.value = false
+        await reconcile()
+        return
       }
-      priorRuns = new Set(runsBefore.data.map(r => r.runId))
-    } catch (e) { if (generation === epoch) error.value = String(e); return }
-    finally { if (generation === epoch) launching.value = false }
+      priorRuns = new Set(runsBefore.data.map((r) => r.runId))
+    } catch (e) {
+      if (generation === epoch) error.value = String(e)
+      return
+    } finally {
+      if (generation === epoch) launching.value = false
+    }
     blueprint.value = graph ? JSON.parse(JSON.stringify(graph)) : null
     sourcePath.value = filePath
-    current.value = null; connected.value = true; streamActive.value = true
+    current.value = null
+    connected.value = true
+    streamActive.value = true
     events.value = []
     seen.clear()
     contextUsage.value = null
@@ -234,27 +324,30 @@ export const useExecutionStore = defineStore('execution', () => {
     runId.value = null
     // Assert the canvas matches the authoritative file saved before Run.
     let result
-    try { result = await gateway.executeBlueprint(
-      ws.path,
-      blueprintId,
-      (ev) => {
-      if (generation !== epoch) return
-      const incomingRun = ev.detail?.run_id
-      if (typeof incomingRun === 'string') {
-        if (runId.value && runId.value !== incomingRun) return
-        runId.value = incomingRun
-        const key = `${incomingRun}:${ev.detail?.stream_id}`
-        const sequence = Number(ev.detail?.sequence)
-        if (Number.isFinite(sequence)) {
-          if (sequence <= (seen.get(key) ?? -1)) return
-          seen.set(key, sequence)
-        }
-      }
-      push(ev)
-
-      },
-      graph,
-    ) } catch (e) { result = { ok: false as const, error: String(e) } }
+    try {
+      result = await gateway.executeBlueprint(
+        ws.path,
+        blueprintId,
+        (ev) => {
+          if (generation !== epoch) return
+          const incomingRun = ev.detail?.run_id
+          if (typeof incomingRun === 'string') {
+            if (runId.value && runId.value !== incomingRun) return
+            runId.value = incomingRun
+            const key = `${incomingRun}:${ev.detail?.stream_id}`
+            const sequence = Number(ev.detail?.sequence)
+            if (Number.isFinite(sequence)) {
+              if (sequence <= (seen.get(key) ?? -1)) return
+              seen.set(key, sequence)
+            }
+          }
+          push(ev)
+        },
+        graph,
+      )
+    } catch (e) {
+      result = { ok: false as const, error: String(e) }
+    }
     if (generation !== epoch) return
     clearApprovals()
     if (!result.ok && !['cancelled'].includes(status.value)) {
@@ -268,48 +361,81 @@ export const useExecutionStore = defineStore('execution', () => {
   }
 
   async function respond(allow: boolean) {
-    const ws = workspace.active?.path, request = approval.value, generation = epoch
+    const ws = workspace.active?.path,
+      request = approval.value,
+      generation = epoch
     if (!ws || !request || controlBusy.value) return
-    controlBusy.value = true
+    const finishControl = beginControl()
     try {
       const result = await gateway.respondApproval(ws, request.id, allow)
       if (generation !== epoch) return
       if (!result.ok) throw new Error(result.error)
       approvalRevision++
       if (approval.value?.id === request.id) approval.value = approvalQueue.shift() ?? null
-    } catch (e) { if (generation === epoch) error.value = String(e) }
-    finally { if (generation === epoch) controlBusy.value = false }
+    } catch (e) {
+      if (generation === epoch) error.value = String(e)
+    } finally {
+      finishControl()
+    }
   }
-  async function control(action: 'pause' | 'resume' | 'cancel') {
-    const ws = workspace.active?.path, generation = epoch
-    if (!ws || !runId.value || controlBusy.value) return
-    controlBusy.value = true; error.value = ''
+  async function control(action: 'pause' | 'resume' | 'cancel', targetRun?: string) {
+    const ws = workspace.active?.path,
+      generation = epoch,
+      id = targetRun ?? runId.value
+    if (!ws || !id || (action === 'cancel' ? stopping.value : controlBusy.value)) return
+    const finishControl = beginControl()
+    if (action === 'cancel') stopping.value = true
+    error.value = ''
     try {
-      const result = await gateway[action](ws, runId.value ?? undefined)
+      const result = await gateway[action](ws, id)
       if (generation !== epoch) return
       if (!result.ok) throw new Error(result.error)
       await reconcile()
-    } catch (e) { if (generation === epoch) error.value = String(e) }
-    finally { if (generation === epoch) controlBusy.value = false }
+    } catch (e) {
+      if (generation === epoch) error.value = String(e)
+    } finally {
+      finishControl()
+      if (generation === epoch && action === 'cancel') stopping.value = false
+    }
   }
   // Live Continue only releases the pause flag. Checkpoint recovery is explicit.
-  const pause = () => control('pause')
+  const pause = (targetRun?: string) => control('pause', targetRun)
   const resume = () => control('resume')
-  const cancel = () => control('cancel')
+  const cancel = (targetRun?: string) => control('cancel', targetRun)
   async function recover() {
-    const ws = workspace.active?.path, id = runId.value, generation = epoch
+    const ws = workspace.active?.path,
+      id = runId.value,
+      generation = epoch
     if (!ws || !id || active.value || controlBusy.value) return
-    controlBusy.value = true
+    const finishControl = beginControl()
     try {
-      const result = await gateway.continueExecution(ws, id, ev => { if (generation === epoch) push(ev) })
+      const result = await gateway.continueExecution(ws, id, (ev) => {
+        if (generation === epoch) push(ev)
+      })
       if (generation !== epoch) return
-      if (!result.ok) { status.value = 'failed'; push({ nodeId: '', kind: 'message', message: result.error }); error.value = result.error }
+      if (!result.ok) {
+        status.value = 'failed'
+        push({ nodeId: '', kind: 'message', message: result.error })
+        error.value = result.error
+      }
       await reconcile()
-    } finally { if (generation === epoch) controlBusy.value = false }
+    } finally {
+      finishControl()
+    }
   }
 
   return {
-    blueprint, sourcePath, error, launching, reconcile, current, connected, active, controlBusy, recover,
+    blueprint,
+    sourcePath,
+    error,
+    launching,
+    reconcile,
+    current,
+    connected,
+    active,
+    controlBusy,
+    stopping,
+    recover,
     status,
     events,
     approval,

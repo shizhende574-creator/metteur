@@ -21,8 +21,8 @@ export default defineConfig({
         const path = id.replaceAll('\\', '/')
         if (path.endsWith('/views/ChatView.vue')) {
           source = replace(source, '<script setup lang="ts">', '<script setup lang="ts">\n' + addon)
-          source = replace(source, 'v-if="execution.active"', 'v-if="false"')
           source = replace(source, 'data-chat-draft-status', 'data-chat-draft-status v-if="false"')
+          source = replace(source, 'v-if="inputBlocked"', 'v-if="false"')
           return replace(
             source,
             '    <ChatThread',

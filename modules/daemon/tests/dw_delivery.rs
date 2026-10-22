@@ -43,6 +43,125 @@ async fn receipt(service: &DaemonService, root: &Path, id: Uuid) -> serde_json::
     serde_json::from_str::<serde_json::Value>(&result.payload_json).unwrap()["receipt"].clone()
 }
 
+async fn admission(service: &DaemonService, root: &Path) -> serde_json::Value {
+    let result = Daemon::chat_delivery(
+        service,
+        Request::new(ResourceRequest {
+            workspace_path: root.to_string_lossy().into(),
+            schema_version: 1,
+            payload_json: serde_json::json!({"operation":"admission"}).to_string(),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap()
+    .into_inner();
+    assert!(result.error_json.is_empty(), "{}", result.error_json);
+    serde_json::from_str(&result.payload_json).unwrap()
+}
+
+#[tokio::test]
+async fn foreground_snapshot_uses_the_running_chat_identity_and_releases_only_when_finished() {
+    let (service, _state, root) = setup().await;
+    assert_eq!(admission(&service, &root).await["state"], "idle");
+    let id = Uuid::new_v4();
+    let mut request = command(&root, id, "", 0);
+    let mut options: serde_json::Value = serde_json::from_str(&request.options_json).unwrap();
+    options["mock_delay_ms"] = 1000.into();
+    request.options_json = options.to_string();
+    let mut stream = Daemon::send_chat(&service, Request::new(request)).await.unwrap().into_inner();
+    let accepted = receipt(&service, &root, id).await;
+    let owner = admission(&service, &root).await;
+    assert_eq!(owner["state"], "chat");
+    assert_eq!(owner["session"], accepted["session"]);
+    assert_eq!(owner["turn"], accepted["turn"]);
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while admission(&service, &root).await["state"] != "idle" {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected() {
+    let (service, _state, root) = setup().await;
+    let graph=metteur_shared::dsl::compile_draft_value_with_catalog(&serde_json::json!({"name":"foreground fixture","nodes":{"s":{"kind":"Start"},"d":{"kind":"Delay","Ms":1500},"e":{"kind":"End"}},"flow":["s -> d -> e"]}),&Registry::with_builtins().authoring_catalog()).unwrap();
+    let file =
+        String::from_utf8(metteur_daemon::storage::blueprint_files::encode_native(&graph).unwrap())
+            .unwrap();
+    Daemon::write_file(
+        &service,
+        Request::new(metteur_proto::proto::WriteFileRequest {
+            workspace_path: root.to_string_lossy().into(),
+            path: "foreground.blueprint".into(),
+            content: file.clone(),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
+    let mut stream = Daemon::execute_blueprint(
+        &service,
+        Request::new(metteur_proto::proto::ExecuteBlueprintRequest {
+            workspace_path: root.to_string_lossy().into(),
+            blueprint_id: graph.id.to_string(),
+            blueprint_json: file,
+        }),
+    )
+    .await
+    .unwrap()
+    .into_inner();
+    let owner = admission(&service, &root).await;
+    assert_eq!(owner["state"], "blueprint");
+    let run = owner["run"].as_str().unwrap().to_owned();
+    Daemon::pause_execution(
+        &service,
+        Request::new(metteur_proto::proto::PauseRequest {
+            workspace_path: root.to_string_lossy().into(),
+            run_id: run.clone(),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(admission(&service, &root).await["reason"], "Blueprint is paused");
+    let mut legacy = command(&root, Uuid::new_v4(), "", 0);
+    legacy.options_json = r#"{"provider":"mock"}"#.into();
+    assert_eq!(
+        Daemon::send_chat(&service, Request::new(legacy)).await.err().unwrap().code(),
+        tonic::Code::FailedPrecondition
+    );
+    Daemon::cancel_execution(
+        &service,
+        Request::new(metteur_proto::proto::CancelRequest {
+            workspace_path: root.to_string_lossy().into(),
+            run_id: run,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(admission(&service, &root).await["state"], "blueprint");
+    let mut aborted = false;
+    while let Some(event) = stream.next().await {
+        if let Err(error) = event {
+            assert_eq!(error.code(), tonic::Code::Aborted);
+            aborted = true;
+        }
+    }
+    assert!(aborted, "Cancel must have its real interrupted outcome");
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while admission(&service, &root).await["state"] != "idle" {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn accepted_input_is_durable_before_the_first_stream_event_and_duplicate_never_runs_again() {
     let (service, state, root) = setup().await;

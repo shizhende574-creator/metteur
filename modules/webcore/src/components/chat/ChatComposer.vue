@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue'
 import { usePromptResourcesStore } from '@/stores/prompt-resources'
 import '@/components/resources/resources.css'
 import { ArrowUp, ChevronUp, FileCode, ListPlus, Square, X } from '@lucide/vue'
@@ -85,6 +94,15 @@ let inputVersion = 0,
   alive = true,
   composing = false,
   lastCompositionEnd = -Infinity
+let surfaceActive = true
+onActivated(() => {
+  surfaceActive = true
+})
+onDeactivated(() => {
+  surfaceActive = false
+  menu.value = null
+  composing = false
+})
 function startComposition() {
   composing = true
 }
@@ -200,6 +218,7 @@ watch(draft, () => void nextTick(autosize))
  * (and its click-catching backdrop) in the way.
  */
 function onDocumentKeydown(event: KeyboardEvent): void {
+  if (!surfaceActive) return
   if (event.isComposing || composing || event.keyCode === 229) return
   if (event.key === 'Escape' && menu.value) {
     menu.value = null
@@ -543,12 +562,18 @@ defineExpose({
               v-if="!concierge"
               class="chat-menu-item"
               type="button"
+              :disabled="!ready || sendBlocked || readOnly || submitting || !hasDraft"
               @click="deliver('queue')"
             >
               <span class="font-medium">Queue</span>
               <span class="text-[12px] text-subtle">after the current step</span>
             </button>
-            <button class="chat-menu-item" type="button" @click="deliver('steer')">
+            <button
+              class="chat-menu-item"
+              type="button"
+              :disabled="!ready || sendBlocked || readOnly || submitting || !hasDraft"
+              @click="deliver('steer')"
+            >
               <span class="font-medium">{{ concierge ? 'Urgent message' : 'Send now' }}</span>
               <span class="text-[12px] text-subtle">before the next model call</span>
             </button>

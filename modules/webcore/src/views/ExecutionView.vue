@@ -239,7 +239,7 @@ function openSource() {
           }}</button
         ><button
           class="action stop"
-          :disabled="execution.controlBusy || !execution.runId || !execution.connected"
+          :disabled="execution.stopping || !execution.runId"
           @click="execution.cancel()"
         >
           <Square :size="13" />Stop

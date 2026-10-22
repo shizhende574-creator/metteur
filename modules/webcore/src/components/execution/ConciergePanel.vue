@@ -185,7 +185,7 @@ const controls = computed(() => ({
   model: '',
   effort: 'medium' as const,
   draftIdentity: `${workspace.active?.path}:${props.runId}`,
-  readOnly: state.value?.read_only === true,
+  readOnly: !props.runId || state.value?.read_only === true,
   contextStats: null,
   usage: null,
   permissionMode: 'ask' as const,

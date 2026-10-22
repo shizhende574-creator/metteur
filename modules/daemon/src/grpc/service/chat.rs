@@ -201,31 +201,8 @@ impl DaemonService {
                 "Conversation revision changed; this input was not accepted",
             ));
         }
-        let mut page_after = None;
-        loop {
-            let page = task_store.list(page_after).map_err(to_status)?;
-            if page.is_empty() {
-                break;
-            }
-            for record in page {
-                page_after = Some(record.task.id);
-                if record.task.sources.values().any(|source| {
-                    source.may_write
-                        && (source.terminal.is_none()
-                            || matches!(
-                                source.terminal,
-                                Some(
-                                    crate::continuation::state::Terminal::Indeterminate
-                                        | crate::continuation::state::Terminal::Interrupted
-                                        | crate::continuation::state::Terminal::Cancelled
-                                )
-                            ))
-                }) {
-                    return Err(Status::failed_precondition(
-                        "Workspace has an unresolved background write effect",
-                    ));
-                }
-            }
+        if super::foreground::unresolved_writes(&ws_db, ws.root()).map_err(to_status)? {
+            return Err(Status::failed_precondition("Workspace has an unresolved background write effect"));
         }
 
         // A workspace hosts either one execution or one chat at a time.
@@ -474,6 +451,7 @@ impl DaemonService {
         self.state.chats.write().await.insert(
             ws_key.clone(),
             ChatRun {
+                turn_id: run_id,
                 approval_details: approval_details.clone(),
                 interrupt_bus: Some(interrupt_bus.clone()),
                 cancel_requested: cancel_flag.clone(),

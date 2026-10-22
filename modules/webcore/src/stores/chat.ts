@@ -19,6 +19,7 @@ import { usePromptResourcesStore } from './prompt-resources'
 import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 import { useComposerInputsStore, type ComposerSelection } from './composer-inputs'
 import type { DeliverySnapshot } from '@/core/delivery'
+import { useForegroundStore } from './foreground'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -45,6 +46,7 @@ export interface QueuedTurn {
  */
 export const useChatStore = defineStore('chat', () => {
   const workspace = useWorkspaceStore()
+  const foreground = useForegroundStore()
   const inputs = useComposerInputsStore(),
     prompts = usePromptResourcesStore()
   const messages = ref<ChatMessage[]>([])
@@ -465,6 +467,15 @@ export const useChatStore = defineStore('chat', () => {
     ) => {
       if (!current() || aborter.signal.aborted)
         return { ok: false as const, error: 'Conversation changed before submission.' }
+      if (
+        !(await foreground.permits(mode === 'retry' ? 'retry' : 'send', targetSession)) ||
+        !current() ||
+        aborter.signal.aborted
+      )
+        return {
+          ok: false as const,
+          error: foreground.current.reason || 'Workspace is unavailable for ordinary chat input.',
+        }
       const ids: string[] = []
       // Re-select each original reference against current access and version.
       // Restored snapshot IDs are input, never an authorization token.
@@ -624,6 +635,12 @@ export const useChatStore = defineStore('chat', () => {
       return 'Wait for the current operation to finish before retrying.'
     const targetWorkspace = workspace.active?.path
     const targetSession = sessionId.value
+    if (!(await foreground.permits('retry', targetSession)))
+      return foreground.current.reason || 'Workspace availability is unconfirmed.'
+    if (retrying.value || rewinding.value || busy.value)
+      return 'Another conversation operation is in progress.'
+    if (workspace.active?.path !== targetWorkspace || sessionId.value !== targetSession)
+      return 'Conversation changed before retry.'
     const index = messages.value.findIndex(
       (message) => message.id === assistantId && message.role === 'assistant',
     )
@@ -695,12 +712,18 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function queue(text: string, attachments: FileTreeNode[] = []): Promise<boolean> {
     const ws = workspace.active
+    const epoch = conversationEpoch,
+      session = sessionId.value
     const body = text.trim()
     if (!ws || !body || !streaming.value) return false
+    if (!gateway.demo && !(await foreground.permits('queue', session))) return false
+    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
+      return false
     const refs = attachments.map((f) => `@file ${f.path}`)
     const content = refs.length ? `${[...refs, body].join('\n')}` : body
     const id = `q-${Date.now()}`
     const r = await gateway.sendInterrupt(ws.path, content, 'Normal')
+    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
     if (!r.ok) return false
     queued.value = [
       ...queued.value,
@@ -719,9 +742,15 @@ export const useChatStore = defineStore('chat', () => {
   /** Sends a queued-or-new message into the running turn immediately. */
   async function steer(text: string): Promise<boolean> {
     const ws = workspace.active
+    const epoch = conversationEpoch,
+      session = sessionId.value
     const body = text.trim()
     if (!ws || !body || !streaming.value) return false
+    if (!gateway.demo && !(await foreground.permits('steer', session))) return false
+    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch || !streaming.value)
+      return false
     const r = await gateway.sendInterrupt(ws.path, body, 'Urgent')
+    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return false
     if (!r.ok) return false
     messages.value.push({
       id: `q-${Date.now()}`,

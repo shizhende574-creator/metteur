@@ -12,6 +12,11 @@ function host() {
   const handle = async ({ method, payload, expected = 0, request }: any) => {
     calls.push({ method, payload, expected, request })
     if (method === 'chatDelivery') {
+      if (payload.operation === 'admission')
+        return {
+          ok: true,
+          data: { state: 'idle', run: null, session: null, turn: null, reason: '' },
+        }
       if (unsupported) return { ok: false, error: 'Unimplemented' }
       if (offline) return { ok: false, error: 'Disconnected' }
       if (payload.operation === 'capabilities')

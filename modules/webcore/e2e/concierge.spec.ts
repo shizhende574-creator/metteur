@@ -37,9 +37,12 @@ async function openRun(page: Page, chatSurface = false) {
     }
     await (await import(r)).router.push((await import(w)).wurl(chat ? '/chat' : '/execution'))
   }, chatSurface)
-  // The Chat surface also contains Run concierge. Confirm the actual surface
-  // through the user navigation before asserting supervision controls.
-  if (!chatSurface) {
+  // Main chat keeps its own history; supervision is an explicit entry.
+  if (chatSurface) {
+    await expect(page.locator('.chat-surface .concierge-panel')).toHaveCount(0)
+    await page.getByRole('button', {name:'Open Supervision',exact:true}).click()
+    await expect(page).toHaveURL(/\/execution$/)
+  } else {
     await page.getByRole('button', { name: 'Execution', exact: true }).click()
     await expect(page).toHaveURL(/\/execution$/)
     await expect(page.getByRole('button', { name: 'Reviews', exact: true })).toBeVisible()
@@ -224,7 +227,7 @@ test('budget exhaustion and an in-flight concierge do not block direct urgent pa
   expect(await page.evaluate(async () => { const c='/src/core/index.ts'; const t=(await import(c)).gateway.conciergeTest; return { sent:t.sent, urgent:t.urgent, controls:t.controls } })).toEqual({ sent:1, urgent:[{text:'Urgent while pending',priority:'Urgent'},{text:'Urgent after budget exhausted',priority:'Urgent'}], controls:['pause','cancel'] })
 })
 
-test('the chat surface routes an active blueprint to concierge and ignores late replies after disconnect', async ({ page }) => {
+test('explicit supervision ignores late replies after disconnect and completion does not redirect the main chat', async ({ page }) => {
   await openRun(page, true)
   const panel = page.getByRole('region', { name: 'Run concierge' })
   await expect(panel.locator('.chat-composer-options')).toHaveCount(0)
@@ -237,7 +240,11 @@ test('the chat surface routes an active blueprint to concierge and ignores late 
   await page.evaluate(async () => { const c='/src/core/index.ts'; const t=(await import(c)).gateway.conciergeTest; t.finish(); t.releasePoll() })
   await expect(panel.getByText('Received; not processed. This request grants no permission.')).toHaveCount(0)
   await page.evaluate(async () => { const c='/src/core/index.ts'; const g=(await import(c)).gateway; g.conciergeTest.active=false; g.connected.value=true })
-  await expect(panel).toHaveCount(0)
+  await expect(page).toHaveURL(/\/execution$/)
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('button',{name:'Send',exact:true})).toBeDisabled()
+  await page.getByRole('button',{name:'Chat',exact:true}).first().click()
+  await expect(page).toHaveURL(/\/chat$/)
   await expect(page.locator('.chat-composer-options')).toBeVisible()
   expect(await page.evaluate(async () => { const c='/src/core/index.ts'; return (await import(c)).gateway.conciergeTest.ordinary })).toBe(0)
 })

@@ -4,6 +4,10 @@
 
 ## 当前进展
 
+- 最新增量为主聊天/监督分离与宿主前台占用快照，基线67e0578。主聊天不再按execution.active替换；状态/监督入口/直接Pause与Stop保持原IDE几何，Stop可越过在途Pause。实际契约与剩余旧Interrupt边界见FOREGROUND.md。新增只读检查不准备资源schema、不写checkpoint或业务通知；未知schema保守不可用。
+- 本功能证据：RPC首轮8通过/1失败，取消蓝图按真实语义返回Aborted，测试错误地unwrap；修正为断言Aborted并确认槽位移除后9通过（foreground-rpc-first、foreground-rpc-cancel-retest.log）。追加只读构造后真实DB测试1通过（foreground-read-host-first.log），RPC9复测通过/exit0（foreground-rpc-read-retest.log）。daemon首次及只读构造最终clippy均仅既有27项lib警告/exit0（foreground-clippy-first、foreground-clippy-read-final.log）。app/node类型与定向lint exit0（foreground-final-*.log），lint首轮两处测试参数shadow已改。L2初始13通过；菜单/rewind复测15通过；Stop优先级5通过；监督/提案/Execution受影响27通过；A/B追加6通过。各轮有重叠，不相加作AC通过。所有原始日志foreground-*.log保留。
+- 隔离预览适配构建、正式前端构建均exit0；foreground-isolated-build.log、foreground-production-final-build.log及对应目录。保留19082/19085冻结预览，没有将新产物冒充运行中的生产daemon。新Main截图在foreground-browser-ab-first内，已检查文字和布局，用户最终体验未代签。
+
 - 最新完整功能：主聊天/新聊天的原始草稿、选择及 pending ID 接入已完成，源码候选 f60b614 加本功能差异；提交前摘要 composer-input-source-before-commit.json。同步主界面恢复栏/共享 Composer、source_available RPC、预览适配器、必要检查；完整提交后以 Git HEAD 对照摘要。本功能不关闭整个 DW-02/03。
 - 当前检查：Windows RPC7/exit0（composer-source-rpc-first.log）；daemon clippy仅既有27项警告/exit0（composer-source-clippy-first.log）；客户端27/exit0（composer-controller-final.log），app/node类型及定向lint均exit0（composer-final-*.log）；L2聊天9/exit0（composer-browser-final.log），共享Composer/rewind/sequence/SSE/文档恢复18/exit0（composer-affected-first.log）。隔离预览适配构建及正式前端构建exit0（composer-isolated-build-first、composer-production-final-build.log）；尚未更新真实运行版，不算L3。
 - 首轮失败保留：整合类型3处（未用ref/类型导出/异步窄化）修正后通过；lint未使用响应式版本读取改为响应式Map，测试参数重名已改；首轮L2的配置尚未ready，补测试前置等待；第二轮仅旧`.chat-thread`选择器错误，改实际`.chat-thread-inner`。没有改生产模型准入来满足夹具。早期6/8项与最终9项有重叠，不累加为AC。

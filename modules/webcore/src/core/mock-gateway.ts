@@ -479,7 +479,12 @@ const msgId = () => `m-${Date.now()}-${msgSeq++}`
  * built and validated before the real Connect transport lands.
  */
 export class MockGateway implements DaemonGateway {
-  async resourceRequest(method?: import('./resources').ResourceMethod): Promise<Result<unknown>> {
+  async resourceRequest(method?: import('./resources').ResourceMethod, workspace = '', payload?: unknown): Promise<Result<unknown>> {
+    if (method === 'chatDelivery' && (payload as {operation?:string})?.operation === 'admission') {
+      const run = this.runs.get(workspace), active = run && ['running','paused'].includes(run.status)
+      return ok({state:active?'blueprint':'idle',run:active?`run-${workspace.length}`:null,session:null,turn:null,
+        reason:active?run.paused?'Blueprint is paused':'Blueprint is running':''})
+    }
     if (method === 'chatDelivery') return err('Unimplemented: durable delivery receipts require a daemon connection.')
     if (method === 'recovery') return err('Unimplemented: recovery requires a daemon; mock input is not durably backed up.')
     return err(

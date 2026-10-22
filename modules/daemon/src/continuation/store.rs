@@ -40,6 +40,17 @@ pub struct ContinuationStore {
     prefix: String,
 }
 impl ContinuationStore {
+    /// Construct a read view without creating directories, a checkpoint or a
+    /// schema marker. Unknown resource formats remain unavailable.
+    pub(crate) fn inspect(db: Db, root: &Path) -> DaemonResult<Self> {
+        let root = root.canonicalize()?;
+        if ResourceStore::inspect(&db).map_err(|e| DaemonError::Persistence(e.to_string()))?
+            .is_some_and(|schema| schema != metteur_shared::resources::SCHEMA_VERSION) {
+            return Err(DaemonError::Persistence("Unknown resource schema".into()));
+        }
+        let workspace = root.to_string_lossy().into_owned();
+        Ok(Self {db, prefix: format!("nx/v1/continuation/{}/", digest(workspace.as_bytes())), workspace})
+    }
     pub(crate) fn subscribe_changes(&self) -> tokio::sync::watch::Receiver<u64> {
         self.db.subscribe_changes()
     }

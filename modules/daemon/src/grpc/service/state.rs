@@ -44,6 +44,7 @@ pub(crate) struct RunningExecution {
 /// The control state of a running chat session.
 #[derive(Clone)]
 pub(crate) struct ChatRun {
+    pub(crate) turn_id: Uuid,
     pub(crate) approval_details: Arc<parking_lot::Mutex<HashMap<String, String>>>,
     /// Bus for injecting interrupts into the ReAct loop.
     pub(crate) interrupt_bus: Option<InterruptBus>,
