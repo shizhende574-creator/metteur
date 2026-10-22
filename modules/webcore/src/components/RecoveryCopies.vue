@@ -157,7 +157,10 @@ function exportLocal(record: RecoveryRecord) {
           ><button class="btn" @click="exportLocal(record)">Export</button>
         </article>
         <p v-if="!loading && !rows.length && !error">No recovery copies in this scope.</p>
-        <article v-for="row in rows.filter((item) => !item.discarded)" :key="row.id">
+        <article
+          v-for="row in rows.filter((item) => !item.discarded && item.kind !== 'view_state')"
+          :key="row.id"
+        >
           <div>
             <strong>{{ sourceLabel(row.kind, row.entity) }}</strong>
             <p>

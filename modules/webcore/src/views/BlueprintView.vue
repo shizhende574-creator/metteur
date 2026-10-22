@@ -38,6 +38,7 @@ import { fileNameOf, useBlueprintStore } from '@/stores/blueprint'
 import { useSurfaceNavigation } from '@/lib/surface'
 import { useExecutionStore } from '@/stores/execution'
 import { useDocumentsStore } from '@/stores/documents'
+import { useWorkspaceViewStore } from '@/stores/workspace-view'
 import { useRightPanelStore } from '@/stores/right-panel'
 import BlueprintNodeComp from '@/components/BlueprintNode.vue'
 import BlueprintAuditDrawer from '@/components/BlueprintAuditDrawer.vue'
@@ -63,6 +64,7 @@ const workspace = useWorkspaceStore()
 const prompts = usePromptResourcesStore()
 const store = useBlueprintStore()
 const documents = useDocumentsStore()
+const views = useWorkspaceViewStore()
 const execution = useExecutionStore()
 const { openSurface: openExecutionSurface } = useSurfaceNavigation()
 const rightPanel = useRightPanelStore()
@@ -334,6 +336,7 @@ async function loadBlueprint() {
   if (!ws) return
   const file = fileKey.value
   const graph = await store.load(ws.path, file)
+  const savedView = await views.ready(ws.path)
   if (
     generation !== canvasGeneration ||
     workspace.active?.path !== ws.path ||
@@ -361,7 +364,23 @@ async function loadBlueprint() {
   selectedEdgeId.value = null
   clearDrag()
   clearPendingWire()
-  requestAnimationFrame(() => flowRef.value?.fitView({ padding: 0.25 }))
+  requestAnimationFrame(() => {
+    if (
+      generation !== canvasGeneration ||
+      workspace.active?.path !== ws.path ||
+      fileKey.value !== file
+    )
+      return
+    const saved = savedView.positions[file]
+    if (saved?.kind === 'canvas')
+      void flowRef.value?.setViewport({ x: saved.x, y: saved.y, zoom: saved.zoom })
+    else void flowRef.value?.fitView({ padding: 0.25 })
+  })
+}
+function saveViewport(value: { x: number; y: number; zoom: number }) {
+  const path = workspace.active?.path
+  if (path && !canvasLoading.value)
+    views.position(path, fileKey.value, { kind: 'canvas', ...value })
 }
 
 onMounted(() => {
@@ -375,9 +394,18 @@ onMounted(() => {
 
 // Switching blueprint tabs loads that file's own graph instead of reusing the
 // previous canvas (item 9).
-watch([() => props.filePath, () => workspace.active?.path], () => void loadBlueprint(), {
-  flush: 'sync',
-})
+watch(
+  [() => props.filePath, () => workspace.active?.path],
+  (_current, previous) => {
+    const [file, path] = previous
+    if (file && path && !canvasLoading.value)
+      views.position(path, file, { kind: 'canvas', ...viewport.value })
+    void loadBlueprint()
+  },
+  {
+    flush: 'sync',
+  },
+)
 
 /** The explorer's "Add to Blueprint" lands a file reference on this canvas.
  *  Immediate mode also drains a reference queued while no blueprint was open. */
@@ -392,6 +420,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (workspace.active?.path && !canvasLoading.value)
+    views.position(workspace.active.path, fileKey.value, { kind: 'canvas', ...viewport.value })
   canvasGeneration++
   window.removeEventListener('keydown', onKeydown)
   flowWrap.value?.removeEventListener('mousedown', onCanvasMouseDown, true)
@@ -1735,6 +1765,7 @@ function openVersionPanel() {
         @edge-context-menu="onEdgeContextMenu"
         @pane-click="onPaneClick"
         @pane-context-menu="onPaneContextMenu"
+        @viewport-change-end="saveViewport"
       >
         <!-- Gap/dot scale with the inverse zoom so dots keep a fixed on-screen
              size & spacing; colour from --grid-dot (readable in both themes). -->

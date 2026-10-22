@@ -4,6 +4,8 @@ import type { editor as MonacoEditor } from 'monaco-editor'
 import { useThemeStore } from '@/stores/theme'
 import { ensureMbpLanguage, bindMbpDiagnostics } from '@/lib/mbp-language'
 import { acquireModel, releaseModel } from '@/lib/editor-models'
+import { useWorkspaceViewStore } from '@/stores/workspace-view'
+import type { DocumentPosition } from '@/core/workspace-view'
 
 /**
  * Code editor backed by Monaco Editor, with a CodeMirror fallback for coarse
@@ -23,6 +25,7 @@ const props = defineProps<{
    * throwaway buffer.
    */
   modelId?: string
+  viewTarget?: { workspace: string; path: string }
 }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
@@ -30,6 +33,45 @@ const emit = defineEmits<{
 }>()
 
 const themeStore = useThemeStore()
+const views = useWorkspaceViewStore()
+let positionFrame = 0
+function savePosition() {
+  if (!props.viewTarget || disposed || positionFrame) return
+  positionFrame = requestAnimationFrame(() => {
+    positionFrame = 0
+    if (!props.viewTarget || disposed) return
+    let position: DocumentPosition | undefined
+    if (monoEditor && monoModel)
+      position = {
+        kind: 'text',
+        top: monoEditor.getScrollTop(),
+        left: monoEditor.getScrollLeft(),
+        selections: (monoEditor.getSelections() ?? []).map((selection) => ({
+          anchor: monoModel!.getOffsetAt(selection.getSelectionStart()),
+          head: monoModel!.getOffsetAt(selection.getPosition()),
+        })),
+      }
+    else if (cmView)
+      position = {
+        kind: 'text',
+        top: cmView.scrollDOM.scrollTop,
+        left: cmView.scrollDOM.scrollLeft,
+        selections: cmView.state.selection.ranges.map((range) => ({
+          anchor: range.anchor,
+          head: range.head,
+        })),
+      }
+    if (position) views.position(props.viewTarget.workspace, props.viewTarget.path, position)
+  })
+}
+async function restoredPosition() {
+  const target = props.viewTarget
+  if (!target) return null
+  const view = await views.ready(target.workspace)
+  return view.positions[target.path]?.kind === 'text'
+    ? (view.positions[target.path] as Extract<DocumentPosition, { kind: 'text' }>)
+    : null
+}
 
 const container = ref<HTMLDivElement | null>(null)
 const mode = ref<'loading' | 'monaco' | 'cm' | 'error'>('loading')
@@ -76,6 +118,7 @@ function applyMonacoTheme() {
 
 async function setupMonaco() {
   const mod = (await import('@/lib/monaco')).default
+  const savedPosition = await restoredPosition()
   if (disposed || initializationFailed || !container.value) return
   monacoMod = mod
   applyMonacoTheme()
@@ -104,6 +147,18 @@ async function setupMonaco() {
     renderWhitespace: 'selection',
     fixedOverflowWidgets: true,
   })
+  if (savedPosition) {
+    monoEditor.setSelections(
+      savedPosition.selections.map((selection) => {
+        const anchor = model.getPositionAt(selection.anchor),
+          head = model.getPositionAt(selection.head)
+        return new mod.Selection(anchor.lineNumber, anchor.column, head.lineNumber, head.column)
+      }),
+    )
+    monoEditor.setScrollPosition({ scrollTop: savedPosition.top, scrollLeft: savedPosition.left })
+  }
+  monoEditor.onDidChangeCursorSelection(savePosition)
+  monoEditor.onDidScrollChange(savePosition)
   monoEditor.onDidChangeModelContent(() => {
     const value = monoEditor!.getValue()
     if (value !== props.modelValue) emit('update:modelValue', value)
@@ -112,11 +167,7 @@ async function setupMonaco() {
   syncUndoState()
 }
 
-let cmView: {
-  dispatch(t: unknown): void
-  destroy(): void
-  state: { doc: { toString(): string } }
-} | null = null
+let cmView: import('@codemirror/view').EditorView | null = null
 let cmUndo: ((v: unknown) => boolean) | null = null
 let cmRedo: ((v: unknown) => boolean) | null = null
 let applyCmTheme: (() => void) | null = null
@@ -171,6 +222,7 @@ async function setupCm() {
   const stateMod = await import('@codemirror/state')
   const langMod = await import('@codemirror/language')
   const cmdsMod = await import('@codemirror/commands')
+  const savedPosition = await restoredPosition()
   cmUndo = (v) => cmdsMod.undo(v as never) ?? true
   cmRedo = (v) => cmdsMod.redo(v as never) ?? true
 
@@ -193,23 +245,39 @@ async function setupCm() {
     themeCompartment.of(
       viewMod.EditorView.theme(cmBaseTheme(), { dark: themeStore.mode === 'dark' }),
     ),
-    viewMod.EditorView.updateListener.of(
-      (update: { docChanged: boolean; state: { doc: { toString(): string } } }) => {
-        if (update.docChanged) {
-          const text = update.state.doc.toString()
-          if (text !== props.modelValue) emit('update:modelValue', text)
-        }
-      },
-    ),
+    viewMod.EditorView.updateListener.of((update: import('@codemirror/view').ViewUpdate) => {
+      if (update.docChanged) {
+        const text = update.state.doc.toString()
+        if (text !== props.modelValue) emit('update:modelValue', text)
+      }
+      if (update.selectionSet || update.docChanged) savePosition()
+    }),
   ]
   if (stateSupport) extensions.push(stateSupport as never)
 
   const view = new viewMod.EditorView({
     parent: container.value!,
-    doc: props.modelValue,
-    extensions,
+    state: stateMod.EditorState.create({
+      doc: props.modelValue,
+      extensions,
+      selection: savedPosition
+        ? stateMod.EditorSelection.create(
+            savedPosition.selections.map((selection) =>
+              stateMod.EditorSelection.range(
+                Math.min(props.modelValue.length, selection.anchor),
+                Math.min(props.modelValue.length, selection.head),
+              ),
+            ),
+          )
+        : undefined,
+    }),
   })
   cmView = view
+  if (savedPosition) {
+    view.scrollDOM.scrollTop = savedPosition.top
+    view.scrollDOM.scrollLeft = savedPosition.left
+  }
+  view.scrollDOM.addEventListener('scroll', savePosition, { passive: true })
   applyCmTheme = () =>
     view.dispatch({
       effects: themeCompartment.reconfigure(
@@ -245,6 +313,29 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(positionFrame)
+  positionFrame = 0
+  // Capture the final selection synchronously before disposing the editor.
+  if (props.viewTarget && monoEditor && monoModel && !monoModel.isDisposed())
+    views.position(props.viewTarget.workspace, props.viewTarget.path, {
+      kind: 'text',
+      top: monoEditor.getScrollTop(),
+      left: monoEditor.getScrollLeft(),
+      selections: (monoEditor.getSelections() ?? []).map((selection) => ({
+        anchor: monoModel!.getOffsetAt(selection.getSelectionStart()),
+        head: monoModel!.getOffsetAt(selection.getPosition()),
+      })),
+    })
+  else if (props.viewTarget && cmView)
+    views.position(props.viewTarget.workspace, props.viewTarget.path, {
+      kind: 'text',
+      top: cmView.scrollDOM.scrollTop,
+      left: cmView.scrollDOM.scrollLeft,
+      selections: cmView.state.selection.ranges.map((range) => ({
+        anchor: range.anchor,
+        head: range.head,
+      })),
+    })
   disposed = true
   // The editor always owns its view; the model is owned by the registry when it
   // is shared, and disposed there with the last reference.

@@ -80,6 +80,7 @@ function host() {
       const action = payload.action,
         id = action.id ?? action.input?.id,
         current = records.get(id)
+      if (action.operation === 'latest_view') return { ok: true, data: { record: null } }
       if (action.operation === 'list')
         return {
           ok: true,

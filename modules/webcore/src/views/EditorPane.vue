@@ -738,6 +738,7 @@ async function compileToBlueprint() {
           :model-value="content"
           :language="languageOf(filePath)"
           :model-id="modelId"
+          :view-target="{ workspace: workspace.active?.path ?? '', path: filePath }"
           @update:model-value="onEdit"
           @history="onHistory"
         />

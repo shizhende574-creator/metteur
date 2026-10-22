@@ -69,6 +69,7 @@ function host() {
     const action = payload.action,
       id = action.id || action.input?.id,
       current = records.get(id)
+    if (action.operation === 'latest_view') return { ok: true, data: { record: null } }
     if (action.operation === 'list')
       return {
         ok: true,
@@ -351,7 +352,12 @@ test('L2 a late old-session stream cannot repaint a newly selected conversation'
   await expect(editor).toHaveValue('')
   await page.evaluate(async () => {
     const path = '/src/stores/chat.ts'
-    await (await import(path)).useChatStore().switchTo('other-session')
+    const { gateway } = await import('/src/core/index.ts')
+    gateway.getChatSession = async (_ws: string, id: string) => ({
+      ok: true,
+      data: { sessionId: id, transcript: [], history: [], todos: [] },
+    })
+    await (await import(path)).useChatStore().switchTo(crypto.randomUUID())
   })
   await editor.fill('Draft in another conversation')
   await page.evaluate(() => (window as any).dwRelease())

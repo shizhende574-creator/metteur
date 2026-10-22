@@ -17,6 +17,8 @@ import { USER_CONFIG_PATH, WORKSPACE_CONFIG_PATH } from '@/lib/toml'
 import { useDocumentsStore } from './documents'
 import { useWorkspaceStore } from './workspace'
 import { closeModel } from '@/lib/editor-models'
+import { useWorkspaceViewStore } from './workspace-view'
+import { VIEW_SURFACES, type ViewTab } from '@/core/workspace-view'
 
 /**
  * IDE-style tabs for the current shell.
@@ -110,6 +112,7 @@ function configDocLabel(path: string): string {
 export const useTabsStore = defineStore('tabs', () => {
   const documents = useDocumentsStore()
   const workspace = useWorkspaceStore()
+  const views = useWorkspaceViewStore()
   const items = ref<TabItem[]>([])
   const activeId = ref(HOME_ID)
   /** Unsaved indicator per file path (`true` = shows the blue dot). */
@@ -129,11 +132,16 @@ export const useTabsStore = defineStore('tabs', () => {
       split: string | null
       dirty: Record<string, boolean>
       conflicts: Record<string, boolean>
+      ratio: number
     }
   >()
+  let viewGeneration = 0,
+    localRevision = 0
+  const restored = new Set<string>()
   watch(
     () => workspace.active?.path,
     (path, previous) => {
+      const generation = ++viewGeneration
       if (previous)
         workspaceTabs.set(previous, {
           items: items.value,
@@ -141,6 +149,7 @@ export const useTabsStore = defineStore('tabs', () => {
           split: splitPath.value,
           dirty: dirty.value,
           conflicts: conflicts.value,
+          ratio: splitRatio.value,
         })
       const saved = path ? workspaceTabs.get(path) : undefined
       items.value = saved?.items ?? []
@@ -148,8 +157,67 @@ export const useTabsStore = defineStore('tabs', () => {
       splitPath.value = saved?.split ?? null
       dirty.value = saved?.dirty ?? {}
       conflicts.value = saved?.conflicts ?? {}
+      splitRatio.value = saved?.ratio ?? 0.5
+      if (path && !saved) {
+        const revision = localRevision
+        void views.ready(path).then((view) => {
+          if (generation !== viewGeneration || workspace.active?.path !== path) return
+          if (revision === localRevision) {
+            items.value = view.tabs.map((tab) => {
+              if ('file' in tab)
+                return {
+                  id: `file:${tab.file}`,
+                  label: configDocLabel(tab.file),
+                  path: tab.file,
+                  route: fileRoute(tab.file),
+                  icon: fileIcon(tab.file),
+                }
+              const def = SURFACES.find((surface) => surface.key === tab.surface)!
+              return {
+                id: def.key,
+                label: def.label,
+                path: '',
+                route: surfaceRoute(def),
+                icon: def.icon,
+              }
+            })
+            activeId.value = items.value.some((tab) => tab.id === view.active)
+              ? view.active
+              : HOME_ID
+            splitPath.value = view.split
+            splitRatio.value = view.ratio
+          }
+          restored.add(path)
+          persistView()
+        })
+      }
     },
-    { flush: 'sync' },
+    { flush: 'sync', immediate: true },
+  )
+  function persistView() {
+    const path = workspace.active?.path
+    if (!path || !restored.has(path)) return
+    const tabs = items.value.flatMap<ViewTab>((tab) =>
+      tab.path
+        ? [{ file: tab.path }]
+        : VIEW_SURFACES.includes(tab.id as (typeof VIEW_SURFACES)[number])
+          ? [{ surface: tab.id as (typeof VIEW_SURFACES)[number] }]
+          : [],
+    )
+    views.edit(path, {
+      tabs,
+      active: activeId.value,
+      split: splitPath.value,
+      ratio: splitRatio.value,
+    })
+  }
+  watch(
+    [items, activeId, splitPath, splitRatio],
+    () => {
+      localRevision++
+      persistView()
+    },
+    { deep: true, flush: 'sync' },
   )
 
   const byId = computed(() => new Map(items.value.map((t) => [t.id, t])))

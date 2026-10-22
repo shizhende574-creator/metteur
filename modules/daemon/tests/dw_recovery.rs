@@ -75,6 +75,66 @@ async fn recovery_rpc_preserves_raw_bytes_and_never_writes_or_recreates_sources(
 }
 
 #[tokio::test]
+async fn latest_view_rpc_returns_only_workspace_metadata_without_starting_or_writing_files() {
+    let (root, service) = setup().await;
+    let empty = body(
+        service
+            .recovery(Request::new(req(
+                &root,
+                "project",
+                serde_json::json!({"operation":"latest_view"}),
+                0,
+            )))
+            .await
+            .unwrap()
+            .into_inner(),
+    );
+    assert!(empty["record"].is_null());
+    let mut input = draft(Uuid::new_v4(), "workspace");
+    input["kind"] = "view_state".into();
+    input["raw"] = "".into();
+    input["selections"] = serde_json::json!([]);
+    input["pending_submission"] = serde_json::Value::Null;
+    input["selected_model"] = serde_json::Value::Null;
+    input["view"] = serde_json::json!({"schema":1,"tabs":[{"file":"a.txt"}],"active":"file:a.txt","session":Uuid::new_v4(),"positions":{"a.txt":{"kind":"text","selections":[{"anchor":1,"head":2}],"top":10,"left":0}}});
+    body(
+        service
+            .recovery(Request::new(req(
+                &root,
+                "project",
+                serde_json::json!({"operation":"backup","input":input}),
+                0,
+            )))
+            .await
+            .unwrap()
+            .into_inner(),
+    );
+    let loaded = body(
+        service
+            .recovery(Request::new(req(
+                &root,
+                "project",
+                serde_json::json!({"operation":"latest_view"}),
+                0,
+            )))
+            .await
+            .unwrap()
+            .into_inner(),
+    );
+    assert_eq!(loaded["record"]["input"], input);
+    assert_eq!(loaded["restores_permissions"], false);
+    assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "disk");
+    assert_eq!(
+        std::fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "txt"))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn recovery_rpc_rejects_forged_owner_scope_path_schema_and_authority() {
     let (root, service) = setup().await;
     for (scope, input) in [

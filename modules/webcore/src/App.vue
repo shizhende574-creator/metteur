@@ -46,6 +46,8 @@ import { useFeedbackStore } from '@/stores/feedback'
 import { useDocumentsStore } from '@/stores/documents'
 import { useComposerInputsStore } from '@/stores/composer-inputs'
 import { useSupervisionInputsStore } from '@/stores/supervision-inputs'
+import { useWorkspaceViewStore } from '@/stores/workspace-view'
+import { restoredRoute } from '@/lib/restored-route'
 
 const EditorPane = defineAsyncComponent(() => import('@/views/EditorPane.vue'))
 
@@ -63,6 +65,24 @@ const feedback = useFeedbackStore()
 const documents = useDocumentsStore()
 const composerInputs = useComposerInputsStore()
 const supervisionInputs = useSupervisionInputsStore()
+const workspaceViews = useWorkspaceViewStore()
+watch(
+  () => {
+    void workspaceViews.version
+    const path = workspace.active?.path
+    if (!path) return ''
+    const copy = workspaceViews.forWorkspace(path)
+    return copy.error || copy.copy.error
+  },
+  (error) => {
+    if (error && !gateway.demo)
+      feedback.toast(
+        'error',
+        'Layout Recovery Unavailable',
+        'Your open view stays in this window. ' + error,
+      )
+  },
+)
 function protectDrafts(event: BeforeUnloadEvent) {
   if (
     !composerInputs.hasUnbackedInput() &&
@@ -233,10 +253,13 @@ onMounted(async () => {
   await workspace.restore()
   void configStore.load()
   if (workspace.hasActive) {
+    const targetWorkspace = workspace.active!.path
+    const view = await workspaceViews.ready(targetWorkspace)
+    if (workspace.active?.path !== targetWorkspace) return
     const pending = pendingRoute()
     if (pending) router.replace(pending)
     else if (route.path === '/' || route.path === '/welcome') {
-      const target = rootRoute()
+      const target = restoredRoute(view)
       if (target) router.replace(target)
     }
   }

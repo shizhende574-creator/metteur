@@ -4,6 +4,10 @@
 
 ## 当前进展
 
+- 最新完整功能（基线773810b，摘要view-source-before-commit.json）：宿主位置副本接入标签/选中会话/分栏/文本选区滚动/画布视口；latest_view一次有界读取，窗口独立副本，sessionStorage只存ACK ID。深链优先、缺失源不偷换最新会话，删除失败保持原会话，关联草稿先备份并保留孤立恢复。位置记录不恢复正文/模型/权限，见VIEW_STATE.md。
+- 集中检查：Windows存储11、RPC4、客户端34通过（view-batch-{ledger,rpc,controllers}.log）；workspace/all-targets clippy exit0，仅既有27 lib与1旧测试警告。app/node类型exit0；lint首轮控制字符正则/命名遮蔽已修正，最终exit0。L2首轮60中52通过/8失败，view-batch-source.json和全部截图/trace保留；旧计时夹具缺session回调6处、旧非UUID目标1处、新测试inactive-tab误计数1处。修复并补恢复读取不可用守卫后，仅失败/受影响9项窄复测通过，未重跑已通过52项；位置控制器仅窄复测7项通过（view-narrow-*.log）。
+- 正式前端构建exit0（view-production-final-build.log），HTML显式grpc网关；原IDE标签/分栏/选区截图已检查，没有更新运行版、不计L3。DW-02仍有生产链/跨平台/迁移/完整验收，AC-01～30不关闭。下一继续控制/审批及其余DW；模型费用0，无push/合并。
+
 - 最新完整功能（源码基线 e4f2a69，摘要 supervision-input-source-before-commit.json）：监督正常消息的正文/身份原子接收及只读/关闭回执、owner/run/conversation固定、旧部分写入不重放；ConciergeDelivery新增RPC/代理/TS生成物配套。监督受控草稿/独立原稿/原ID恢复与低密度恢复栏已接入，单独保存临时蓝图插入原稿；该临时通道仍没有durable消费回执，后续继续补齐。监督面板1s轮询已移除，复用workspace事件/显式切tab刷新；Reviews等其余DW-07入口还未改。契约与实际边界见 SUPERVISION_INPUTS.md。
 - 集中证据：Windows存储6、RPC7、受影响concierge集成6及本地provider设置1、客户端8通过（supervision-input-batch-{ledger,rpc,affected,controllers}.log）；workspace/all-targets clippy exit0，仅既有27 lib和1旧diagnostics测试警告。app/node类型、定向lint exit0；最终窄修后app/lint再查exit0（supervision-input-final-*.log）。正式前端构建exit0（supervision-input-production-final-build.log），产物supervision-input-production-final显式grpc网关，未替换运行入口、不计L3。
 - L2集中25项首轮23通过/2失败，保留supervision-input-batch-browser原始截图/trace；旧夹具在首次60ms状态读取前锁住历史，改为等待实际输入可用。慢历史场景同时验证下一草稿/发送按钮不被历史查询阻塞；仅复测失败/受影响2项，全部通过（supervision-input-narrow-browser.log），未重跑已通过23项。早期缺fixture业务通知的首轮/第二轮失败亦完整保留，补通知而未加回轮询。监督输入密度截图已检查，保持IDE几何/13px状态，未代签用户最终体验。各轮不累加为AC，模型费用0，无push/合并。

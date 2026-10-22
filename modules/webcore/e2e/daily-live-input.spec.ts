@@ -113,6 +113,7 @@ async function setup(page: Page) {
         const action = payload.action,
           id = action.id ?? action.input?.id,
           current = fixture.records.get(id)
+        if (action.operation === 'latest_view') return { ok: true, data: { record: null } }
         if (action.operation === 'list') return { ok: true, data: { items: [], next: null } }
         if (action.operation === 'read') return { ok: true, data: { record: current } }
         const record =

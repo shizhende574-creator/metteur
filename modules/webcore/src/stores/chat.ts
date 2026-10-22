@@ -20,6 +20,8 @@ import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 import { useComposerInputsStore, type ComposerSelection } from './composer-inputs'
 import type { DeliverySnapshot } from '@/core/delivery'
 import { useForegroundStore } from './foreground'
+import { useWorkspaceViewStore } from './workspace-view'
+import { isSessionId } from '@/core/workspace-view'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -47,6 +49,7 @@ export interface QueuedTurn {
 export const useChatStore = defineStore('chat', () => {
   const workspace = useWorkspaceStore()
   const foreground = useForegroundStore()
+  const views = useWorkspaceViewStore()
   const inputs = useComposerInputsStore(),
     prompts = usePromptResourcesStore()
   const messages = ref<ChatMessage[]>([])
@@ -55,6 +58,7 @@ export const useChatStore = defineStore('chat', () => {
   const sendError = ref('')
   /** id of the persisted session, passed back on every turn. */
   const sessionId = ref('')
+  const sessionUnavailable = ref(false)
   const activeTurn = ref('')
   /** Aborts the local event stream; the daemon is stopped separately. */
   let streamAbort: AbortController | null = null
@@ -241,6 +245,7 @@ export const useChatStore = defineStore('chat', () => {
       streaming.value = false
       busy.value = false
       sessionId.value = ''
+      sessionUnavailable.value = false
       activeTurn.value = ''
       permissionMode.value = 'sandbox'
       approval.value = null
@@ -264,15 +269,33 @@ export const useChatStore = defineStore('chat', () => {
     if (!ws) return
     const target = ws.path
     const epoch = conversationEpoch
+    busy.value = true
+    const view = await views.ready(target)
+    if (workspace.active?.path !== target || epoch !== conversationEpoch) return
+    if (!gateway.demo && views.forWorkspace(target).error) {
+      busy.value = false
+      sessionUnavailable.value = true
+      sendError.value =
+        'The saved view is unavailable. Your drafts were kept. Select a conversation explicitly or start a new one.'
+      return
+    }
     const sessions = await gateway.listChatSessions(target)
     if (workspace.active?.path !== target || epoch !== conversationEpoch) return
-    if (!sessions.ok || sessions.data.length === 0) {
-      threads.value = []
+    if (!sessions.ok) {
+      busy.value = false
+      sessionUnavailable.value = true
+      sendError.value =
+        'Conversations could not be loaded. Your drafts were kept. Reconnect or select a conversation explicitly.'
       return
     }
     threads.value = sessions.data
-    const latest = sessions.data[0]
-    await openThread(target, latest.sessionId, latest.title)
+    if (view.session === '') {
+      busy.value = false
+      return
+    }
+    const selected = view.session ? { sessionId: view.session, title: '' } : sessions.data[0]
+    if (selected) await openThread(target, selected.sessionId, selected.title)
+    else busy.value = false
   }
 
   /** Reload the thread list without touching the open conversation. */
@@ -290,21 +313,30 @@ export const useChatStore = defineStore('chat', () => {
     await openThread(ws.path, threadId, '')
   }
 
-  /** Load one thread into the surface (empty history on failure). */
+  /** A missing selected source stays unavailable; never substitute another thread. */
   async function openThread(wsPath: string, id: string, title: string): Promise<void> {
+    if (!gateway.demo && !isSessionId(id)) {
+      sendError.value = 'The conversation identity is invalid. Select a valid conversation.'
+      sessionUnavailable.value = true
+      return
+    }
     const epoch = ++conversationEpoch
     following.value = null
     streamAbort?.abort()
     streamAbort = null
     streaming.value = false
-    busy.value = false
+    busy.value = true
     phase.value = 'idle'
     activeTurn.value = ''
     const snap = await gateway.getChatSession(wsPath, id)
     // The user may have switched workspaces while loading; discard stale data.
     if (workspace.active?.path !== wsPath || epoch !== conversationEpoch) return
     sessionId.value = id
-    if (snap.ok) {
+    if (isSessionId(id)) views.edit(wsPath, { session: id })
+    busy.value = false
+    sessionUnavailable.value = !snap.ok || snap.data.sessionId !== id
+    if (snap.ok && !sessionUnavailable.value) {
+      sendError.value = ''
       // The transcript is the displayed conversation; the history is the
       // model's view and has no tool calls. Fall back only for sessions that
       // predate transcripts.
@@ -318,6 +350,8 @@ export const useChatStore = defineStore('chat', () => {
     } else {
       messages.value = []
       todos.value = []
+      sendError.value =
+        'This conversation is missing or unavailable. Its drafts were kept; select another conversation or start a new one.'
     }
     if (title) {
       const info = threads.value.find((t) => t.sessionId === id)
@@ -389,6 +423,7 @@ export const useChatStore = defineStore('chat', () => {
       entity = draftEntity.value
     if (
       !ws ||
+      sessionUnavailable.value ||
       !content.trim() ||
       streaming.value ||
       busy.value ||
@@ -429,6 +464,7 @@ export const useChatStore = defineStore('chat', () => {
       following.value = null
       if (receipt) {
         sessionId.value = receipt.session
+        if (isSessionId(receipt.session)) views.edit(ws, { session: receipt.session })
         activeTurn.value = receipt.turn
       }
       const id = `u-${receipt?.id ?? crypto.randomUUID()}`
@@ -527,6 +563,7 @@ export const useChatStore = defineStore('chat', () => {
             receivedInput()
           }
           sessionId.value = id
+          if (isSessionId(id)) views.edit(ws, { session: id })
           const user = messages.value.findLast((message) => message.role === 'user')
           if (user && checkpoint) user.checkpoint = checkpoint
         },
@@ -992,6 +1029,9 @@ export const useChatStore = defineStore('chat', () => {
     following.value = null
     messages.value = []
     sessionId.value = ''
+    sessionUnavailable.value = false
+    sendError.value = ''
+    if (workspace.active?.path) views.edit(workspace.active.path, { session: '' })
     rotateDraft()
     lastUsage.value = null
     todos.value = []
@@ -1002,14 +1042,30 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteThread(id: string) {
     const ws = workspace.active
     if (!ws) return
+    const input = inputs.read(ws.path, id)
+    if ((input.input.raw || input.input.selections.length) && !(await inputs.backup(ws.path, id))) {
+      sendError.value =
+        'The conversation was kept because its draft is not backed up. Keep or export the input before deleting it.'
+      return false
+    }
     if (streaming.value && sessionId.value === id) await abort()
-    await gateway.deleteChatSession(ws.path, id)
+    const result = await gateway.deleteChatSession(ws.path, id)
+    if (!result.ok) {
+      if (workspace.active?.path === ws.path)
+        sendError.value = `Conversation deletion failed: ${result.error}`
+      return false
+    }
+    if (workspace.active?.path !== ws.path) return true
     if (sessionId.value === id) {
       messages.value = []
       sessionId.value = ''
+      sessionUnavailable.value = false
+      sendError.value = ''
+      views.edit(ws.path, { session: '' })
       lastUsage.value = null
     }
     await refreshThreads()
+    return true
   }
 
   /** Attach a file reference to the conversation without sending a turn
@@ -1040,6 +1096,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingTool,
     queued,
     sessionId,
+    sessionUnavailable,
     activeTurn,
     threads,
     lastUsage,

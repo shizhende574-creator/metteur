@@ -23,6 +23,7 @@ struct Envelope {
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Action {
     Capabilities,
+    LatestView,
     List {
         after: Option<Uuid>,
         limit: Option<usize>,
@@ -136,7 +137,10 @@ impl DaemonService {
                     serde_json::json!({"id":id,"encoding":"base64","raw":base64::engine::general_purpose::STANDARD.encode(store.export(id)?)}),
                 ),
                 Action::Capabilities => Ok(
-                    serde_json::json!({"schema":1,"durable_ack":true,"record_bytes":crate::storage::recovery::MAX_RECORD_BYTES,"scope_bytes":crate::storage::recovery::MAX_SCOPE_BYTES,"max_active":crate::storage::recovery::MAX_ACTIVE,"max_records":crate::storage::recovery::MAX_RECORDS,"max_page":MAX_PAGE,"restores_permissions":false}),
+                    serde_json::json!({"schema":1,"durable_ack":true,"latest_view":true,"record_bytes":crate::storage::recovery::MAX_RECORD_BYTES,"scope_bytes":crate::storage::recovery::MAX_SCOPE_BYTES,"max_active":crate::storage::recovery::MAX_ACTIVE,"max_records":crate::storage::recovery::MAX_RECORDS,"max_page":MAX_PAGE,"restores_permissions":false}),
+                ),
+                Action::LatestView => Ok(
+                    serde_json::json!({"record":store.latest_view()?,"restores_permissions":false}),
                 ),
                 Action::Read {
                     id,

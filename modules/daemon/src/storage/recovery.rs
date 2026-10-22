@@ -128,6 +128,30 @@ impl RecoveryStore {
             .map(|raw| Self::decode(&raw))
             .transpose()
     }
+    /// One bounded metadata selection, avoiding client-side paginated startup
+    /// reads. Corrupt/future records remain quarantined and are never rewritten.
+    pub fn latest_view(&self) -> Result<Option<DraftRecord>> {
+        self.check_schema()?;
+        let rows = self
+            .db
+            .resource_scan(&self.records_prefix(), &[], MAX_RECORDS + 1)
+            .map_err(unavailable)?;
+        if rows.len() > MAX_RECORDS {
+            return Err(fault(
+                "record_limit",
+                "Recovery metadata exceeds the supported view limit",
+            ));
+        }
+        Ok(rows
+            .into_iter()
+            .filter_map(|(_, raw)| Self::decode(&raw).ok())
+            .filter(|record| {
+                !record.discarded
+                    && record.input.kind == "view_state"
+                    && record.input.entity == "workspace"
+            })
+            .max_by_key(|record| (record.updated_ms, record.input.id)))
+    }
     /// Pending manual inputs can outlive a browser. Return identities only;
     /// their raw recovery copies remain untouched and corrupt rows isolated.
     pub fn pending_submissions(&self) -> Result<Vec<Uuid>> {
@@ -510,6 +534,45 @@ mod tests {
         let db = Db::open(&root).unwrap();
         let store = RecoveryStore::new(db, "project:fixture", "local").unwrap();
         assert_eq!(store.get(draft.id).unwrap().unwrap().input, draft);
+    }
+
+    #[test]
+    fn latest_view_is_bounded_owner_scoped_read_only_and_durable() {
+        let (root, db, store) = setup();
+        let mut view = input();
+        view.kind = "view_state".into();
+        view.entity = "workspace".into();
+        view.raw.clear();
+        view.pending_submission = None;
+        view.selected_model = None;
+        view.selections.clear();
+        view.view = Some(
+            serde_json::json!({"schema":1,"session":Uuid::new_v4(),"tabs":[{"surface":"chat"}]}),
+        );
+        assert!(store.latest_view().unwrap().is_none());
+        store.backup(view.clone(), 0, Uuid::new_v4(), 10).unwrap();
+        let mut newer = view.clone();
+        newer.id = Uuid::new_v4();
+        newer.window_id = Uuid::new_v4();
+        store.backup(newer.clone(), 0, Uuid::new_v4(), 20).unwrap();
+        store.backup(input(), 0, Uuid::new_v4(), 100).unwrap();
+        let other = RecoveryStore::new(db.clone(), "project:fixture", "other-owner").unwrap();
+        other.backup(newer.clone(), 0, Uuid::new_v4(), 200).unwrap();
+        assert_eq!(store.latest_view().unwrap().unwrap().input.id, newer.id);
+        store.discard(newer.id, 1, 1, Uuid::new_v4(), 30).unwrap();
+        let mut corrupt = view.clone();
+        corrupt.id = Uuid::new_v4();
+        db.put(cf::EXECUTION_STATE, &store.key(corrupt.id), b"{invalid").unwrap();
+        let before = store.list(None, MAX_PAGE).unwrap().len();
+        assert_eq!(store.latest_view().unwrap().unwrap().input, view);
+        assert_eq!(store.list(None, MAX_PAGE).unwrap().len(), before);
+        assert!(store.export(corrupt.id).unwrap().starts_with(b"{invalid"));
+        drop(other);
+        drop(store);
+        drop(db);
+        let reopened =
+            RecoveryStore::new(Db::open(&root).unwrap(), "project:fixture", "local").unwrap();
+        assert_eq!(reopened.latest_view().unwrap().unwrap().input, view);
     }
 
     #[test]

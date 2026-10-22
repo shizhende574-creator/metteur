@@ -9,7 +9,7 @@ import {
   ref,
   watch,
 } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Bug, Compass, ListChecks } from '@lucide/vue'
 import { gateway } from '@/core'
 import { useExecutionStore } from '@/stores/execution'
@@ -52,12 +52,17 @@ const blueprintBusy = computed(
 const inputBlocked = computed(
   () =>
     blueprintBusy.value ||
+    chat.sessionUnavailable ||
     ['unknown', 'blocked'].includes(foreground.current.state) ||
     (foreground.current.state === 'chat' &&
       (!chat.streaming || foreground.current.session !== chat.sessionId)),
 )
 const foregroundLabel = computed(() =>
-  execution.launching ? 'Blueprint is starting' : foreground.current.reason,
+  chat.sessionUnavailable
+    ? 'Conversation unavailable · your drafts are kept'
+    : execution.launching
+      ? 'Blueprint is starting'
+      : foreground.current.reason,
 )
 const foregroundRun = computed(
   () => foreground.current.run || (execution.active ? execution.runId : null),
@@ -89,8 +94,47 @@ const config = useConfigStore()
 const tabs = useTabsStore()
 const feedback = useFeedbackStore()
 const router = useRouter()
+const route = useRoute()
 const workspace = useWorkspaceStore(),
   inputs = useComposerInputsStore()
+watch(
+  () => route.query.session,
+  (id) => {
+    if (typeof id === 'string' && id) void chat.switchTo(id)
+  },
+  { immediate: true },
+)
+function selectSession(id: string) {
+  if (route.query.session !== id) void router.replace({ query: { ...route.query, session: id } })
+  else void chat.switchTo(id)
+}
+async function newSession() {
+  await chat.clear()
+  if (route.query.session) {
+    const query = { ...route.query }
+    delete query.session
+    void router.replace({ query })
+  }
+}
+async function deleteSession(id: string) {
+  const target = workspace.active?.path
+  const confirmed = await feedback.confirm({
+    header: 'Delete this conversation?',
+    message:
+      'Delete the saved conversation. Backed-up drafts remain available in Recovery Copies and will not recreate the conversation.',
+    acceptLabel: 'Delete Conversation',
+    rejectLabel: 'Keep Conversation',
+    danger: true,
+  })
+  if (!confirmed || workspace.active?.path !== target) return
+  if (await chat.deleteThread(id)) {
+    if (route.query.session === id) {
+      const query = { ...route.query }
+      delete query.session
+      void router.replace({ query })
+    }
+  } else feedback.toast('error', 'Conversation Kept', chat.sendError)
+}
 const recoveryOpen = ref(false)
 const draftIdentity = computed(() => JSON.stringify([workspace.active?.path, chat.draftEntity]))
 const draftStatus = computed(() => {
@@ -418,13 +462,17 @@ const starterPrompts = [
     <ChatHeader
       :threads="chat.threads"
       :session-id="chat.sessionId"
-      :active-title="chat.threads.find((t) => t.sessionId === chat.sessionId)?.title || 'New chat'"
+      :active-title="
+        chat.sessionUnavailable
+          ? 'Unavailable conversation'
+          : chat.threads.find((t) => t.sessionId === chat.sessionId)?.title || 'New chat'
+      "
       :addons="chat.addons"
       :addons-loading="chat.addonsLoading"
       :busy="chat.busy || chat.retrying || chat.rewinding"
-      :on-select-session="(id) => void chat.switchTo(id)"
-      :on-delete-session="(id) => void chat.deleteThread(id)"
-      :on-new-session="() => void chat.clear()"
+      :on-select-session="selectSession"
+      :on-delete-session="(id) => void deleteSession(id)"
+      :on-new-session="() => void newSession()"
       :on-toggle-addon="(id, enabled) => void chat.toggleAddon(id, enabled)"
     />
 

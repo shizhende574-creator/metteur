@@ -20,6 +20,7 @@ function host() {
             }),
           }
     }
+    if (action.operation === 'latest_view') return { ok: true, data: { record: null } }
     if (action.operation === 'list')
       return {
         ok: true,
@@ -129,7 +130,9 @@ test('L2 confirmed raw draft can be reviewed after reload without overwriting th
   await install(page, fixture.handle)
   await open(page)
   await edit(page, 'raw incomplete draft 中文')
-  expect([...fixture.records.values()][0].input.raw).toBe('raw incomplete draft 中文')
+  expect([...fixture.records.values()].find((row) => row.input.kind === 'text').input.raw).toBe(
+    'raw incomplete draft 中文',
+  )
   page.once('dialog', (dialog) => dialog.accept())
   await page.reload()
   await page.evaluate(() => (window as any).dwRecoveryReady)
@@ -165,7 +168,7 @@ test('L2 two windows keep independent recovery copies and explicit discard fence
   await install(other, fixture.handle)
   await open(other)
   await edit(other, 'window two')
-  const rows = [...fixture.records.values()]
+  const rows = [...fixture.records.values()].filter((row) => row.input.kind === 'text')
   expect(rows).toHaveLength(2)
   expect(rows[0].input.window_id).not.toBe(rows[1].input.window_id)
   await page.getByText('Draft Options', { exact: true }).click()
@@ -176,7 +179,9 @@ test('L2 two windows keep independent recovery copies and explicit discard fence
     .click()
   await expect(page.locator('.monaco-editor .view-lines')).toContainText('# Metrics')
   expect([...fixture.records.values()].filter((r) => r.discarded)).toHaveLength(1)
-  expect([...fixture.records.values()].find((r) => !r.discarded).input.raw).toBe('window two')
+  expect(
+    [...fixture.records.values()].find((r) => !r.discarded && r.input.kind === 'text').input.raw,
+  ).toBe('window two')
   await other.close()
 })
 
