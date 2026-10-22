@@ -179,7 +179,12 @@ export class DeliveryAttempt {
         this.execution = { ok: false, error: String(error) }
       }
       if (this.accepted) return true // Model failure is an execution outcome.
-      return await this.reconcile()
+      const accepted = await this.reconcile()
+      if (!accepted && this.receipt?.phase === 'retired' && this.execution && !this.execution.ok) {
+        this.error = this.execution.error || this.error
+        this.changed()
+      }
+      return accepted
     } catch (error) {
       this.state = 'unknown'
       this.error = String(error)
@@ -210,7 +215,13 @@ export class DeliveryAttempt {
         this.changed()
         return false
       }
-      let receipt = (result.data as { receipt: ChatDeliveryReceipt | null }).receipt
+      const readReceipt = (value: unknown) => {
+        const data = value as { receipt: ChatDeliveryReceipt | null; source_available?: boolean }
+        return data.receipt && typeof data.source_available === 'boolean'
+          ? { ...data.receipt, source_available: data.source_available }
+          : data.receipt
+      }
+      let receipt = readReceipt(result.data)
       if (!receipt) {
         // An absent read alone does not fence a request still in transport.
         result = await this.transport.resourceRequest('chatDelivery', this.snapshot.workspace, {
@@ -222,7 +233,7 @@ export class DeliveryAttempt {
           this.changed()
           return false
         }
-        receipt = (result.data as { receipt: ChatDeliveryReceipt | null }).receipt
+        receipt = readReceipt(result.data)
       }
       if (!receipt) {
         this.error = 'Input outcome remains unknown. Keep its original identity.'

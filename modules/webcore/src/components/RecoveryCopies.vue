@@ -4,7 +4,12 @@ import { gateway } from '@/core'
 import { useRecoveryStore, type RecoveryMetadata } from '@/stores/recovery'
 import type { RecoveryRecord } from '@/core/recovery'
 import { vDialogFocus } from '@/components/resources/dialog-focus'
-const props = defineProps<{ workspace: string; scope: 'project' | 'personal'; entity?: string }>()
+const props = defineProps<{
+  workspace: string
+  scope: 'project' | 'personal'
+  entity?: string
+  localCopies?: RecoveryRecord[]
+}>()
 const emit = defineEmits<{ close: []; restore: [record: RecoveryRecord] }>()
 const recovery = useRecoveryStore(),
   rows = ref<RecoveryMetadata[]>([]),
@@ -69,6 +74,31 @@ async function exportRaw(row: RecoveryMetadata) {
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+async function copySelected() {
+  if (!selected.value) return
+  try {
+    await navigator.clipboard.writeText(selected.value.record.input.raw)
+  } catch {
+    error.value = 'Could not copy. Select the text and copy it manually.'
+  }
+}
+function sourceLabel(kind: string | null, entity: string | null) {
+  return kind === 'chat' || kind === 'new_chat'
+    ? 'Chat Input'
+    : kind === 'supervision'
+      ? 'Supervision Input'
+      : entity || 'Quarantined Record'
+}
+function exportLocal(record: RecoveryRecord) {
+  const url = URL.createObjectURL(
+      new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' }),
+    ),
+    link = document.createElement('a')
+  link.href = url
+  link.download = `metteur-local-input-${record.input.id}.json`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 </script>
 <template>
   <div
@@ -91,7 +121,16 @@ async function exportRaw(row: RecoveryMetadata) {
       <p>Choose a copy to review. Using it changes your draft; the saved file stays unchanged.</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <template v-if="selected"
-        ><strong>{{ selected.record.input.entity }}</strong>
+        ><strong>{{
+          sourceLabel(selected.record.input.kind, selected.record.input.entity)
+        }}</strong>
+        <details>
+          <summary>Source Details</summary>
+          <p>{{ selected.record.input.entity }}</p>
+          <p v-if="selected.record.input.pending_submission">
+            Pending Input: {{ selected.record.input.pending_submission }}
+          </p>
+        </details>
         <p v-if="!selected.source_available">
           Source may be missing or unavailable. Input remains recoverable; it will not recreate the
           source automatically.
@@ -101,16 +140,26 @@ async function exportRaw(row: RecoveryMetadata) {
         }}</pre>
         <div class="mt-3 flex gap-2">
           <button class="btn" @click="selected = null">Back to Copies</button
+          ><button class="btn" @click="copySelected">Copy Text</button
           ><button class="btn btn-primary" @click="emit('restore', selected.record)">
             Use This Copy
           </button>
         </div></template
       ><template v-else
         ><p v-if="loading" role="status">Loading recovery copies…</p>
+        <article v-for="record in localCopies ?? []" :key="`local-${record.input.id}`">
+          <div>
+            <strong>{{ sourceLabel(record.input.kind, record.input.entity) }}</strong>
+            <p>This window · Not backed up</p>
+          </div>
+          <button class="btn" @click="selected = { record, source_available: false }">
+            Review Copy</button
+          ><button class="btn" @click="exportLocal(record)">Export</button>
+        </article>
         <p v-if="!loading && !rows.length && !error">No recovery copies in this scope.</p>
         <article v-for="row in rows.filter((item) => !item.discarded)" :key="row.id">
           <div>
-            <strong>{{ row.entity || 'Quarantined Record' }}</strong>
+            <strong>{{ sourceLabel(row.kind, row.entity) }}</strong>
             <p>
               {{
                 row.error
@@ -123,6 +172,7 @@ async function exportRaw(row: RecoveryMetadata) {
             <details>
               <summary>Details</summary>
               <p>{{ row.kind }} · Edit {{ row.edit_sequence }} · Window {{ row.window_id }}</p>
+              <p>{{ row.entity }}</p>
             </details>
             <p v-if="entity && row.entity !== entity">
               Different source. Copy only after checking its identity.

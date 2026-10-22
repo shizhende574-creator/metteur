@@ -61,6 +61,25 @@ test('backup ACK confirms its snapshot, then serially backs up a newer edit', as
   instance.dispose()
 })
 
+test('malformed backup and discard receipts never clear input or claim success', async () => {
+  const backup = copy({ resourceRequest: async () => ({ ok: true, data: null }) })
+  backup.edit({ raw: 'keep malformed receipt input' })
+  assert.equal(await backup.flush(), false)
+  assert.equal(backup.state, 'unknown')
+  assert.equal(backup.input.raw, 'keep malformed receipt input')
+  backup.dispose()
+  const discard = copy({
+    resourceRequest: async (_method, _ws, payload) =>
+      payload.action.operation === 'backup' ? ack(payload, 1) : { ok: true, data: null },
+  })
+  discard.edit({ raw: 'keep until valid discard receipt' })
+  await discard.flush()
+  assert.equal(await discard.discard(), false)
+  assert.equal(discard.state, 'unknown')
+  assert.equal(discard.input.raw, 'keep until valid discard receipt')
+  discard.dispose()
+})
+
 test('lost ACK reuses the exact request and snapshot even after a newer edit', async () => {
   const calls = []
   const instance = copy({
@@ -169,6 +188,32 @@ test('a lost discard receipt retries the original decision identity', async () =
   assert.equal(instance.input.raw, 'to discard')
   assert.equal(await instance.discard(), true)
   assert.deepEqual(calls[0], calls[1])
+})
+
+test('concurrent cleanup callers share one in-flight discard decision', async () => {
+  const gate = deferred()
+  let discards = 0
+  const instance = copy({
+    resourceRequest: async (_method, _workspace, payload) => {
+      if (payload.action.operation === 'backup') return ack(payload, 1)
+      discards++
+      await gate.promise
+      return {
+        ok: true,
+        data: { schema_version: 1, revision: 2, discarded: true, input: { id: payload.action.id } },
+      }
+    },
+  })
+  instance.edit({ raw: 'one input' })
+  await instance.flush()
+  const first = instance.discard(),
+    second = instance.discard()
+  assert.equal(discards, 1)
+  gate.resolve()
+  assert.equal(await first, true)
+  assert.equal(await second, true)
+  assert.equal(discards, 1)
+  instance.dispose()
 })
 
 test('an old discard receipt never clears edits typed while it was in flight', async () => {

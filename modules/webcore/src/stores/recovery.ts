@@ -33,7 +33,7 @@ export const useRecoveryStore = defineStore('recovery', () => {
   const windowId = crypto.randomUUID()
   const statuses = reactive(new Map<string, BackupStatus>())
   const copies = new Map<string, RecoveryCopy>()
-  const newChats = new Map<string, string>()
+  const newChats = reactive(new Map<string, string>())
   const errorMessage = (raw: string) => {
     try {
       return String(JSON.parse(raw).message ?? raw)

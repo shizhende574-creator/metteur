@@ -255,3 +255,41 @@ async fn host_backed_pending_inputs_are_reconciled_before_another_browser_can_re
         assert_eq!(recovery.get(id).unwrap().unwrap().input.raw, "unmodified raw\r\n中文");
     }
 }
+
+#[tokio::test]
+async fn receipt_reconciliation_reports_a_deleted_source_without_recreating_it() {
+    let (service, state, root) = setup().await;
+    let id = Uuid::new_v4();
+    let mut stream = Daemon::send_chat(&service, Request::new(command(&root, id, "", 0)))
+        .await
+        .unwrap()
+        .into_inner();
+    while let Some(event) = stream.next().await {
+        assert_ne!(event.unwrap().kind, "error");
+    }
+    let query = || ResourceRequest {
+        workspace_path: root.to_string_lossy().into(),
+        schema_version: 1,
+        payload_json: serde_json::json!({"operation":"read","id":id}).to_string(),
+        ..Default::default()
+    };
+    let before = Daemon::chat_delivery(&service, Request::new(query())).await.unwrap().into_inner();
+    let before: serde_json::Value = serde_json::from_str(&before.payload_json).unwrap();
+    assert_eq!(before["source_available"], true);
+    let session = before["receipt"]["session"].as_str().unwrap();
+    Daemon::delete_chat_session(
+        &service,
+        Request::new(metteur_proto::proto::DeleteChatSessionRequest {
+            workspace_path: root.to_string_lossy().into(),
+            session_id: session.into(),
+        }),
+    )
+    .await
+    .unwrap();
+    let after = Daemon::chat_delivery(&service, Request::new(query())).await.unwrap().into_inner();
+    let after: serde_json::Value = serde_json::from_str(&after.payload_json).unwrap();
+    assert_eq!(after["source_available"], false);
+    assert_eq!(after["receipt"]["turn"], before["receipt"]["turn"]);
+    let ws = state.workspaces.get(&root).await.unwrap();
+    assert!(load_thread(&ws.db, &Uuid::parse_str(session).unwrap()).unwrap().is_none());
+}

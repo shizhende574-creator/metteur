@@ -45,6 +45,7 @@ export class RecoveryCopy {
   state: BackupState = 'unbacked'
   error = ''
   private inFlight: Promise<boolean> | null = null
+  private discardInFlight: Promise<boolean> | null = null
   private pending: { request: string; expected: number; input: RecoveryInput } | null = null
   private debounce?: ReturnType<typeof setTimeout>
   private maximum?: ReturnType<typeof setTimeout>
@@ -187,6 +188,7 @@ export class RecoveryCopy {
       }
       const record = result.data as RecoveryRecord
       if (
+        !record ||
         record.schema_version !== 1 ||
         record.input?.id !== this.input.id ||
         record.input.edit_sequence !== pending.input.edit_sequence ||
@@ -224,6 +226,15 @@ export class RecoveryCopy {
     return true
   }
   async discard(): Promise<boolean> {
+    if (this.discardInFlight) return this.discardInFlight
+    this.discardInFlight = this.discardOnce()
+    try {
+      return await this.discardInFlight
+    } finally {
+      this.discardInFlight = null
+    }
+  }
+  private async discardOnce(): Promise<boolean> {
     const localSequence = this.input.edit_sequence
     this.clearTimers()
     this.discarding = true
@@ -268,7 +279,7 @@ export class RecoveryCopy {
         return false
       }
       const record = result.data as RecoveryRecord
-      if (!record.discarded || record.input?.id !== this.input.id) {
+      if (!record || !record.discarded || record.input?.id !== this.input.id) {
         this.discarding = false
         this.state = 'unknown'
         this.error = 'Discard outcome requires reconciliation.'

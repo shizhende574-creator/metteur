@@ -168,6 +168,8 @@ export interface ChatOptions {
 }
 
 export interface ChatDeliveryReceipt {
+  /** Current read availability, supplied by reconciliation; never a permission grant. */
+  source_available?: boolean
   schema_version:1
   id:string
   input_digest:string

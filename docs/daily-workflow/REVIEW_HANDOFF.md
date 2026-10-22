@@ -4,12 +4,19 @@
 
 ## 当前进展
 
+- 最新完整功能：主聊天/新聊天的原始草稿、选择及 pending ID 接入已完成，源码候选 f60b614 加本功能差异；提交前摘要 composer-input-source-before-commit.json。同步主界面恢复栏/共享 Composer、source_available RPC、预览适配器、必要检查；完整提交后以 Git HEAD 对照摘要。本功能不关闭整个 DW-02/03。
+- 当前检查：Windows RPC7/exit0（composer-source-rpc-first.log）；daemon clippy仅既有27项警告/exit0（composer-source-clippy-first.log）；客户端27/exit0（composer-controller-final.log），app/node类型及定向lint均exit0（composer-final-*.log）；L2聊天9/exit0（composer-browser-final.log），共享Composer/rewind/sequence/SSE/文档恢复18/exit0（composer-affected-first.log）。隔离预览适配构建及正式前端构建exit0（composer-isolated-build-first、composer-production-final-build.log）；尚未更新真实运行版，不算L3。
+- 首轮失败保留：整合类型3处（未用ref/类型导出/异步窄化）修正后通过；lint未使用响应式版本读取改为响应式Map，测试参数重名已改；首轮L2的配置尚未ready，补测试前置等待；第二轮仅旧`.chat-thread`选择器错误，改实际`.chat-thread-inner`。没有改生产模型准入来满足夹具。早期6/8项与最终9项有重叠，不累加为AC。
+- 主聊天当前可按原ID对账、保留较新输入并手工恢复宿主确认副本；新文字13～14px，技术信息在详情。余下监督持久输入、标签/位置、Queue/Steer固定目标、控制/审批、主监督分离及DW-04～09继续推进。最终用户体验验收、付费模型/数据授权、实际持续观察和Linux仍待完成，无付费调用、push或合并。
+
 - DW-00 基线完成，提交 1b39ce8；G01～19、接口/容量/性能判定及最小复现见 BASELINE.md。复现发送拒绝清空、IME synthetic Enter 提交、rollback 失败不呈现、蓝图替换主聊天。简单切页原有 KeepAlive 保留输入，没有伪造该项失败。
 - DW-01：r1 67f56d9 未批准。r2 5e40cbf 复用原 App/IDE，三组已获用户原文“批准三组 r2，保留现有 IDE 布局”。具体范围见 PREVIEWS.md。最终产品视觉签字尚未取得。
-- DW-02 宿主和文档恢复完整功能已提交 97436a6；聊天、监督和位置恢复尚未接入。r3 低密度隔离修订已提交 a8653cf，19085，原 r2 保留19082。r3 尚未代填用户签字。手工发送接收协议已提交 9aa23cc；当前增量为已备份未决身份的启动前对账，检查已通过，待完整提交。DW-02～09 未关闭，AC-01～30 尚未关闭。
+- DW-02 宿主/文档恢复已提交97436a6，主聊天接入见上述最新功能；监督/位置待接入。r3低密度隔离修订a8653cf，19085，原r2保留19082；r3未代填用户签字。手工发送协议9aa23cc，未决身份启动前对账f60b614均已完整本地提交。DW-02～09和AC-01～30均未关闭。
 - 最新体验约束：“界面不要太多小字,信息量不要太大,要兼顾使用体验”。保留 IDE 几何；新增主要文字/操作约 13～14px，默认状态与必要操作，身份、revision、窗口和长诊断收进详情。已用于文档恢复栏和恢复弹窗，后续继续遵循。
 
 ## 当前功能与限制
+
+以下保留9aa23cc/f60b614协议阶段的详细记录，其中尚未接入Composer描述的是当时边界；当前已接入范围以上述最新功能为准。
 
 新增 pending_reconciliation 能力和 reconcile_pending：仅当前宿主 owner/project 的 chat/new_chat 未决身份先对账；未接收身份持久关闭、已接收保持原 turn，监督身份不混用，原始副本不改写。客户端在新发送前检查能力并对账，失败即保留输入且不启动新回合。基线9aa23cc；Windows真实RPC6、客户端9、SSE3、app类型及daemon clippy通过，仅既有27项lib警告；pending-delivery-*.log。此增量没有更新生产运行包，未接入Composer，不计AC关闭。
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { gateway } from '@/core'
 import type {
   AddonInfo,
@@ -11,11 +11,14 @@ import type {
   TodoItem,
   FileTreeNode,
 } from '@/core'
+import type { ChatDeliveryReceipt } from '@/core/types'
 import type { ChatPhase } from '@/lib/chat/liveness'
 import { useWorkspaceStore } from './workspace'
 import { CONTINUATION_WAITING_MESSAGE, type TaskRecord } from '@/core/continuations'
 import { usePromptResourcesStore } from './prompt-resources'
 import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
+import { useComposerInputsStore, type ComposerSelection } from './composer-inputs'
+import type { DeliverySnapshot } from '@/core/delivery'
 
 /** A message typed while a turn was running, waiting to be injected. */
 export interface QueuedTurn {
@@ -42,9 +45,12 @@ export interface QueuedTurn {
  */
 export const useChatStore = defineStore('chat', () => {
   const workspace = useWorkspaceStore()
+  const inputs = useComposerInputsStore(),
+    prompts = usePromptResourcesStore()
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
   const busy = ref(false)
+  const sendError = ref('')
   /** id of the persisted session, passed back on every turn. */
   const sessionId = ref('')
   /** Aborts the local event stream; the daemon is stopped separately. */
@@ -83,6 +89,48 @@ export const useChatStore = defineStore('chat', () => {
   const addonsLoading = ref(false)
   /** Files queued in the composer (chips) but not yet sent as a turn. */
   const pendingFiles = ref<FileTreeNode[]>([])
+  const draftEntity = computed(() => {
+    return inputs.entity(workspace.active?.path ?? '', sessionId.value)
+  })
+  const composerInput = computed(() =>
+    workspace.active?.path ? inputs.read(workspace.active.path, draftEntity.value) : null,
+  )
+  const draft = computed({
+    get: () => composerInput.value?.input.raw ?? '',
+    set: (raw: string) => {
+      if (workspace.active?.path) inputs.edit(workspace.active.path, draftEntity.value, { raw })
+    },
+  })
+  let changingDraft = false
+  watch(
+    [() => workspace.active?.path, draftEntity, () => composerInput.value?.backup?.id],
+    () => {
+      const current = composerInput.value
+      changingDraft = true
+      const chosen = current ? inputs.selections(current.input) : []
+      pendingFiles.value = chosen.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+      prompts.selections = chosen.flatMap((item) =>
+        item.kind === 'prompt' ? [item.selection] : [],
+      )
+      changingDraft = false
+    },
+    { immediate: true, flush: 'sync' },
+  )
+  watch(
+    [pendingFiles, () => prompts.selections],
+    () => {
+      if (changingDraft || !workspace.active?.path) return
+      const selections: ComposerSelection[] = [
+        ...pendingFiles.value.map((file) => ({ kind: 'file' as const, file })),
+        ...prompts.selections.map((selection) => ({ kind: 'prompt' as const, selection })),
+      ]
+      inputs.edit(workspace.active.path, draftEntity.value, { selections })
+    },
+    { deep: true, flush: 'sync' },
+  )
+  function rotateDraft() {
+    if (workspace.active?.path) inputs.rotateNewChat(workspace.active.path)
+  }
   const following = ref<{ workspace: string; session: string; task: string } | null>(null)
   let followEpoch = 0,
     conversationEpoch = 0
@@ -183,12 +231,16 @@ export const useChatStore = defineStore('chat', () => {
     () => workspace.active?.path,
     async () => {
       conversationEpoch++
+      streamAbort?.abort()
+      streamAbort = null
       following.value = null
       messages.value = []
       streaming.value = false
       busy.value = false
-      pendingFiles.value = []
       sessionId.value = ''
+      permissionMode.value = 'sandbox'
+      approval.value = null
+      sendError.value = ''
       lastUsage.value = null
       contextStats.value = null
       todos.value = []
@@ -238,7 +290,11 @@ export const useChatStore = defineStore('chat', () => {
   async function openThread(wsPath: string, id: string, title: string): Promise<void> {
     const epoch = ++conversationEpoch
     following.value = null
-    if (streaming.value) await abort()
+    streamAbort?.abort()
+    streamAbort = null
+    streaming.value = false
+    busy.value = false
+    phase.value = 'idle'
     const snap = await gateway.getChatSession(wsPath, id)
     // The user may have switched workspaces while loading; discard stale data.
     if (workspace.active?.path !== wsPath || epoch !== conversationEpoch) return
@@ -321,132 +377,205 @@ export const useChatStore = defineStore('chat', () => {
     content: string,
     options?: ChatOptions,
     mode: 'normal' | 'retry' = 'normal',
+    onAccepted?: () => void,
   ): Promise<boolean> {
-    const prompts = usePromptResourcesStore()
-    const selected = mode === 'retry' ? [] : prompts.selections.map((item) => item.snapshot.id)
-    if (mode !== 'retry') {
-      if (!(await prompts.validateChat())) return false
-      if (
-        selected.length !== prompts.selections.length ||
-        selected.some((id, index) => prompts.selections[index]?.snapshot.id !== id)
-      ) {
-        prompts.error = 'Prompt selections changed. Review them and send again.'
-        return false
-      }
-    }
-    options = { ...options, prompt_snapshots: selected }
-    const ws = workspace.active
-    const text = content.trim()
+    const ws = workspace.active?.path,
+      targetSession = sessionId.value,
+      entity = draftEntity.value
     if (
       !ws ||
-      !text ||
+      !content.trim() ||
       streaming.value ||
       busy.value ||
       rewinding.value ||
       (retrying.value && mode !== 'retry')
     )
       return false
-    conversationEpoch++
-    following.value = null
-    // File references travel with the turn: the daemon learns about the
-    // attached files from the message text, and the transcript shows the same
-    // lines the model receives.
-    const refs = mode === 'retry' ? [] : pendingFiles.value.map((f) => `@file ${f.path}`)
-    const body = refs.length ? `${[...refs, text].join('\n')}` : text
-    const userMessageId = `u-${Date.now()}`
-    messages.value.push({
-      id: userMessageId,
-      role: 'user',
-      content: body,
-      createdAt: Date.now(),
-    })
-    if (mode !== 'retry') pendingFiles.value = []
-    // A "new chat" turn creates a fresh thread; sending into an existing one
-    // keeps its id (non-empty below).
-    streamAbort = new AbortController()
-    streaming.value = true
+    const input = inputs.read(ws, entity).controller,
+      source = input.capture(),
+      chosen = mode === 'retry' ? [] : inputs.selections(source)
+    if (mode !== 'retry' && chosen.length !== source.selections.length) {
+      sendError.value =
+        'Some recovered references need review. Keep or copy the input before sending.'
+      return false
+    }
+    const refs = chosen.flatMap((item) =>
+        item.kind === 'file' ? [`@file ${item.file.path}`] : [],
+      ),
+      body = refs.length ? [...refs, content].join('\n') : content,
+      epoch = ++conversationEpoch,
+      current = () => workspace.active?.path === ws && epoch === conversationEpoch,
+      aborter = new AbortController(),
+      history = JSON.parse(JSON.stringify(messages.value)) as ChatMessage[]
+    const snapshot: DeliverySnapshot = {
+      workspace: ws,
+      session: targetSession,
+      newSession: targetSession ? undefined : entity,
+      message: body,
+      history,
+      options: { ...options },
+    }
+    let received = false,
+      executionOk = false
+    const receivedInput = (receipt?: ChatDeliveryReceipt) => {
+      if (received) return
+      received = true
+      if (!current()) return
+      following.value = null
+      if (receipt) sessionId.value = receipt.session
+      const id = `u-${receipt?.id ?? crypto.randomUUID()}`
+      if (!messages.value.some((message) => message.id === id))
+        messages.value.push({
+          id,
+          role: 'user',
+          content: body,
+          createdAt: receipt?.accepted_ms ?? Date.now(),
+          checkpoint: receipt?.checkpoint ?? undefined,
+        })
+      streaming.value = true
+      lastUsage.value = null
+      pendingTool.value = null
+      turnStartedAt.value = Date.now()
+      lastEventAt.value = Date.now()
+      phase.value = 'thinking'
+      if (mode !== 'retry') {
+        // Only the exact submitted version is consumed by its input owner.
+        // A newer draft and its references stay bound to this conversation.
+        const remaining = inputs.selections(input.primary.input)
+        changingDraft = true
+        pendingFiles.value = remaining.flatMap((item) => (item.kind === 'file' ? [item.file] : []))
+        prompts.selections = remaining.flatMap((item) =>
+          item.kind === 'prompt' ? [item.selection] : [],
+        )
+        changingDraft = false
+      }
+      onAccepted?.()
+    }
+    streamAbort = aborter
+    sendError.value = ''
     busy.value = true
-    lastUsage.value = null
-    pendingTool.value = null
-    turnStartedAt.value = Date.now()
-    lastEventAt.value = Date.now()
-    phase.value = 'thinking'
     let resolveFinished!: () => void
     const finished = new Promise<void>((resolve) => {
       resolveFinished = resolve
     })
     pendingSend = finished
-    try {
-      // The new turn is sent as the message itself; including it in the
-      // history as well made the daemon seed a fresh session with it twice.
-      const history = messages.value.slice(0, -1)
-      const r = await gateway.sendChat(
-        ws.path,
-        body,
-        history,
-        (m) => upsert(m),
-        options,
-        (id, checkpointId) => {
-          sessionId.value = id
-          const user = messages.value.find((message) => message.id === userMessageId)
-          if (user) user.checkpoint = checkpointId
+    const run = async (
+      fixed: DeliverySnapshot,
+      onReceipt: (receipt: ChatDeliveryReceipt) => void,
+    ) => {
+      if (!current() || aborter.signal.aborted)
+        return { ok: false as const, error: 'Conversation changed before submission.' }
+      const ids: string[] = []
+      // Re-select each original reference against current access and version.
+      // Restored snapshot IDs are input, never an authorization token.
+      for (const item of chosen) {
+        if (item.kind !== 'prompt') continue
+        const reference = item.selection.snapshot.reference
+        const read = await gateway.resourceRequest('queryPromptResources', ws, {
+          operation: 'read',
+          scope: reference.scope.scope,
+          id: reference.id,
+        })
+        if (!current() || aborter.signal.aborted)
+          return { ok: false as const, error: 'Conversation changed before submission.' }
+        const latest = read.ok ? (read.data as { reference: typeof reference }).reference : null
+        if (
+          !latest ||
+          latest.revision !== reference.revision ||
+          latest.content_digest !== reference.content_digest
+        )
+          return {
+            ok: false as const,
+            error: read.ok
+              ? 'A selected prompt changed. Review and refresh it before sending.'
+              : read.error,
+          }
+        const selected = await prompts.select(latest, { kind: 'chat' })
+        ids.push(selected.id)
+      }
+      if (!current() || aborter.signal.aborted)
+        return { ok: false as const, error: 'Conversation changed before submission.' }
+      const result = await gateway.sendChat(
+        ws,
+        fixed.message,
+        fixed.history,
+        (m) => {
+          if (current() && (received || gateway.demo)) upsert(m)
         },
-        sessionId.value,
+        { ...fixed.options, prompt_snapshots: ids },
+        (id, checkpoint) => {
+          if (!current() || (!gateway.demo && !received)) return
+          if (gateway.demo) {
+            if (mode !== 'retry') input.acceptLocal(source)
+            receivedInput()
+          }
+          sessionId.value = id
+          const user = messages.value.findLast((message) => message.role === 'user')
+          if (user && checkpoint) user.checkpoint = checkpoint
+        },
+        fixed.session,
         (usage) => {
-          lastUsage.value = usage
-          finishReasoning(usage.turnElapsedMs)
+          if (current()) {
+            lastUsage.value = usage
+            finishReasoning(usage.turnElapsedMs)
+          }
         },
         (next) => {
-          // Live plan updates stream in while the turn runs.
-          todos.value = next
+          if (current()) todos.value = next
         },
-        streamAbort.signal,
+        aborter.signal,
         (progress) => {
-          // Arguments of a large call stream for seconds before the tool row
-          // exists; the status line carries that time.
-          pendingTool.value = progress
-          settleReasoningStream()
-          lastEventAt.value = Date.now()
-          phase.value = 'generating'
+          if (current()) {
+            pendingTool.value = progress
+            settleReasoningStream()
+            lastEventAt.value = Date.now()
+            phase.value = 'generating'
+          }
         },
         (stats) => {
-          contextStats.value = stats
+          if (current()) contextStats.value = stats
         },
         (request) => {
-          // The turn is blocked until this is answered, so it is surfaced
-          // immediately rather than queued behind the transcript.
-          approval.value = request
+          if (current()) approval.value = request
         },
+        onReceipt,
       )
-      finishReasoning()
-      await refreshThreads()
-      if (!r.ok) {
-        // Failures used to vanish here, which made a broken turn look like a
-        // silent stop; the reason is part of the transcript.
-        messages.value.push({
-          id: `e-${Date.now()}`,
-          role: 'error',
-          content: r.error || 'The turn failed.',
-          createdAt: Date.now(),
-        })
+      executionOk = result.ok
+      if (current()) {
+        finishReasoning()
+        if (!result.ok)
+          messages.value.push({
+            id: `e-${crypto.randomUUID()}`,
+            role: 'error',
+            content: result.error || 'The turn failed.',
+            createdAt: Date.now(),
+          })
       }
-      if (r.ok && mode !== 'retry')
-        prompts.selections = prompts.selections.filter(
-          (item) => !selected.includes(item.snapshot.id),
-        )
-      return r.ok
+      return result
+    }
+    try {
+      const accepted = gateway.demo
+        ? (await run(snapshot, () => {})).ok
+        : await inputs.submit(ws, entity, snapshot, run, {
+            source,
+            mode: mode === 'retry' ? 'retry' : 'send',
+            isCurrent: () => current() && !aborter.signal.aborted,
+            accepted: receivedInput,
+          })
+      if (current()) await refreshThreads()
+      return mode === 'retry' ? accepted && executionOk : accepted
     } finally {
-      streamAbort = null
-      phase.value = 'idle'
-      finishReasoning()
-      if (streaming.value) {
-        for (const m of messages.value) {
-          m.pending = false
-          m.reasoningPending = false
+      if (current()) {
+        if (streamAbort === aborter) streamAbort = null
+        phase.value = 'idle'
+        finishReasoning()
+        for (const message of messages.value) {
+          message.pending = false
+          message.reasoningPending = false
         }
         streaming.value = false
+        busy.value = false
       }
-      busy.value = false
       if (pendingSend === finished) pendingSend = null
       resolveFinished()
     }
@@ -542,12 +671,14 @@ export const useChatStore = defineStore('chat', () => {
   async function abort() {
     const ws = workspace.active
     if (!ws) return
+    const epoch = ++conversationEpoch
     // Stop reading locally first: the daemon's terminal event would otherwise
     // arrive after the user asked to stop and repaint the turn.
     streamAbort?.abort()
     finishReasoning()
     streamAbort = null
     await gateway.abortChat(ws.path)
+    if (workspace.active?.path !== ws.path || epoch !== conversationEpoch) return
     for (const m of messages.value) m.pending = false
     streaming.value = false
     busy.value = false
@@ -697,11 +828,12 @@ export const useChatStore = defineStore('chat', () => {
    * The prior thread stays on disk and reappears in the session list; deleting
    * one is an explicit action (`deleteThread`). */
   async function clear() {
+    if (streaming.value || busy.value) await abort()
     conversationEpoch++
     following.value = null
-    if (streaming.value) await abort()
     messages.value = []
     sessionId.value = ''
+    rotateDraft()
     lastUsage.value = null
     todos.value = []
     await refreshThreads()
@@ -757,6 +889,10 @@ export const useChatStore = defineStore('chat', () => {
     addons,
     addonsLoading,
     pendingFiles,
+    draft,
+    draftEntity,
+    composerInput,
+    sendError,
     send,
     queue,
     steer,

@@ -44,6 +44,7 @@ import FileTree from '@/components/FileTree.vue'
 import { useSurfaceNavigation } from '@/lib/surface'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useDocumentsStore } from '@/stores/documents'
+import { useComposerInputsStore } from '@/stores/composer-inputs'
 
 const EditorPane = defineAsyncComponent(() => import('@/views/EditorPane.vue'))
 
@@ -59,8 +60,13 @@ const jobs = useJobsStore()
 const fileWatch = useFileWatchStore()
 const feedback = useFeedbackStore()
 const documents = useDocumentsStore()
+const composerInputs = useComposerInputsStore()
 function protectDrafts(event: BeforeUnloadEvent) {
-  if (![...documents.records.values()].some((doc) => doc.loaded && documents.dirty(doc))) return
+  if (
+    !composerInputs.hasUnbackedInput() &&
+    ![...documents.records.values()].some((doc) => doc.loaded && documents.dirty(doc))
+  )
+    return
   event.preventDefault()
   event.returnValue = ''
 }
@@ -421,9 +427,7 @@ function onRightResizeStart(e: MouseEvent) {
         data-switcher
         class="glass absolute left-24 top-11 z-40 w-72 rounded-lg border border-divider py-1 shadow-card"
       >
-        <p class="px-3 pb-1 pt-1.5 text-[10px] font-semibold text-subtle">
-          Recent workspaces
-        </p>
+        <p class="px-3 pb-1 pt-1.5 text-[10px] font-semibold text-subtle">Recent workspaces</p>
         <div v-if="workspace.recents.length" class="px-1">
           <button
             v-for="w in workspace.recents"

@@ -5,7 +5,7 @@ use super::{
     resources::response,
 };
 use crate::storage::{
-    delivery::{DeliveryStore, MAX_LEDGER_BYTES, MAX_RECEIPTS},
+    delivery::{DeliveryReceipt, DeliveryStore, MAX_LEDGER_BYTES, MAX_RECEIPTS},
     resources::{Result, fault},
 };
 use serde::Deserialize;
@@ -53,6 +53,28 @@ impl DaemonService {
             let query: Query = serde_json::from_str(&req.payload_json)
                 .map_err(|_| fault("invalid_request", "Invalid delivery query fields"))?;
             let store = DeliveryStore::new(ws.db.clone(), &ws.root().to_string_lossy(), &subject)?;
+            let receipt_payload = |receipt: Option<DeliveryReceipt>| -> Result<serde_json::Value> {
+                let readable = self
+                    .state
+                    .acl_store
+                    .read()
+                    .unwrap()
+                    .is_allowed(&subject, "/metteur.Daemon/GetChatSession");
+                let source_available = if readable {
+                    if let Some(receipt) = &receipt {
+                        if receipt.session.is_nil() {
+                            false
+                        } else {
+                            ws.db.get(crate::storage::persistence::cf::CHAT_THREADS,receipt.session.as_bytes()).map_err(|_|fault("storage_unavailable","Input source could not be checked"))?.is_some_and(|raw|serde_json::from_slice::<crate::chat::session::ChatSessionRecord>(&raw).is_ok_and(|record|record.session_id==receipt.session))
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                Ok(serde_json::json!({"receipt":receipt,"source_available":source_available}))
+            };
             match query {
                 Query::Capabilities => Ok(
                     serde_json::json!({"schema":1,"durable_manual_send":true,"pending_reconciliation":true,"durable_queue":false,"max_receipts":MAX_RECEIPTS,"ledger_bytes":MAX_LEDGER_BYTES,"ordinary_disconnect":"cancel","automatic_replay":false}),
@@ -72,12 +94,12 @@ impl DaemonService {
                 }
                 Query::Read {
                     id,
-                } => Ok(serde_json::json!({"receipt":store.get(id)?})),
+                } => receipt_payload(store.get(id)?),
                 Query::Retire {
                     id,
-                } => Ok(
-                    serde_json::json!({"receipt":store.retire(id,chrono::Utc::now().timestamp_millis() as u64)?}),
-                ),
+                } => receipt_payload(Some(
+                    store.retire(id, chrono::Utc::now().timestamp_millis() as u64)?,
+                )),
                 Query::List {
                     after,
                 } => {

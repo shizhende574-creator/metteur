@@ -22,6 +22,7 @@ export default defineConfig({
         if (path.endsWith('/views/ChatView.vue')) {
           source = replace(source, '<script setup lang="ts">', '<script setup lang="ts">\n' + addon)
           source = replace(source, 'v-if="execution.active"', 'v-if="false"')
+          source = replace(source, 'data-chat-draft-status', 'data-chat-draft-status v-if="false"')
           return replace(
             source,
             '    <ChatThread',
@@ -61,7 +62,7 @@ export default defineConfig({
           )
           source = replace(
             source,
-            "const draft = ref('')",
+            'const draft = computed({ get: readDraft, set: writeDraft })',
             "const draft = computed({get:()=>fixture.drafts[draftKey(props.concierge)]??'',set:(text:string)=>{fixture.drafts[draftKey(props.concierge)]=text}})",
           )
           source = replace(
@@ -71,13 +72,13 @@ export default defineConfig({
           )
           source = replace(
             source,
-            "function submit(mode: 'auto' | 'queue' | 'steer'): void {",
-            "function submit(mode: 'auto' | 'queue' | 'steer'): void {\nif(!props.concierge && occupied.value) return\n",
+            "async function submit(mode: 'auto' | 'queue' | 'steer'): Promise<void> {",
+            "async function submit(mode: 'auto' | 'queue' | 'steer'): Promise<void> {\nif(!props.concierge && occupied.value) return\n",
           )
           source = replace(
             source,
-            ':disabled="!ready || !hasDraft || concierge?.sendDisabled"',
-            ':disabled="!ready || !hasDraft || concierge?.sendDisabled || (!concierge && occupied)"',
+            ':disabled="!ready || !hasDraft || sendBlocked || submitting || readOnly"',
+            ':disabled="!ready || !hasDraft || sendBlocked || submitting || readOnly || (!concierge && occupied)"',
           )
           return source
         }
