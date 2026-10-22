@@ -39,7 +39,7 @@ struct Entry {
 #[derive(Default)]
 struct Queue {
     pending: VecDeque<Entry>,
-    claimed: Vec<Arc<dyn OwnedInterrupt>>,
+    claimed: Vec<(Option<uuid::Uuid>, Arc<dyn OwnedInterrupt>)>,
     sealed: bool,
 }
 /// The existing bus also keeps optional durable input ownership. Nested
@@ -136,6 +136,13 @@ impl InterruptBus {
         &self,
         priority: InterruptPriority,
     ) -> Result<Vec<String>, (crate::DaemonError, Vec<String>)> {
+        self.drain_owned_for(priority, None)
+    }
+    pub fn drain_owned_for(
+        &self,
+        priority: InterruptPriority,
+        consumer: Option<uuid::Uuid>,
+    ) -> Result<Vec<String>, (crate::DaemonError, Vec<String>)> {
         let mut queue = self.inner.lock().unwrap();
         let mut out = Vec::new();
         let mut index = 0;
@@ -148,7 +155,7 @@ impl InterruptBus {
                     return Err((error, out));
                 }
                 let entry = queue.pending.remove(index).unwrap();
-                queue.claimed.push(owner);
+                queue.claimed.push((consumer, owner));
                 out.push(entry.interrupt.message);
             } else {
                 index += 1;
@@ -187,10 +194,23 @@ impl InterruptBus {
         error.map_or(Ok(()), Err)
     }
     pub fn finish_owned(&self, context_persisted: bool) -> crate::error::DaemonResult<()> {
+        self.finish_consumer(None, context_persisted)
+    }
+    /// A blueprint receipt is applied only after its consuming node commits.
+    /// None finishes all remaining claims at root chat/run termination.
+    pub fn finish_consumer(
+        &self,
+        consumer: Option<uuid::Uuid>,
+        context_persisted: bool,
+    ) -> crate::error::DaemonResult<()> {
         let mut queue = self.inner.lock().unwrap();
         let claimed = std::mem::take(&mut queue.claimed);
         let mut error = None;
-        for owner in claimed {
+        for (node, owner) in claimed {
+            if consumer.is_some() && node != consumer {
+                queue.claimed.push((node, owner));
+                continue;
+            }
             if let Err(reason) = owner.applied(context_persisted) {
                 error.get_or_insert(reason);
             }
@@ -344,5 +364,22 @@ mod tests {
         assert_eq!(bus.send_owned(input(), owner.clone(), || Ok((17, false))).unwrap(), 17);
         assert_eq!(bus.drain_owned(InterruptPriority::Normal).unwrap(), vec!["parent input"]);
         assert_eq!(owner.claims.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn blueprint_consumption_finishes_only_after_its_own_node_commits() {
+        let bus = InterruptBus::new();
+        let first = Arc::new(Observer::default());
+        let second = Arc::new(Observer::default());
+        let node = uuid::Uuid::new_v4();
+        let other = uuid::Uuid::new_v4();
+        bus.send_owned(input(), first.clone(), || Ok(((), true))).unwrap();
+        assert_eq!(bus.drain_owned_for(InterruptPriority::Normal, Some(node)).unwrap().len(), 1);
+        bus.send_owned(input(), second.clone(), || Ok(((), true))).unwrap();
+        bus.drain_owned_for(InterruptPriority::Normal, Some(other)).unwrap();
+        bus.finish_consumer(Some(node), true).unwrap();
+        assert_eq!(first.applied.load(Ordering::SeqCst), 1);
+        assert_eq!(second.applied.load(Ordering::SeqCst), 0);
+        bus.finish_owned(false).unwrap();
+        assert_eq!(second.applied.load(Ordering::SeqCst), 0);
     }
 }

@@ -322,9 +322,10 @@ async fn react_loop_inner(
             for msg in bus.drain(InterruptPriority::Emergency) {
                 context.push_message(Message::text(Role::User, msg));
             }
-            if ctx.depth == 0 && ctx.chat_session.is_some() && on_event.is_some() {
+            if ctx.depth == 0 && ((ctx.chat_session.is_some() && on_event.is_some()) || ctx.chat_session.is_none()) {
                 for priority in [InterruptPriority::Normal, InterruptPriority::Urgent] {
-                    let (messages, failure) = match bus.drain_owned(priority) {
+                    let consumer = if ctx.chat_session.is_none() { Some(ctx.current_node) } else { None };
+                    let (messages, failure) = match bus.drain_owned_for(priority, consumer) {
                         Ok(messages) => (messages, None),
                         Err((error, messages)) => (messages, Some(error)),
                     };

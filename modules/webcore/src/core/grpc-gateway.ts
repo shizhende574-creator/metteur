@@ -1,4 +1,5 @@
 import type { OversightReports } from './oversight'
+import { submitWorkflow } from './workflow-receipts'
 import type { ConciergeState, ConciergeEvent } from './concierge'
 import type { Blackboard, BoardQuery } from './blackboard'
 import { executionSnapshot } from './execution-view'
@@ -976,10 +977,36 @@ export class GrpcGateway implements DaemonGateway {
     message: string,
     priority: 'Normal' | 'Urgent' | 'Emergency' = 'Normal',
     target?: import('./types').LiveTarget,
+    receiptId?: string,
   ): Promise<Result<void>> {
     try {
       if (!target) return err('A concrete live target is required. Input was kept.')
       const fixed = { ...target }
+      if (fixed.kind === 'blueprint' && priority === 'Urgent') {
+        return submitWorkflow(
+          this,
+          workspacePath,
+          { kind: 'blueprint', run: fixed.runId },
+          'temporary_input',
+          message,
+          async (receiptJson) => {
+            try {
+              await this.client.sendInterrupt({
+                workspacePath,
+                message,
+                priority,
+                targetKind: 'blueprint',
+                runId: fixed.runId,
+                receiptJson,
+              })
+              return ok(undefined)
+            } catch (error) {
+              return toErr(error)
+            }
+          },
+          receiptId,
+        )
+      }
       const supported = await this.targetedControls(workspacePath)
       if (!supported.ok) return supported
       await this.client.sendInterrupt({
@@ -1026,14 +1053,26 @@ export class GrpcGateway implements DaemonGateway {
     try {
       if (!target) return err('A concrete chat turn is required. Stop was not redirected.')
       const fixed = { ...target }
-      const supported = await this.targetedControls(workspacePath)
-      if (!supported.ok) return supported
-      await this.client.abortChat({
+      return submitWorkflow(
+        this,
         workspacePath,
-        sessionId: fixed.sessionId,
-        turnId: fixed.turnId,
-      })
-      return ok(undefined)
+        { kind: 'chat', session: fixed.sessionId, turn: fixed.turnId },
+        'stop',
+        null,
+        async (receiptJson) => {
+          try {
+            await this.client.abortChat({
+              workspacePath,
+              sessionId: fixed.sessionId,
+              turnId: fixed.turnId,
+              receiptJson,
+            })
+            return ok(undefined)
+          } catch (error) {
+            return toErr(error)
+          }
+        },
+      )
     } catch (e) {
       return toErr(e)
     }
@@ -1326,30 +1365,43 @@ export class GrpcGateway implements DaemonGateway {
   }
 
   async cancel(workspacePath: string, runId = ''): Promise<Result<void>> {
-    try {
-      await this.client.cancelExecution({ workspacePath, runId })
-      return ok(undefined)
-    } catch (e) {
-      return toErr(e)
-    }
+    return this.receiptedControl(workspacePath, runId, 'stop')
   }
 
   async pause(workspacePath: string, runId = ''): Promise<Result<void>> {
-    try {
-      await this.client.pauseExecution({ workspacePath, runId })
-      return ok(undefined)
-    } catch (e) {
-      return toErr(e)
-    }
+    return this.receiptedControl(workspacePath, runId, 'pause')
   }
 
   async resume(workspacePath: string, runId = ''): Promise<Result<void>> {
-    try {
-      await this.client.resumeExecution({ workspacePath, runId })
-      return ok(undefined)
-    } catch (e) {
-      return toErr(e)
-    }
+    return this.receiptedControl(workspacePath, runId, 'resume')
+  }
+  private async receiptedControl(
+    workspacePath: string,
+    runId: string,
+    action: 'stop' | 'pause' | 'resume',
+  ): Promise<Result<void>> {
+    if (!runId) return err('A concrete run is required; control was not redirected.')
+    return submitWorkflow(
+      this,
+      workspacePath,
+      { kind: 'blueprint', run: runId },
+      action,
+      null,
+      async (receiptJson) => {
+        try {
+          const method =
+            action === 'stop'
+              ? 'cancelExecution'
+              : action === 'pause'
+                ? 'pauseExecution'
+                : 'resumeExecution'
+          await this.client[method]({ workspacePath, runId, receiptJson })
+          return ok(undefined)
+        } catch (error) {
+          return toErr(error)
+        }
+      },
+    )
   }
 
   // Approvals -----------------------------------------------------------------

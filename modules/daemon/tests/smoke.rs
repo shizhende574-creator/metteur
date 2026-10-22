@@ -42,6 +42,7 @@ async fn bound_chat_abort(client: &mut DaemonClient<Channel>, workspace: &str) -
         workspace_path: workspace.into(),
         session_id: owner["session"].as_str().unwrap().into(),
         turn_id: owner["turn"].as_str().unwrap().into(),
+        ..Default::default()
     }
 }
 
@@ -776,7 +777,8 @@ async fn smoke_cancel_marks_run_cancelled() {
         client
             .pause_execution(proto::PauseRequest {
                 workspace_path: ws_path.clone(),
-                run_id: stale.clone()
+                run_id: stale.clone(),
+                receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":0}).to_string(),
             })
             .await
             .unwrap_err()
@@ -787,7 +789,8 @@ async fn smoke_cancel_marks_run_cancelled() {
         client
             .resume_execution(proto::ResumeRequest {
                 workspace_path: ws_path.clone(),
-                run_id: stale.clone()
+                run_id: stale.clone(),
+                receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":1}).to_string(),
             })
             .await
             .unwrap_err()
@@ -798,7 +801,8 @@ async fn smoke_cancel_marks_run_cancelled() {
         client
             .cancel_execution(CancelRequest {
                 workspace_path: ws_path.clone(),
-                run_id: stale
+                run_id: stale,
+                ..Default::default()
             })
             .await
             .unwrap_err()
@@ -809,6 +813,7 @@ async fn smoke_cancel_marks_run_cancelled() {
         .pause_execution(proto::PauseRequest {
             workspace_path: ws_path.clone(),
             run_id: run_id.clone(),
+            receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":0}).to_string(),
         })
         .await
         .unwrap();
@@ -827,6 +832,7 @@ async fn smoke_cancel_marks_run_cancelled() {
         .resume_execution(proto::ResumeRequest {
             workspace_path: ws_path.clone(),
             run_id: run_id.clone(),
+            receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":1}).to_string(),
         })
         .await
         .unwrap();
@@ -834,6 +840,7 @@ async fn smoke_cancel_marks_run_cancelled() {
         .cancel_execution(CancelRequest {
             run_id,
             workspace_path: ws_path.clone(),
+            ..Default::default()
         })
         .await
         .unwrap();

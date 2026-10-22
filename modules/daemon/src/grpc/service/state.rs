@@ -544,6 +544,7 @@ pub(crate) async fn spawn_execution(
         }
         let run_jobs = Arc::clone(&jobs);
         interpreter = interpreter.with_jobs(jobs);
+        let receipt_bus = interrupt_bus.clone();
         let result = match resume {
             Some(checkpoint) => {
                 interpreter
@@ -567,6 +568,10 @@ pub(crate) async fn spawn_execution(
                     .await
             }
         };
+        // Seal before releasing the live owner. Remaining claims have no
+        // committed consuming node and must stay explicitly unknown.
+        let receipt_result = receipt_bus.seal().and_then(|_| receipt_bus.finish_owned(false));
+        let result = result.and_then(|events| receipt_result.map(|_| events));
         drop(interpreter);
         // Background commands belong to the run that started them: whatever the
         // outcome, they must not outlive it as orphan processes.

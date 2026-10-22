@@ -10,19 +10,49 @@ test('L2 gateway forwards exact immutable targets and refuses missing targets or
       { GrpcGateway } = await import(path),
       gateway = new GrpcGateway('')
     const calls: any[] = []
+    const receipts = new Map<string, any>()
     let supports = true
     gateway.client = {
-      chatDelivery: async () => ({
-        schemaVersion: 1,
-        payloadJson: JSON.stringify({ targeted_controls: supports }),
-        errorJson: '',
-      }),
+      chatDelivery: async (request: any) => {
+        const payload = JSON.parse(request.payloadJson),
+          action = payload.action
+        let data: any = { targeted_controls: supports }
+        if (payload.operation === 'workflow') {
+          if (action.operation === 'capabilities') data = { durable_controls: supports }
+          else if (action.operation === 'describe') data = { revision: 0, target: action.target }
+          else if (action.operation === 'prepare') {
+            const receipt = {
+              schema: 1,
+              id: action.identity.id,
+              target: action.target,
+              operation: action.action,
+              body: action.body,
+              revision: 0,
+              phase: 'prepared',
+            }
+            receipts.set(receipt.id, receipt)
+            data = { receipt }
+          } else data = { receipt: receipts.get(action.id) }
+        }
+        return { schemaVersion: 1, payloadJson: JSON.stringify(data), errorJson: '' }
+      },
       sendInterrupt: async (request: any) => {
         calls.push({ method: 'interrupt', request })
+        if (request.receiptJson) receipts.get(JSON.parse(request.receiptJson).id).phase = 'queued'
         return {}
       },
       abortChat: async (request: any) => {
         calls.push({ method: 'stop', request })
+        const { id } = JSON.parse(request.receiptJson)
+        receipts.set(id, {
+          schema: 1,
+          id,
+          target: { kind: 'chat', session: request.sessionId, turn: request.turnId },
+          operation: 'stop',
+          body: null,
+          revision: 1,
+          phase: 'accepted',
+        })
         return {}
       },
     }
@@ -47,9 +77,20 @@ test('L2 gateway forwards exact immutable targets and refuses missing targets or
     supports = false
     const oldHost = await gateway.sendInterrupt('workspace', 'no downgrade', 'Normal', chat)
     const oldStop = await gateway.abortChat('workspace', chat)
-    return { sent, stopped, directed, missing, unqualified, oldHost, oldStop, calls }
+    const ids = calls.flatMap((c) =>
+      c.request.receiptJson ? [JSON.parse(c.request.receiptJson).id] : [],
+    )
+    for (const call of calls) {
+      delete call.request.receiptJson
+      if (call.request.targetKind === 'blueprint') {
+        call.request.sessionId = ''
+        call.request.turnId = ''
+      }
+    }
+    return { sent, stopped, directed, missing, unqualified, oldHost, oldStop, calls, ids }
   })
   expect(result.sent.ok && result.stopped.ok && result.directed.ok).toBe(true)
+  expect(new Set(result.ids).size).toBe(2)
   expect(result.missing.ok || result.unqualified.ok || result.oldHost.ok || result.oldStop.ok).toBe(
     false,
   )

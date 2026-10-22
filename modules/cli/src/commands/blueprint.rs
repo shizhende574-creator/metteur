@@ -5,10 +5,9 @@
 use anyhow::Context;
 use metteur_proto::proto::daemon_client::DaemonClient;
 use metteur_proto::proto::{
-    Blueprint, CancelRequest, CompileDslRequest, ContinueExecutionRequest,
-    DecompileBlueprintRequest, Edge, ExecuteBlueprintRequest, GetExecutionTreeRequest,
-    GetExecutionUsageRequest, InterruptRequest, ListExecutionsRequest, LoadBlueprintRequest, Node,
-    PauseRequest, Pin, ResumeRequest, SaveBlueprintRequest,
+    Blueprint, CompileDslRequest, ContinueExecutionRequest, DecompileBlueprintRequest, Edge,
+    ExecuteBlueprintRequest, GetExecutionTreeRequest, GetExecutionUsageRequest, InterruptRequest,
+    ListExecutionsRequest, LoadBlueprintRequest, Node, Pin, SaveBlueprintRequest,
 };
 use serde_json::{Value, json};
 use tonic::transport::Channel;
@@ -165,14 +164,7 @@ pub(crate) async fn handle_cancel(
     if target.kind != "blueprint" {
         anyhow::bail!("No live blueprint target");
     }
-    client
-        .cancel_execution(CancelRequest {
-            run_id: target.run,
-            workspace_path: ws,
-        })
-        .await
-        .map_err(status)?;
-    Ok(Outcome::Printed("cancel requested".to_string()))
+    Ok(Outcome::Printed(super::live::workflow_control(client, &ws, &target, "stop", None).await?))
 }
 
 /// Handles `pause`.
@@ -185,14 +177,7 @@ pub(crate) async fn handle_pause(
     if target.kind != "blueprint" {
         anyhow::bail!("No live blueprint target");
     }
-    client
-        .pause_execution(PauseRequest {
-            run_id: target.run,
-            workspace_path: ws,
-        })
-        .await
-        .map_err(status)?;
-    Ok(Outcome::Printed("pause requested".to_string()))
+    Ok(Outcome::Printed(super::live::workflow_control(client, &ws, &target, "pause", None).await?))
 }
 
 /// Handles `resume`.
@@ -205,14 +190,7 @@ pub(crate) async fn handle_resume(
     if target.kind != "blueprint" {
         anyhow::bail!("No live blueprint target");
     }
-    client
-        .resume_execution(ResumeRequest {
-            run_id: target.run,
-            workspace_path: ws,
-        })
-        .await
-        .map_err(status)?;
-    Ok(Outcome::Printed("resume requested".to_string()))
+    Ok(Outcome::Printed(super::live::workflow_control(client, &ws, &target, "resume", None).await?))
 }
 
 /// Handles `say <priority> <message>`: sends an interrupt.
@@ -240,6 +218,12 @@ pub(crate) async fn handle_say(
             .await?,
         ));
     }
+    if target.kind == "blueprint" && priority == "Urgent" {
+        return Ok(Outcome::Printed(
+            super::live::workflow_control(client, &ws, &target, "temporary_input", Some(&message))
+                .await?,
+        ));
+    }
     client
         .send_interrupt(InterruptRequest {
             workspace_path: ws,
@@ -249,6 +233,7 @@ pub(crate) async fn handle_say(
             session_id: target.session,
             turn_id: target.turn,
             run_id: target.run,
+            ..Default::default()
         })
         .await
         .map_err(status)?;

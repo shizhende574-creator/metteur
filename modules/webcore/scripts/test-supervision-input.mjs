@@ -13,9 +13,28 @@ function setup() {
     receipts = new Map(),
     calls = []
   const flags = { offline: false, unsupported: false, source: true, failBackup: false }
+  const temporary = new Map()
   const transport = {
     resourceRequest: async (method, _workspace, payload, expected = 0) => {
       calls.push({ method, payload: clone(payload) })
+      if (method === 'chatDelivery' && payload.operation === 'workflow') {
+        if (flags.offline) return { ok: false, error: 'Disconnected' }
+        const q = payload.action
+        let record = temporary.get(q.id)
+        if (!record) {
+          record = {
+            schema: 1,
+            id: q.id,
+            target: q.target,
+            operation: q.action,
+            body: q.body,
+            revision: 0,
+            phase: 'retired',
+          }
+          temporary.set(q.id, record)
+        }
+        return { ok: true, data: { receipt: clone(record) } }
+      }
       if (method === 'conciergeDelivery') {
         if (payload.operation === 'capabilities')
           return {
@@ -91,6 +110,7 @@ function setup() {
     transport,
     records,
     receipts,
+    temporary,
     calls,
     flags,
     primary,
@@ -116,6 +136,64 @@ test('unreviewed recovered selections never disappear into a text-only supervisi
   )
   assert.equal(executed, 0)
   assert.equal(f.primary.input.selections.length, 1)
+  f.dispose()
+})
+
+test('temporary input keeps newer typing and reconciles its own backed-up identity after reload', async () => {
+  const f = setup()
+  let effects = 0,
+    originalId
+  const accepted = f.input.temporary(async (text, id) => {
+    effects++
+    originalId = id
+    f.temporary.set(id, {
+      schema: 1,
+      id,
+      target: { kind: 'blueprint', run: f.run },
+      operation: 'temporary_input',
+      body: text,
+      revision: 0,
+      phase: 'queued',
+    })
+    f.input.edit({ raw: 'newer draft' })
+    f.flags.offline = true
+    return { ok: false, error: 'Lost ACK' }
+  })
+  assert.equal(await accepted, false)
+  assert.equal(f.input.state, 'unknown')
+  assert.equal(f.primary.input.raw, 'newer draft')
+  await f.primary.flush()
+  const record = clone(f.records.get(f.primary.input.id))
+  const restored = new RecoveryCopy(
+    f.transport,
+    'workspace',
+    'project',
+    'supervision',
+    f.run,
+    crypto.randomUUID(),
+  )
+  restored.loadAsNewCopy(SupervisionInput.restored(record))
+  const input = new SupervisionInput(f.transport, restored)
+  f.flags.offline = false
+  assert(await input.reconcile())
+  assert.equal(restored.input.raw, 'newer draft')
+  assert.equal(restored.input.pending_submission, null)
+  assert.equal(effects, 1)
+  assert(
+    f.calls
+      .filter((c) => c.method === 'chatDelivery')
+      .every((c) => c.payload.action.id === originalId),
+  )
+  input.dispose()
+  restored.dispose()
+  f.dispose()
+})
+test('temporary input without a receipt is fenced and keeps the original raw text', async () => {
+  const f = setup()
+  assert.equal(await f.input.temporary(async () => ({ ok: false, error: 'Not sent' })), false)
+  assert.equal(f.primary.input.raw, '  original\r\n中文  ')
+  assert.equal(f.primary.input.pending_submission, null)
+  assert.equal(f.input.canSubmit, true)
   f.dispose()
 })
 

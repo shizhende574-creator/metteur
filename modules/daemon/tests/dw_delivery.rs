@@ -354,7 +354,8 @@ async fn old_or_unqualified_chat_controls_never_target_a_later_turn_of_the_same_
             Request::new(metteur_proto::proto::AbortChatRequest {
                 workspace_path: root.to_string_lossy().into(),
                 session_id: session.clone(),
-                turn_id: turn.clone()
+                turn_id: turn.clone(),
+                ..Default::default()
             })
         )
         .await
@@ -374,7 +375,8 @@ async fn old_or_unqualified_chat_controls_never_target_a_later_turn_of_the_same_
                     target_kind: "chat".into(),
                     session_id: session.clone(),
                     turn_id: turn.clone(),
-                    run_id: String::new()
+                    run_id: String::new(),
+                    ..Default::default()
                 })
             )
             .await
@@ -440,6 +442,7 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
         session_id: Uuid::new_v4().to_string(),
         turn_id: Uuid::new_v4().to_string(),
         run_id: String::new(),
+        ..Default::default()
     };
     assert!(Daemon::send_interrupt(&service, Request::new(wrong_channel)).await.is_err());
     assert_eq!(
@@ -447,7 +450,8 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
             &service,
             Request::new(metteur_proto::proto::PauseRequest {
                 workspace_path: root.to_string_lossy().into(),
-                run_id: String::new()
+                run_id: String::new(),
+                receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":0}).to_string(),
             })
         )
         .await
@@ -461,6 +465,7 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
         Request::new(metteur_proto::proto::PauseRequest {
             workspace_path: root.to_string_lossy().into(),
             run_id: run.clone(),
+            receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":0}).to_string(),
         }),
     )
     .await
@@ -477,6 +482,7 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
         Request::new(metteur_proto::proto::CancelRequest {
             workspace_path: root.to_string_lossy().into(),
             run_id: run.clone(),
+            ..Default::default()
         }),
     )
     .await
@@ -492,7 +498,8 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
                 target_kind: "blueprint".into(),
                 run_id: run,
                 session_id: String::new(),
-                turn_id: String::new()
+                turn_id: String::new(),
+                ..Default::default()
             })
         )
         .await

@@ -4,6 +4,7 @@ import type { DaemonGateway } from './gateway'
 import type { ConciergeTurn } from './concierge'
 import type { DeliveryState } from './delivery'
 import type { Result } from './types'
+import { checkWorkflowReceipt, type WorkflowReceipt } from './workflow-receipts.ts'
 type Transport = Pick<DaemonGateway, 'resourceRequest'>
 type Pending = { id: string; run: string; original: string; sequence: number; raw_hash: string }
 export interface SupervisionReceipt {
@@ -319,6 +320,13 @@ export class SupervisionInput {
     return this.accept(data.receipt, data.source_available === true, current)
   }
   async reconcile(): Promise<boolean> {
+    const temporary = (
+      this.primary.input.view as {
+        pending_temporary?: WorkflowReceipt & { sequence: number; raw_hash: string }
+      } | null
+    )?.pending_temporary
+    if (temporary && temporary.id === this.primary.input.pending_submission)
+      return this.reconcileTemporary(temporary)
     if (this.reconciling) return this.reconciling
     if (!this.pending) {
       const info = pendingOf(this.primary.input)
@@ -346,14 +354,60 @@ export class SupervisionInput {
   async backup() {
     return this.primary.flush()
   }
-  /** Temporary blueprint delivery keeps its independent backed-up original.
-   * It does not claim a durable consumption receipt. */
+  private async reconcileTemporary(info: WorkflowReceipt & { sequence: number; raw_hash: string }) {
+    const checked = await checkWorkflowReceipt(this.transport, this.primary.workspace, info)
+    if (!checked.ok) {
+      this.state = 'unknown'
+      this.error = checked.error
+      this.changed()
+      return false
+    }
+    const record = checked.data
+    if (record.phase === 'prepared' || record.phase === 'retired') {
+      if (this.primary.input.pending_submission === info.id)
+        this.primary.edit({ pending_submission: null, view: null })
+      this.state = 'rejected'
+      this.error = 'Temporary input was not received. Your draft was kept.'
+      this.changed()
+      void this.primary.flush()
+      return false
+    }
+    if (['queued', 'claimed', 'applied', 'unconsumed', 'unknown'].includes(record.phase)) {
+      const exact =
+        this.primary.input.edit_sequence === info.sequence &&
+        hash(this.primary.input.raw) === info.raw_hash
+      if (this.primary.input.pending_submission === info.id)
+        this.primary.edit({
+          ...(exact && !['unconsumed', 'unknown'].includes(record.phase) ? { raw: '' } : {}),
+          pending_submission: null,
+          view: null,
+        })
+      this.state = 'accepted'
+      this.error =
+        record.phase === 'unconsumed'
+          ? 'Input was received but not consumed. Its original is in Receipts.'
+          : record.phase === 'unknown'
+            ? 'Consumption is unconfirmed. Inspect the original receipt before sending again.'
+            : ''
+      this.changed()
+      void this.primary.flush()
+      return true
+    }
+    this.state = 'unknown'
+    this.error = 'Receipt requires review; keep the input.'
+    this.changed()
+    return false
+  }
+  /** Temporary input has an immutable, host-backed identity before its RPC. */
   async temporary(
-    execute: (text: string) => Promise<Result<unknown>>,
+    execute: (text: string, id?: string) => Promise<Result<unknown>>,
     isCurrent: () => boolean = () => true,
   ) {
     if (!this.canSubmit || this.retained.size >= 32 || this.primary.input.selections.length)
       return false
+    this.state = 'submitting'
+    this.error = ''
+    this.changed()
     const source = this.capture(),
       original = new RecoveryCopy(
         this.transport,
@@ -365,32 +419,54 @@ export class SupervisionInput {
         this.changed,
       )
     this.retained.add(original)
+    const id = crypto.randomUUID()
     original.edit({
       raw: source.raw,
-      view: { disposition: 'temporary_interrupt', run: this.primary.input.entity },
+      pending_submission: id,
+      view: { disposition: 'temporary_interrupt', run: this.primary.input.entity, receipt: id },
     })
     if (!(await original.flush()) || !isCurrent()) {
+      this.state = 'rejected'
       this.error = original.error || 'Input was kept after the run changed.'
       this.changed()
       return false
     }
-    const result = await execute(source.raw)
-    if (result.ok) {
-      if (
-        this.primary.input.edit_sequence === source.edit_sequence &&
-        this.primary.input.raw === source.raw &&
-        !this.primary.input.pending_submission
-      ) {
-        this.primary.edit({ raw: '' })
-        void this.primary.flush()
-      }
+    const info: WorkflowReceipt & { sequence: number; raw_hash: string } = {
+      schema: 1,
+      id,
+      target: { kind: 'blueprint', run: this.primary.input.entity },
+      operation: 'temporary_input',
+      revision: 0,
+      phase: 'unknown',
+      body: source.raw,
+      sequence: -1,
+      raw_hash: hash(source.raw),
+    }
+    const exact =
+      this.primary.input.edit_sequence === source.edit_sequence &&
+      this.primary.input.raw === source.raw
+    this.primary.edit({ pending_submission: id, view: { pending_temporary: info } })
+    info.sequence = exact ? this.primary.input.edit_sequence : -1
+    this.primary.input.view = { pending_temporary: clone(info) }
+    if (!(await this.primary.flush()) || !isCurrent()) {
+      this.state = 'unknown'
+      this.error = 'Pending input identity was kept; check its receipt before sending again.'
+      this.changed()
+      return false
+    }
+    this.state = 'submitting'
+    this.error = ''
+    this.changed()
+    const result = await execute(source.raw, id)
+    const received = await this.reconcileTemporary(info)
+    if (received) {
       this.retained.delete(original)
       original.dispose()
     } else {
-      this.error = result.error
+      if (!result.ok) this.error ||= result.error
       this.changed()
     }
-    return result.ok
+    return received
   }
   /** Restoring forks the copy. It does not execute, grant permissions or select
    * a model. Rebase the clear sequence only for the exact original version. */
@@ -404,6 +480,17 @@ export class SupervisionInput {
           : -1
       next.input.view = { pending_supervision: pending }
     }
+    const temporary = (
+      next.input.view as {
+        pending_temporary?: WorkflowReceipt & { sequence: number; raw_hash: string }
+      } | null
+    )?.pending_temporary
+    if (temporary && temporary.id === next.input.pending_submission)
+      temporary.sequence =
+        temporary.sequence === next.input.edit_sequence &&
+        hash(next.input.raw) === temporary.raw_hash
+          ? 1
+          : -1
     return next
   }
   get safeToDispose() {

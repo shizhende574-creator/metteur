@@ -217,8 +217,8 @@ async function urgent(text: string) {
   if (!ws || !run || !entry || !active.value) return false
   const current = () =>
     !disposed && ticket === generation && workspace.active?.path === ws && props.runId === run
-  const execute = (body: string) =>
-    gateway.sendInterrupt(ws, body, 'Urgent', { kind: 'blueprint', runId: run })
+  const execute = (body: string, id?: string) =>
+    gateway.sendInterrupt(ws, body, 'Urgent', { kind: 'blueprint', runId: run }, id)
   if (gateway.demo) {
     const source = entry.capture(),
       result = await execute(text)

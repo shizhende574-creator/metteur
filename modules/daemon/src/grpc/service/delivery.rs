@@ -15,6 +15,7 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
+    Workflow { action: super::workflow_receipts::Query },
     Admission,
     ControlTarget,
     Capabilities,
@@ -80,6 +81,9 @@ impl DaemonService {
                 }),
             ));
         }
+        if let Query::Workflow { action } = query {
+            return Ok(response(self.workflow_query(&ws, &subject, action).await));
+        }
         let _guard = ws.admit().await.map_err(super::to_status)?;
         if let Query::LiveSubmit(input) = query {
             return Ok(response(self.receive_live_input(&ws, &subject, input).await.and_then(
@@ -128,7 +132,7 @@ impl DaemonService {
                 Ok(serde_json::json!({"receipt":receipt,"source_available":source_available}))
             };
             match query {
-                Query::LiveSubmit(_) => unreachable!("handled asynchronously"),
+                Query::LiveSubmit(_) | Query::Workflow { .. } => unreachable!("handled asynchronously"),
                 Query::LiveBody {
                     id,
                 } => Ok(serde_json::json!({"id":id,"body":store.live_body(id)?})),

@@ -242,6 +242,7 @@ async fn r_batch_real_rpc_combines_http_accounting_concierge_approval_versions_a
         .resume_execution(proto::ResumeRequest {
             workspace_path: path.clone(),
             run_id: run.clone(),
+            receipt_json: serde_json::json!({"id":uuid::Uuid::new_v4(),"revision":1}).to_string(),
         })
         .await
         .unwrap();

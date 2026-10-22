@@ -198,18 +198,21 @@ message CancelRequest {
   string workspace_path = 1;
   // Optional expected run identity; stale controls must not affect a replacement run.
   string run_id = 2;
+  string receipt_json = 3; // optional {id,revision}; exact target Stop remains available
 }
 
 message PauseRequest {
   string workspace_path = 1;
   // Optional expected run identity; stale controls must not affect a replacement run.
   string run_id = 2;
+  string receipt_json = 3; // {id,revision}; revision fences reordered controls
 }
 
 message ResumeRequest {
   string workspace_path = 1;
   // Optional expected run identity; stale controls must not affect a replacement run.
   string run_id = 2;
+  string receipt_json = 3; // {id,revision}; revision fences reordered controls
 }
 
 message InterruptRequest {
@@ -221,6 +224,7 @@ message InterruptRequest {
   string session_id = 5;
   string turn_id = 6;
   string run_id = 7;
+  string receipt_json = 8; // blueprint temporary input {id,revision}
 }
 
 message ToolInfo {
@@ -743,6 +747,7 @@ message AbortChatRequest {
   string workspace_path = 1;
   string session_id = 2;
   string turn_id = 3;
+  string receipt_json = 4; // optional {id,revision}
 }
 
 message ListChatSessionsRequest {

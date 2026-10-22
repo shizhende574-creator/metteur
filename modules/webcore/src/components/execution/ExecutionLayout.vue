@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { PanelBottom, PanelRight, ShieldCheck, X } from '@lucide/vue'
+import WorkflowReceipts from '@/components/WorkflowReceipts.vue'
 const showDetails = ref(true), showSupervisor = ref(true)
 const width = ref(420), height = ref(200)
 const body = ref<HTMLElement>(), column = ref<HTMLElement>()
@@ -58,6 +59,7 @@ onBeforeUnmount(() => observer?.disconnect())
         <div role="separator" aria-label="Resize supervision" aria-orientation="vertical" :aria-valuenow="width" tabindex="0" class="supervisor-resizer" @pointerdown="start($event, 'width')" @pointermove="move" @pointerup="drag = null" @lostpointercapture="drag = null" @keydown="key($event, 'width')" @dblclick="width = 420; clamp()" />
         <header class="supervisor-heading"><ShieldCheck :size="16" /><strong>Supervision</strong><button aria-label="Close supervision" @click="showSupervisor = false"><X :size="14" /></button></header>
         <nav class="panel-tabs"><button v-for="tab in ['Chat', 'Requests', 'Reviews']" :key="tab" :class="{ active: right === tab }" @click="right = tab">{{ tab }}</button></nav>
+        <WorkflowReceipts v-if="right === 'Requests'" />
         <slot name="supervision" :tab="right">
         <div class="unavailable">{{ right }} is not connected yet.</div>
         <div v-if="right === 'Chat'" class="supervision-composer"><div class="chat-composer"><textarea class="chat-composer-textarea" aria-label="Supervision message" placeholder="Concierge is not available yet" disabled /></div></div>

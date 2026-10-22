@@ -103,7 +103,19 @@ impl Interpreter {
         })?;
         // A successful apply may add validity changes at the same boundary.
         self.view = checkpoint.view;
-        self.hook_cursor.committed(&ctx.registry.addon_hooks, &self.view, &ctx.workspace_root, sink.run_id(), checkpoint.status);
+        if self.in_flight.is_none()
+            && self.scheduler.executed_list().contains(&ctx.current_node)
+            && let Some(bus) = &ctx.interrupts
+        {
+            bus.finish_consumer(Some(ctx.current_node), true)?;
+        }
+        self.hook_cursor.committed(
+            &ctx.registry.addon_hooks,
+            &self.view,
+            &ctx.workspace_root,
+            sink.run_id(),
+            checkpoint.status,
+        );
         Ok(())
     }
 }

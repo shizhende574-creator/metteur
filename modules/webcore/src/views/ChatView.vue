@@ -21,6 +21,7 @@ import { fileRoute } from '@/lib/file-token'
 import { onHighlightReady, warmHighlighter } from '@/lib/markdown'
 import { clearRenderCache } from '@/lib/chat/stream-render'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
+import WorkflowReceipts from '@/components/WorkflowReceipts.vue'
 import ChatThread from '@/components/chat/ChatThread.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatStatusBar from '@/components/chat/ChatStatusBar.vue'
@@ -510,6 +511,7 @@ const starterPrompts = [
       </details>
     </div>
 
+    <WorkflowReceipts />
     <ChatThread
       :key="rerender"
       :messages="chat.messages"

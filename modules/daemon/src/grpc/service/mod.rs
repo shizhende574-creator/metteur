@@ -29,6 +29,7 @@ mod sandbox;
 mod state;
 mod versioning;
 mod workspace;
+mod workflow_receipts;
 
 use std::sync::Arc;
 

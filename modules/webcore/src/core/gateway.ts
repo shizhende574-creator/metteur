@@ -162,6 +162,7 @@ export interface DaemonGateway {
     message: string,
     priority?: 'Normal' | 'Urgent' | 'Emergency',
     target?: import('./types').LiveTarget,
+    receiptId?: string,
   ): Promise<Result<void>>
   /**
    * Opens the host's folder dialog.

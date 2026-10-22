@@ -43,6 +43,8 @@ const receipts = {
   toolRequests: 0,
   finalRequests: 0,
   sawToolResult: false,
+  workflowInputRequests: 0,
+  supervisionRequests: 0,
 }
 
 function start(name, executable, args, env = withCurrentNodePath()) {
@@ -95,11 +97,15 @@ const provider = createServer(async (request, response) => {
     const job = jobText.match(/"job_id"\s*:\s*"([^"\s]+)"/)
     let final = jobMode ? hasWait : Boolean(result && JSON.stringify(result).includes(nonce))
     receipts.calls++
+    const workflowInput=body.messages?.some(m=>m.role==='user' && String(m.content).includes('DW03_TEMPORARY_INPUT'))
+    if(workflowInput) receipts.workflowInputRequests++
     let tool = {id:jobMode?(job?'fixture-wait':'fixture-job'):'fixture-read',type:'function',function: jobMode ? (job? {name:'AwaitEvents',arguments:JSON.stringify({sources:[job[1]],mode:'all',deadline_ms:Date.now()+3600000,params:{fixture:'local-only'}})} : {name:'StartCommand',arguments:JSON.stringify({command:localDelayCommand()})}) : {name:'ReadFile',arguments:JSON.stringify({path:'app.ts'})}}
     let content = jobMode ? 'M2_LOCAL_JOB completed through the host continuation.' : `METTEUR_LOCAL_READY ${nonce}: app.ts exports the local evidence constant.`
     const launchMode=body.messages?.some(m=>m.role==='user'&&String(m.content).includes('M3_LOCAL_BLUEPRINT'));
     const nodeMode=body.messages?.some(m=>String(m.content)==='BLUEPRINT_NODE');
-    if(nodeMode){await new Promise(r=>setTimeout(r,4000));final=true;content='Local blueprint node completed.'}
+    const supervisionMode=body.messages?.some(m=>m.role==='user' && String(m.content).includes('DW03_SUPERVISION_MESSAGE'))
+    if(supervisionMode){receipts.supervisionRequests++;final=true;content=JSON.stringify({kind:'answer',text:'Recorded progress read through the local provider.'})}
+    else if(nodeMode){await new Promise(r=>setTimeout(r,4000));final=true;content='Local blueprint node completed.'}
     else if(launchMode){
       const outcome=blueprintOutcome(body.messages||[]);
       final=outcome!=='pending';
@@ -262,7 +268,7 @@ try {
   const config = join(root, 'fixture.toml')
   await writeFile(
     config,
-    `config_version = 2\n[daemon]\nautostart = "off"\nwake = false\n[llm]\ndefault_model = "fixture"\nmax_retries = 0\n[llm.models.fixture]\napi_type = "openai-chat"\napi_endpoint = "${providerUrl}"\napi_key = "synthetic-not-a-secret"\nmodel_id = "local-fixture"\ncontext_window_input = 8192\ncontext_window_output = 512\n`,
+    `config_version = 2\n[daemon]\nautostart = "off"\nwake = false\n[llm]\ndefault_model = "fixture"\nmax_retries = 0\n[llm.models.fixture]\napi_type = "openai-chat"\napi_endpoint = "${providerUrl}"\napi_key = "synthetic-not-a-secret"\nmodel_id = "local-fixture"\ncontext_window_input = 8192\ncontext_window_output = 512\n${process.env.METTEUR_WORKFLOW_FIXTURE === '1' ? '[oversight]\nconcierge_model = "fixture"\nmax_output_tokens = 256\n' : ''}`,
   )
   const daemon = start('daemon', daemonBin, [
     '--config',

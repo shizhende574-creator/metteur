@@ -1,10 +1,10 @@
 # 输入恢复协议及当前接入边界
 
-2026-10-22；当前正式接入文本、蓝图原始画布输入、Prompt 文档及主聊天/新聊天输入。监督和位置恢复仍待后续功能；生产完整链和 AC 尚未关闭。
+2026-10-23；当前正式接入文本、蓝图原始画布输入、Prompt 文档、主聊天/新聊天、监督输入及位置恢复。监督与位置的详细增量见 SUPERVISION_INPUTS.md、VIEW_STATE.md、WORKFLOW_RECEIPTS.md；DW-03生产链已有当前证据，完整恢复场景/平台与全阶段AC仍未关闭。
 
 主聊天在每窗口/实体使用独立输入副本；新聊天使用预分配 UUID，在宿主接收前不创建会话。每次 Send 另外保留点击时的固定输入；当前编辑稿与该原稿分别取得宿主 ACK 后才发起 Send。接收只清理匹配的正文/选择版本，拒绝不覆盖较新输入；未知保持原 pending ID，重开后仅对账。原稿保留到执行终态且源会话仍可读取；缺失来源保持可取回输入，不自动重建。恢复会重新核验 Prompt 当前权限及 revision/digest，不信任原 snapshot ID，不恢复 full/AllowOnce。
 
-当前聊天/新聊天切换保留各自内存控制器，重开经 Recovery Copies 显式选择副本；新聊天原始稿可显式带入当前新草稿，已有会话的不同来源需打开对应会话或 Copy Text。未获 ACK 的本窗口输入可在恢复列表查看/导出；关闭页面的保护包含未备份聊天输入。没有持久浏览器正文缓存。监督当前仅改正共享 Composer 的提前清空/失败覆盖调用，尚未接入其独立持久恢复。
+当前聊天/新聊天切换保留各自内存控制器，重开经 Recovery Copies 显式选择副本；新聊天原始稿可显式带入当前新草稿，已有会话的不同来源需打开对应会话或 Copy Text。未获 ACK 的本窗口输入可在恢复列表查看/导出；关闭页面的保护包含未备份聊天输入。没有持久浏览器正文缓存。监督普通消息与临时输入已接入独立原稿、pending身份与原ID对账，不与主聊天草稿混用；位置只恢复标签/选区/视口等，不恢复权限或正文。
 
 ## 存储与访问
 
@@ -36,4 +36,4 @@ UI 沿用已批准 r2 的 IDE 布局，恢复栏只展示状态与必要入口�
 - L1：`cargo test --locked -p metteur-daemon --lib storage::recovery::tests`；`cargo test --locked -p metteur-daemon --test dw_recovery`。覆盖真实 DB 重开、文件/RPC、容量、损坏、写失败、作用域、晚到写、rename 和有界通知。
 - 客户端：`node --experimental-transform-types --test scripts/test-recovery.mjs`，覆盖备份在途/未知、错误、fork、discard 在途/未知的新输入。
 - L2：`E2E_PORT=19084 pnpm exec playwright test e2e/daily-recovery.spec.ts --project=e2e`，fixture 只证明 UI/控制器连接；另复测受影响文档套件。
-- 原始命令、退出码、源码状态、首轮失败和证据见 REVIEW_HANDOFF.md。L3/L4/L5 与聊天等剩余接入未完成，不能据此关闭 DW-02 或所有关联 AC。
+- 原始命令、退出码、源码状态、首轮失败和证据见 REVIEW_HANDOFF.md。DW-03的当前L3已执行；DW-02恢复完整场景与L4/L5仍按阶段补齐，不能据此关闭所有关联AC。

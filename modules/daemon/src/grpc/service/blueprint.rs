@@ -235,6 +235,7 @@ impl DaemonService {
         &self,
         request: Request<CancelRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let owner = subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws_path = PathBuf::from(&req.workspace_path);
         let ws = self
@@ -252,14 +253,7 @@ impl DaemonService {
                 "execution changed; refresh before controlling it",
             ));
         }
-        let recorded = crate::oversight::recovery::mark_direct_cancel(&ws.db, entry.run_id);
-        // Stop remains effective even if persisting its recovery receipt fails.
-        entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-        ws.db.notify_changes();
-        if let Some(broker) = &entry.approvals {
-            broker.close();
-        }
-        recorded.map_err(to_status)?;
+        self.blueprint_control(&ws, &owner, entry, "stop", &req.receipt_json)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -267,6 +261,7 @@ impl DaemonService {
         &self,
         request: Request<PauseRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let owner = subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws_path = PathBuf::from(&req.workspace_path);
         let ws = self
@@ -284,8 +279,7 @@ impl DaemonService {
                 "execution changed; refresh before controlling it",
             ));
         }
-        entry.pause_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-        ws.db.notify_changes();
+        self.blueprint_control(&ws, &owner, entry, "pause", &req.receipt_json)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -293,6 +287,7 @@ impl DaemonService {
         &self,
         request: Request<ResumeRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let owner = subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws_path = PathBuf::from(&req.workspace_path);
         let ws = self
@@ -310,8 +305,7 @@ impl DaemonService {
                 "execution changed; refresh before controlling it",
             ));
         }
-        entry.pause_requested.store(false, std::sync::atomic::Ordering::SeqCst);
-        ws.db.notify_changes();
+        self.blueprint_control(&ws, &owner, entry, "resume", &req.receipt_json)?;
         Ok(Response::new(Empty {}))
     }
 
@@ -319,6 +313,7 @@ impl DaemonService {
         &self,
         request: Request<InterruptRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let owner = subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws_path = PathBuf::from(&req.workspace_path);
         let ws = self
@@ -362,14 +357,14 @@ impl DaemonService {
                     "Normal blueprint messages use SendConciergeMessage; configure oversight.concierge_model",
                 ));
             }
-            let bus = entry.interrupt_bus.as_ref().ok_or_else(|| {
-                Status::failed_precondition("The targeted blueprint cannot receive input")
-            })?;
-            bus.try_send(Interrupt {
-                priority,
-                message: req.message,
-            })
-            .map_err(to_status)?;
+            if priority != InterruptPriority::Urgent {
+                // Legacy Emergency keeps its historical interrupt semantics;
+                // it does not advertise a durable input/consumption guarantee.
+                let bus=entry.interrupt_bus.as_ref().ok_or_else(||Status::failed_precondition("Target cannot receive input"))?;
+                bus.try_send(Interrupt {priority,message:req.message}).map_err(to_status)?;
+                return Ok(Response::new(Empty {}));
+            }
+            super::workflow_receipts::temporary_input(&ws, &owner, entry, &req.receipt_json, req.message)?;
             return Ok(Response::new(Empty {}));
         }
         if req.target_kind != "chat"

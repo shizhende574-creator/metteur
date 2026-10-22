@@ -1054,6 +1054,7 @@ impl DaemonService {
         &self,
         request: Request<AbortChatRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let owner = super::super::acl::subject_from_request(&request).unwrap_or_else(|| "local".into());
         let req = request.into_inner();
         let ws = self
             .state
@@ -1072,16 +1073,20 @@ impl DaemonService {
                 "Chat target changed or is missing; stop was not redirected",
             ));
         }
-        entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(broker) = &entry.approvals {
-            broker.close();
-        }
+        let identity = super::workflow_receipts::identity(&req.receipt_json, true)?;
+        let store = crate::storage::workflow_receipts::Store::new(ws.db.clone(), &owner).map_err(super::workflow_receipts::error)?;
+        let target = crate::storage::approval_delivery::Target {kind:"chat".into(),session:entry.session_id,turn:Some(entry.turn_id),run:None};
+        let receipt = store.control(&identity, &target, "stop", || {
+            entry.cancel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(broker) = &entry.approvals { broker.close(); }
+        });
         if let Some(bus) = &entry.interrupt_bus {
             bus.send(Interrupt {
                 priority: InterruptPriority::Emergency,
                 message: "Aborted by user.".to_string(),
             });
         }
+        receipt.map_err(super::workflow_receipts::error)?;
         Ok(Response::new(Empty {}))
     }
 

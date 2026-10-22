@@ -154,6 +154,7 @@ async fn abort_and_disconnect_invalidate_chat_approvals() {
                     workspace_path: root.to_string_lossy().into(),
                     session_id: owner["session"].as_str().unwrap().into(),
                     turn_id: owner["turn"].as_str().unwrap().into(),
+                    ..Default::default()
                 }),
             )
             .await

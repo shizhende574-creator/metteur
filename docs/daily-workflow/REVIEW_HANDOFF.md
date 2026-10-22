@@ -4,6 +4,12 @@
 
 ## 当前进展
 
+- 2026-10-23 DW-03收尾，源码基线3119cb0加完整差异；摘要dw03-close-batch-source.json。复用现有窄控制RPC/bus，新增固定ID/目标/revision、持久Prepare/Claim/Accepted/Unknown/Retired，Urgent正文原子接收及消费节点checkpoint提交后Applied；Web/CLI/TS协议生成物与旧消费者同包。WORKFLOW_RECEIPTS.md定义容量/兼容/Stop磁盘失败/不重放边界；DW-03本包已定向及生产链验证，跨包AC最终验收仍保留。
+- 集中首轮通过：Windows存储/RPC7、bus7、受影响delivery15、客户端15、L2目标/前台/回执9；workspace/all-targets clippy exit0，仅既有27 lib及1旧diagnostics测试告警，app类型/lint exit0。日志dw03-close-batch-*。早期dw03-close-native-check-first.log捕获旧proto构造缺receipt_json，所有消费者已配套；首轮app检查的UUID默认参数类型已明确string，原输出保留于工具记录，后续dw03-close-app-types-second.log及集中类型exit0。源码未变的已过场景没有重跑。
+- 首轮L3两条通过/exit0（dw03-close-live-first.log）：普通聊天实际ReadFile/两轮provider/刷新恢复；监督普通消息/临时原文/节点提交消费/Pause/Resume/重开回执/固定目标Stop。provider实际6次本地请求，workflowInputRequests=1、supervisionRequests=1；不计付费模型。生产构建exit0；dw03-close-result.json记录退出码、身份和proof。
+- 当前可操作生产入口 http://127.0.0.1:19086，原生进程daemon37644/web15976，launcher exec session13774；实际数据 daily-workflow-evidence/20261022/dw03-live-first/live-GUIOK1/workspace，准备文件同父目录ready.json。二进制冻结在dw03-runtime-20261023-r1/bin，manifest.json记录SHA256；Web冻结产物dw03-production-current，index明确grpc，启动时复制到独立实例web目录。该实例仅指向本地合成provider，不读取用户凭证；旧R8和已批准预览产物未覆盖，旧预览端口不凭历史记录宣称仍在运行。
+- 用户再次授权继续全部剩余任务。推进复盘 PROGRESS_REVIEW_20261023.md，阶段/多任务分组 EXECUTION_STAGES.md，新提示词 CONTINUE_PROMPT.md（根NEXT_CHAT_PROMPT已同步，旧提示词保存在planning/2026-10-23）。下一推进S1剩余生产恢复交付及S2/DW-04文件协作，先收齐场景实现与夹具再集中检查，无付费调用、push或合并。
+
 - 最新完整功能（基线9273f92，摘要approval-source-before-commit.json）：具体审批决定的Claim/Accepted/Unknown/Retired回执、固定目标/内容、旧ID关闭和现有broker去重；ApprovalDelivery增量RPC/代理/TS生成物及Web/CLI手工/自动/TUI配套。普通聊天失败不再提前清审批，Tasks审批和直接Stop绑定原turn，不换当前会话。契约和边界见APPROVAL_DECISIONS.md；Stop/Pause/Resume durable回执、跨重启未决清单/分类入口及蓝图临时输入继续后续DW。
 - 首轮集中：Windows存储5、实际审批RPC7、grant存储3、原approval_scopes21、客户端8通过；workspace/all-targets clippy exit0，新增4个可合并if告警已修正，最终daemon lib clippy exit0仅既有27告警。app/node类型和lint exit0，变量遮蔽2告警改名后最终app/lint exit0。L2首轮16中14通过/2失败（新增审批7和前台6均通过），另6项监督/审批受影响检查通过；两个旧续聊夹具未等恢复就发送、误把所有资源RPC计为续聊，修复后仅失败2项窄复测通过。日志approval-batch-*及approval-narrow-*保留，未重跑已过场景。
 - 首轮R-batch真实RPC/本地provider失败暴露checkpoint列表误读dw回执，实际也影响dw草稿/聊天投递；补命名空间过滤及实际三类存储共存/UUID边界/损坏checkpoint检查1通过，仅失败R-batch窄复测1通过。首轮source摘要和trace保留；native窄复测source摘要另存。正式前端构建exit0，产物approval-production-final显式grpc，未更新运行版/不计L3。完整AC仍未关闭，模型费用0，无push/合并。

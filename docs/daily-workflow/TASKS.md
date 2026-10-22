@@ -1,6 +1,6 @@
 # 日常核心工作流任务表
 
-更新：2026-10-22。实施中 v5。DW-00 基线已核对，三组原 IDE 隔离预览 r2 已批准；DW-02 宿主/文档与主聊天恢复已接入，DW-03 手工发送已接入，产品 AC 尚未关闭。
+更新：2026-10-23。实施中 v6。DW-00 基线和三组原 IDE 隔离预览 r2 已完成；DW-02/03/05 多项已接入，DW-03 已完成当前Windows定向/生产链收尾，尚不关闭产品 AC。施工按阶段包含多个任务组织，见 [EXECUTION_STAGES.md](EXECUTION_STAGES.md)，不再用 DW 大工作包数量代替可用进度。
 
 ## 1. 当前接续点
 
@@ -11,6 +11,7 @@
 - 原 SPEC/TASKS、NX 编号和 R8 审计保持历史；本表 DW 编号承接本次增量，不将旧 DONE 改成未完成。
 - 用户已要求本对话持续实施与完整验收；原规划对话保留快速复核和后续讨论职责。完整启动指令见工作区根 NEXT_CHAT_PROMPT.md。按依赖持续推进，不逐包等待授权。默认单代理串行。
 - 本目录 REVIEW_HANDOFF.md 维护具体候选、改动、检查/失败/未测、预览与运行入口及待复核问题。用户新增信息密度约束已记录 DESIGN.md，不改变 IDE 布局。
+- 用户2026-10-23最新明确授权：吸取此前推进过慢和重复测试教训，继续高质量完成全部剩余任务；此前“DW-03 后复盘交接”的收窄不再是停工边界。复盘见 [PROGRESS_REVIEW_20261023.md](PROGRESS_REVIEW_20261023.md)，新接续提示词见 [CONTINUE_PROMPT.md](CONTINUE_PROMPT.md)；复盘/提示词不替代实施。
 
 ## 2. 状态、证据和执行纪律
 
@@ -31,7 +32,7 @@
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
 | DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（草稿/位置入口已接入，生产链/完整验收待完成） |
-| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | IN_PROGRESS（Send/Queue/Steer/监督/审批已接入，临时插入/控制待完成） |
+| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包AC最终验收保留） |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | PLANNED |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
 | DW-06 | 交接、可读结果与分类处置 | DW-03/05 | PLANNED |
@@ -97,7 +98,7 @@
 
 ### DW-03 · 可靠提交、控制回执与输入语义
 
-**状态**：IN_PROGRESS。**依赖**：DW-00；未决身份持久化依赖 DW-02；WF-PV-01/02/03 r2 已批准，r3 密度修订已呈现。
+**状态**：VERIFIED（本包实现与当前Windows契约/生产链范围；全阶段AC的跨包、平台、真实IME/模型/试用仍保留）。**依赖**：DW-00；未决身份持久化依赖 DW-02；WF-PV-01/02/03 r2 已批准，r3 密度修订已呈现。
 
 **实现定位**：schema/proto/metteur.proto；modules/daemon/src/grpc/service/chat.rs、现有 chat/continuation 生命周期；modules/webcore/src/core/gateway.ts、grpc-gateway.ts、mock-gateway.ts；ChatComposer.vue、stores/chat.ts；相关 CLI 调用方。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -112,6 +113,8 @@
 **验收**：AC-04/05/06/15/23/26/27/29。**证据交付**：接收崩溃窗口与兼容矩阵、定向 daemon/CLI/browser 检查。
 
 **实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机完整提交 9aa23cc；已备份未决身份启动前对账增量亦已完成定向验证；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/主聊天草稿及IME已接入并完成定向检查；主聊天Queue/Steer持久接收/消费回执和聊天Stop固定目标现已接入；监督正常消息原子接收/原ID对账亦已完成定向验证。审批决定现已接入固定目标/内容、持久Claim/Accepted/Unknown/Retired及Web/CLI；首轮存储5/RPC7/grant3/旧权限21/客户端8、L2新增7通过，失败及窄复测见APPROVAL_DECISIONS.md/交接。蓝图临时插入、Stop/Pause/Resume回执、跨重启未决清单和整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
+
+2026-10-23收尾记录（覆盖上文“临时插入/控制待完成”的历史状态）：基线3119cb0加本包完整差异，摘要dw03-close-batch-source.json。Stop/Pause/Resume与蓝图Urgent的宿主持久回执、revision顺序、旧ID关闭、消费节点提交、跨重开查询和Web/CLI均已接入；契约见WORKFLOW_RECEIPTS.md。当前Windows存储/RPC7、bus7、受影响delivery15、客户端15、L2目标/前台/回执9均首轮通过；workspace/all-targets clippy仅既有27 lib/1旧测试告警，类型/lint通过。生产Web与原生二进制已构建，真实Web→网关→daemon→本地provider的普通聊天工具/刷新、监督消息、临时消费、Pause/Resume和固定目标Stop两条集中场景首轮通过。运行19086，隔离数据/二进制/源码归属和结果见REVIEW_HANDOFF及dw03-close-result.json。早期类型UUID默认参数/旧proto构造缺字段的检查失败保留，配套修正后集中检查通过；不重复已通过场景。DW-06整体未决/分类界面、DW-08/09完整生命周期/平台/试用和相关AC继续，不将本包验证写成全阶段完成。
 
 ### DW-04 · 文件引用、冲突和回退
 
