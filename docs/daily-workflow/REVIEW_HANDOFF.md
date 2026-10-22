@@ -4,6 +4,11 @@
 
 ## 当前进展
 
+- S4两条真实生产故事已执行，详见STORIES.md及s4-stories-*证据。故事A首个实际流程通过；故事B后台审批入口和同名旧任务定位的夹具问题分别修复，实际两阶段已完成，仅按唯一task ID补验失败后置断言，不重跑真实测试。两次蓝图、两个受控Job、3个累计turn、原根预算及全部来源保留。
+- 无source的新计划仅追加草稿入口L2定向通过；生产验收发现后台待审批被写成等待来源，已改为读取实际pending approval，并修正Active沿用旧wait的文案。Windows/Linux原因矩阵和结果引用定向通过；不改变调度、权限或预算。此增量的Windows生产程序正在构建，尚不将19090旧程序称为新修复运行版。
+- Linux同源码核心7个测试二进制首轮通过，新增Job/child/timer/取消/失败批5项首轮通过；当前read-only原因修复另补Linux dw_results通过。原始s4-linux-*日志保留。真实模型方案及候选单轮/全新账本/36请求硬上限已完整本地提交14e9aba，9项离线预算/seed检查通过；新增US$1申请尚待用户明确答复，付费调用0，不复用历史额度。
+- 下文S3及更早记录按时间保留；其中“未提交”或“待补”的描述为当时快照。当前继续完整AC、固定样本性能、恢复/生命周期、候选和用户验收，不在此停工等待逐包授权。无远端push/合并。
+
 - S3当前Windows交接/结果功能链已通过，契约RESULTS.md；基线190b48d，最终源码摘要s3-source-production.json。首轮L2 7通过/4失败，失败4项修复后窄复测通过（s3-browser-narrow-second），未重跑原7项。新同步选择回写读composerInput computed形成依赖环，CDP栈保留s3-draft-cdp-stack.log，改用控制器currentSelections；格式化后的dblclick非法表达式已提取reset。app类型/窄能力拒绝/最终lint/生产构建exit0，全部原始失败保留。
 - native首轮仅夹具private finish_source编译失败，改用现有TaskHandle.finish后dw_results2、dw_delivery15、nx_launch_live4通过；完整clippy/Task Stop unit首次因缺导入失败，补齐后s3-clippy-fixture-retest exit0，仅既有27 lib及1旧测试告警；task-stop-unit-retest1通过，证明持有准入时Stop可完成且不误停同session其他task。
 - L3首轮完整故事通过（s3-live-browser-first）：生产新建Task的可靠Send→精确蓝图版本/交接/只保留结果确认→一次真实解释器执行→Task和独立run共享结果→带入当前草稿零调用→显式Send重新核验结果来源→刷新不重跑且长上下文折叠。当前入口http://127.0.0.1:19089，launcher exec session34278，daemon44340/web33836；实际数据daily-workflow-evidence/20261022/s3-live-first/live-r0ImG1/workspace，ready同父目录；冻结bin s3-runtime-20261023-r1/bin，Web s3-production-first。s3-production-visual.png已只读检查，pageerrors=[]。旧19088/DW-04仍保留；仅19087首轮失败实例已定向停止，数据/trace未删除。

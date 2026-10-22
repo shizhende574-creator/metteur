@@ -84,12 +84,6 @@ impl DaemonService {
                     .read()
                     .unwrap()
                     .is_allowed(&subject, "/metteur.Daemon/SendChat");
-                value["workflow"] = crate::continuation::presentation::workflow(
-                    record,
-                    current_revision,
-                    may_send,
-                    now_ms(),
-                );
                 if let Some(chat) = &live {
                     if chat.session_id == Some(record.task.session) {
                         if let Some(broker) = &chat.approvals {
@@ -106,6 +100,13 @@ impl DaemonService {
                         }
                     }
                 }
+                value["workflow"] = crate::continuation::presentation::workflow_with_approval(
+                    record,
+                    current_revision,
+                    may_send,
+                    now_ms(),
+                    value["pending_approvals"].as_array().is_some_and(|items| !items.is_empty()),
+                );
                 Ok(value)
             };
         let value = match decode::<Query>(&req)? {

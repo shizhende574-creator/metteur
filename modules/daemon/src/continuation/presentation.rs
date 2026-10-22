@@ -6,6 +6,15 @@ use super::{
 use serde_json::{Value, json};
 
 pub fn workflow(r: &TaskRecord, current_revision: u64, may_send: bool, now: u64) -> Value {
+    workflow_with_approval(r, current_revision, may_send, now, false)
+}
+pub fn workflow_with_approval(
+    r: &TaskRecord,
+    current_revision: u64,
+    may_send: bool,
+    now: u64,
+    approval_pending: bool,
+) -> Value {
     let t = &r.task;
     let effects = t.sources.values().any(|s| {
         s.may_write
@@ -75,7 +84,13 @@ pub fn workflow(r: &TaskRecord, current_revision: u64, may_send: bool, now: u64)
             "Automatic continuation is paused",
             "Resume the existing policy or keep reviewing.",
         )
-    } else if t.wait.is_some() {
+    } else if approval_pending {
+        (
+            "approval_required",
+            "Approval is required",
+            "Review the exact requested action. Existing limits and permissions still apply.",
+        )
+    } else if t.wait.is_some() && !matches!(t.state, TaskState::Active | TaskState::Dispatching) {
         (
             "waiting",
             "Waiting for recorded sources",

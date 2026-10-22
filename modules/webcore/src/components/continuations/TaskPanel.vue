@@ -213,6 +213,14 @@ async function openSession() {
   await chat.switchTo(target)
   if (root === workspace.active?.path && chat.sessionId === target) openSurface('chat')
 }
+function prepareTaskPlan() {
+  const record = entry.value,
+    root = workspace.active?.path
+  if (!record || !root || !allowed('new_plan') || chat.sessionUnavailable) return
+  const text = `Prepare a new plan for this recorded task. Recheck current permissions, versions, expiry and shared limits; do not resume an old execution.\n\nTask reference (source data): ${record.task.id} · revision ${record.revision}\nGoal: ${record.policy?.purpose ?? 'Recorded task'}\nRecorded reason: ${facts.value?.reason ?? 'Review required'}`
+  chat.draft = [chat.draft, text].filter(Boolean).join('\n\n')
+  openSurface('chat')
+}
 async function startTask(input: {
   goal: string
   model: string
@@ -404,6 +412,17 @@ function reviewApproval(request: {
         >
           <strong>{{ facts.reason }}</strong>
           <p>{{ facts.next_action }}</p>
+          <button
+            v-if="
+              allowed('new_plan') &&
+              !Object.values(entry.task.sources).some((source) => !!source.terminal)
+            "
+            class="btn"
+            :disabled="chat.sessionUnavailable"
+            @click="prepareTaskPlan"
+          >
+            Prepare new plan in draft
+          </button>
           <button v-if="allowed('open_settings')" class="btn" @click="openSurface('settings')">
             Review settings
           </button>

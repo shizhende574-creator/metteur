@@ -214,6 +214,42 @@ test('a Stop confirmation stays bound to the original task while background sele
   ).toEqual([first])
 })
 
+test('expired authorization without a source opens a new-plan draft without resuming or resetting the task', async ({
+  page,
+}) => {
+  await open(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts'
+    const row = (await import(c)).gateway.resultFixture.rows[0]
+    row.task.sources = {}
+    row.workflow.reason_code = 'policy_expired'
+    row.workflow.reason = 'Continuation authorization expired'
+  })
+  await tasks(page)
+  await page.getByRole('button', { name: 'Prepare new plan in draft', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue(
+    /keep existing draft\n\nPrepare a new plan/,
+  )
+  const result = await page.evaluate(async () => {
+    const c = '/src/core/index.ts',
+      s = '/src/stores/chat.ts'
+    const f = (await import(c)).gateway.resultFixture
+    return {
+      draft: (await import(s)).useChatStore().draft,
+      sends: f.sends,
+      controls: f.controls.length,
+      budget: f.rows[0].task.budget,
+    }
+  })
+  expect(result.draft).toContain('keep existing draft\n\nPrepare a new plan')
+  expect(result.draft).toContain('Continuation authorization expired')
+  expect(result).toMatchObject({
+    sends: 0,
+    controls: 0,
+    budget: { used_turns: 2, consumed_tokens: 1200 },
+  })
+})
+
 test('reviews and usage stay idle for ten seconds and coalesce duplicate business notifications', async ({
   page,
 }) => {

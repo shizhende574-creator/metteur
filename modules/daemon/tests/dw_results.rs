@@ -1,7 +1,7 @@
 //! Real DB/RPC result references and read-only workflow classification.
 use metteur_daemon::continuation::{
     policy::Policy,
-    presentation::workflow,
+    presentation::{workflow, workflow_with_approval},
     state::{Source, TaskState, Terminal},
     store::ContinuationStore,
 };
@@ -64,7 +64,18 @@ async fn setup() -> (PathBuf, Arc<AppState>, DaemonService, ContinuationStore, U
 async fn result_selection_is_owned_exact_and_revalidated_before_reception() {
     let (root, state, service, store, id) = setup().await;
     let record = store.get(id).unwrap().unwrap();
-    metteur_daemon::continuation::store::TaskHandle{store:store.clone(),id,generation:record.task.generation}.finish("job-result",Terminal::Succeeded,serde_json::json!({"exit_code":0,"output":"ACTUAL_RESULT 中文"}),1).unwrap();
+    metteur_daemon::continuation::store::TaskHandle {
+        store: store.clone(),
+        id,
+        generation: record.task.generation,
+    }
+    .finish(
+        "job-result",
+        Terminal::Succeeded,
+        serde_json::json!({"exit_code":0,"output":"ACTUAL_RESULT 中文"}),
+        1,
+    )
+    .unwrap();
     let capture = serde_json::json!({"operation":"capture_result","reference":{"kind":"task","taskId":id,"sourceId":"job-result","digest":""}});
     let result = service
         .query_continuations(Request::new(request(&root, capture.clone())))
@@ -124,6 +135,22 @@ async fn workflow_reason_matrix_has_no_generic_continue_or_budget_reset() {
     let (_, _, _, store, id) = setup().await;
     let original = store.get(id).unwrap().unwrap();
     let now = chrono::Utc::now().timestamp_millis() as u64;
+    let mut resumed = original.clone();
+    resumed.task.wait = Some(metteur_daemon::chat::wait::WaitIntent {
+        sources: vec!["job-result".into()],
+        mode: metteur_daemon::chat::wait::MatchMode::All,
+        deadline_ms: now + 10000,
+        params: serde_json::Value::Null,
+    });
+    assert_eq!(workflow(&resumed, 0, true, now)["reason_code"], "active");
+    let before = serde_json::to_vec(&resumed).unwrap();
+    let approval = workflow_with_approval(&resumed, 0, true, now, true);
+    assert_eq!(approval["reason_code"], "approval_required");
+    assert_eq!(serde_json::to_vec(&resumed).unwrap(), before);
+    assert_eq!(
+        workflow_with_approval(&resumed, 0, false, now, true)["reason_code"],
+        "permission_revoked"
+    );
     let mut paused = original.clone();
     paused.task.state = TaskState::Paused;
     paused.task.paused = true;
