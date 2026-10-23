@@ -411,6 +411,7 @@ async fn react_loop_inner(
                     Err(err) => return Err((err, context)),
                 };
                 if let Some(finished) = finished {
+                    ctx.jobs.mark_result_delivered(&finished.id);
                     // Keep the model's "I will wait" text, then hand it the
                     // result of the job that just ended.
                     if !response.text.is_empty() {

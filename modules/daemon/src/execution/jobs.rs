@@ -221,6 +221,7 @@ impl OutputBuffer {
 
 /// One managed process.
 struct JobEntry {
+    result_delivered: std::sync::atomic::AtomicBool,
     snapshot: std::sync::Mutex<JobSnapshot>,
     output: std::sync::Mutex<OutputBuffer>,
     /// Output produced since the last notice, awaiting a flush.
@@ -417,6 +418,7 @@ impl JobManager {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let entry = Arc::new(JobEntry {
+            result_delivered: std::sync::atomic::AtomicBool::new(false),
             snapshot: std::sync::Mutex::new(JobSnapshot {
                 id: id.clone(),
                 command: command.to_string(),
@@ -603,9 +605,23 @@ impl JobManager {
 
     /// Returns the oldest finished job of `owner` that is not announced yet.
     pub fn first_finished(&self, owner: uuid::Uuid, announced: &[String]) -> Option<JobSnapshot> {
-        self.list(Some(owner))
-            .into_iter()
-            .find(|job| job.state.is_finished() && !announced.iter().any(|id| id == &job.id))
+        self.list(Some(owner)).into_iter().find(|job| {
+            job.state.is_finished()
+                && !announced.iter().any(|id| id == &job.id)
+                && self.entry(&job.id).is_some_and(|entry| {
+                    !entry.result_delivered.load(std::sync::atomic::Ordering::Acquire)
+                })
+        })
+    }
+
+    /// Suppresses an automatic wake once a terminal result has been delivered.
+    /// Waiting internally for lifecycle receipts does not consume model delivery.
+    pub fn mark_result_delivered(&self, id: &str) {
+        if let Some(entry) = self.entry(id)
+            && entry.state().is_finished()
+        {
+            entry.result_delivered.store(true, std::sync::atomic::Ordering::Release);
+        }
     }
 
     /// Whether any job of `owner` is still running.

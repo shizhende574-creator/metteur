@@ -84,6 +84,7 @@ impl Tool for ExecuteCommand {
 
         let snapshot = wait_for_job(ctx, &job_id, timeout).await?;
         let tail = ctx.jobs.tail(&job_id, settings.tail_lines);
+        ctx.jobs.mark_result_delivered(&job_id);
         Ok(Value::Json(result_payload(&snapshot, &tail)))
     }
 }
@@ -477,6 +478,9 @@ impl Tool for WaitJob {
             snapshot.ok_or_else(|| DaemonError::Execution(format!("job {job_id} not found")))?;
         let tail = ctx.jobs.tail(&job_id, settings.tail_lines);
         let mut payload = result_payload(&snapshot, &tail);
+        if snapshot.state.is_finished() {
+            ctx.jobs.mark_result_delivered(&job_id);
+        }
         if snapshot.state.is_running() {
             payload["note"] = serde_json::Value::String(
                 "still running; wait again or end your turn to be woken on completion".to_string(),
