@@ -1,15 +1,26 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@connectrpc/connect'
 import { createGrpcWebTransport } from '@connectrpc/connect-web'
-import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { Daemon } from '../../src/gen/metteur_pb'
 import type { TaskRecord, TaskSource } from '../../src/core/continuations'
 
-const workspace = process.env.LIVE_WORKSPACE!
+let workspace = ''
 const client = () =>
   createClient(Daemon, createGrpcWebTransport({ baseUrl: process.env.LIVE_BASE_URL! }))
+test.beforeEach(async () => {
+  const fixture = await (await fetch(`${process.env.LIVE_FIXTURE_URL!}/fixture`)).json()
+  expect(fixture.nonce).toBe(process.env.LIVE_NONCE)
+  workspace = join(dirname(process.env.LIVE_WORKSPACE!), `daily-story-${randomUUID()}`)
+  await mkdir(join(workspace, 'blueprints'), { recursive: true })
+  await writeFile(
+    join(workspace, 'app.ts'),
+    `export const evidence = '${process.env.LIVE_NONCE}'\n`,
+  )
+  await client().openWorkspace({ path: workspace })
+})
 async function records() {
   const response = await client().queryContinuations({
     schemaVersion: 1,
@@ -182,6 +193,7 @@ test('Story A: real cross-file fix, host-recorded unittest, original dirty draft
     'review',
     'py -3.12 -m unittest test_shared.py',
   )
+  const promptName = `Normalization rules ${randomUUID().slice(0, 8)}`
   for (const scope of ['personal', 'project']) {
     const response = await client().writePromptResource({
       schemaVersion: 1,
@@ -191,7 +203,7 @@ test('Story A: real cross-file fix, host-recorded unittest, original dirty draft
         scope,
         draft: {
           id: randomUUID(),
-          name: 'Normalization rules',
+          name: promptName,
           tags: [],
           body:
             scope === 'personal'
@@ -224,9 +236,8 @@ test('Story A: real cross-file fix, host-recorded unittest, original dirty draft
     await tree.getByRole('button', { name: 'Prompt Library', exact: true }).click()
     const library = page.getByRole('region', { name: 'Prompt Library', exact: true })
     await library.getByRole('tab', { name: scope, exact: true }).click()
-    await expect(
-      library.getByRole('heading', { name: 'Normalization rules', exact: true }),
-    ).toBeVisible()
+    await library.getByRole('button', { name: `${scope} · r1 ${promptName}`, exact: true }).click()
+    await expect(library.getByRole('heading', { name: promptName, exact: true })).toBeVisible()
     await library.getByRole('button', { name: 'Use in Chat', exact: true }).click()
   }
   const input = page.getByRole('textbox', { name: 'Message', exact: true })
