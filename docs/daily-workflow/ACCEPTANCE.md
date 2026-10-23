@@ -4,6 +4,8 @@
 
 **技术通过**表示表列实现和行为证据齐备，不代替最终人类签字。**待外部/持续项**保留原范围；当前没有把全阶段标完成。完整原AC文本在根NEXT_STAGE_PLAN.md，本表不缩减其要求。证据根为工作区外`daily-workflow-evidence/20261022`；详细首轮失败及窄复测见REVIEW_HANDOFF.md和各契约页。
 
+剩余四项的唯一人工清单见[MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md)：AC-19/28复用当前观察并自动汇总；用户只做真实IME及一次实际睡眠。专用样本已准备，不重走已通过故事；睡眠需等待就绪标记以免破坏8h窗口。
+
 | AC | 当前结果 | 证据与适用范围 |
 |---|---|---|
 | 01 | 技术通过 | `s4-session-ownership-first`：A交接选B、占用Enter不提交、完成不抢页、主Chat不变监督，B正文及位置恢复。 |
