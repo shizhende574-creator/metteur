@@ -1,6 +1,6 @@
 # 日常核心工作流任务表
 
-更新：2026-10-23。S4实施中。两条生产故事及Linux核心/事件源已执行，详见 [STORIES.md](STORIES.md)；首轮失败及窄复测保留。无source新计划入口已补齐，后台审批原因已修正。真实模型新预算方案见 [REAL_MODEL_ACCEPTANCE.md](REAL_MODEL_ACCEPTANCE.md)，未获批准前额度仍为0。最终AC、性能/生命周期/恢复交付、用户体验与实际稳定观察继续推进。下方早期逐包记录保留历史，最新范围以本段和最新交接为准。
+更新：2026-10-23。S4最终收口中。产品候选ccecd9c、当前19093，技术矩阵24项齐备，AC-19/20/21/23/27/28仍待持续或外部项；两条生产故事及Linux核心/事件源已执行，详见 [STORIES.md](STORIES.md)；首轮失败及窄复测保留。无source新计划入口已补齐，后台审批原因已修正。真实模型新预算方案见 [REAL_MODEL_ACCEPTANCE.md](REAL_MODEL_ACCEPTANCE.md)，未获批准前额度仍为0。最终AC、性能/生命周期/恢复交付、用户体验与实际稳定观察继续推进。下方早期逐包记录保留历史，最新范围以本段和最新交接为准。
 
 ## 1. 当前接续点
 
@@ -31,11 +31,11 @@
 |---|---|---|---|
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
-| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | IN_PROGRESS（草稿/位置入口已接入，生产链/完整验收待完成） |
+| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | VERIFIED（技术范围，恢复/重开/冷副本已验；最终跨包AC保留） |
 | DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包AC最终验收保留） |
 | DW-04 | 文件引用、冲突和回退 | DW-00/02 | VERIFIED（当前Windows文件场景及生产链；跨包AC最终验收保留） |
-| DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | IN_PROGRESS（主界面/占用已接入，完整链待验） |
-| DW-06 | 交接、可读结果与分类处置 | DW-03/05 | IMPLEMENTED（结果引用/分类动作/无source新计划/审批原因已接入，当前定向检查通过；最终跨包AC保留） |
+| DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | VERIFIED（技术范围，实际A/B/独立监督/准入已验） |
+| DW-06 | 交接、可读结果与分类处置 | DW-03/05 | VERIFIED（技术范围，分类结果/草稿及处置入口已验） |
 | DW-07 | 状态事件刷新与有界开销 | DW-00 | IN_PROGRESS（评审/用量事件刷新已接入，性能/持续运行待验） |
 | DW-08 | 完整工作流与生命周期回归 | DW-02～07 必要接入完成 | IN_PROGRESS（两条真实生产故事与Linux事件源已执行，生命周期/完整矩阵收口中） |
 | DW-09 | 候选验证、用户试用与可恢复交付 | DW-00～08 相关退出条件满足 | IN_PROGRESS（真实模型任务/新预算方案及守卫已准备，性能/候选/恢复包继续） |
@@ -80,7 +80,7 @@
 
 ### DW-02 · 宿主持久草稿及位置恢复
 
-**状态**：IN_PROGRESS。**依赖**：DW-00；WF-PV-01/02 r2 已批准。
+**状态**：VERIFIED（当前Windows/Linux恢复存储及生产恢复范围；跨包最终体验/持续验收另计）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/daemon/src/storage/persistence/db.rs、storage/resources.rs（复用原语）；modules/webcore/src/stores/documents.ts、tabs.ts、chat.ts；BlueprintView、ChatComposer、ConciergePanel。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -136,7 +136,7 @@
 
 ### DW-05 · 主聊天与蓝图监督分离
 
-**状态**：IN_PROGRESS。**依赖**：DW-00/02/03；WF-PV-01 获批。
+**状态**：VERIFIED（主Chat/独立监督、统一准入及生产A/B归属；跨包最终验收另计）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/webcore/src/views/ChatView.vue、ExecutionView.vue；components/execution/ExecutionLayout.vue、ConciergePanel.vue；stores/chat.ts、execution.ts；宿主现有 workspace admission。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -154,7 +154,7 @@
 
 ### DW-06 · 交接、可读结果与分类处置
 
-**状态**：IN_PROGRESS。**依赖**：DW-03/05；文件证据接 DW-04；WF-PV-03 获批。
+**状态**：VERIFIED（交接/共享结果/分类动作/无source新计划及当前生产链；最终模型/人工验收另计）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/webcore/src/components/continuations/TaskPanel.vue、BlueprintLaunchReview.vue；stores/chat.ts；modules/daemon/src/grpc/service/continuations.rs；continuation、oversight、现有资源服务。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -172,7 +172,7 @@
 
 ### DW-07 · 状态事件刷新与有界开销
 
-**状态**：IN_PROGRESS。**依赖**：DW-00；相关 DW-02/03/05/06 状态写入确定后。
+**状态**：IN_PROGRESS（事件/多窗口连接/固定性能已验；8小时持续观察中）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/daemon/src/storage/persistence/db.rs、oversight；modules/webcore/src/components/execution/ConciergePanel.vue、OversightReviews.vue；共享 watch/followStream 机制。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -189,7 +189,7 @@
 
 ### DW-08 · 完整工作流与生命周期回归
 
-**状态**：PLANNED。**依赖**：DW-02～07 必要接入完成。
+**状态**：IN_PROGRESS（两故事/四类来源及实际关闭/重启技术验收已执行；实际睡眠/最终矩阵外部项保留）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：现有 production live 入口及模块定向测试；项目记忆、Prompt、Job/child/timer/blueprint 服务按影响复用。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -207,7 +207,7 @@
 
 ### DW-09 · 候选验证、用户试用与可恢复交付
 
-**状态**：PLANNED。**依赖**：DW-00～08 相关退出条件满足；模型验证另需端点/数据/预算，用户视觉按具体 revision。
+**状态**：IN_PROGRESS（候选/文档/冷恢复与R8升级回退已交付；真实模型预算、人工试用及持续观察待齐备）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：当前使用与恢复指南、runtime manifest、docs/local-handoff 入口；构建/测试入口按变更影响。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -229,36 +229,36 @@ AC 的完整行为定义以本地范围计划为准；下表在仓库内保留�
 
 | AC | 必须证明的行为 | 责任包 DW | 计划证据 | 当前结果 |
 |---|---|---|---|---|
-| AC-01 | 主聊天保留原会话，A/B 切换与完成不抢页面 | 05 | L2/L3 | PARTIAL：L2分离/A-B/不导航；L3待验 |
-| AC-02 | 主聊天/监督/文本/画布草稿跨页和 scope 保留 | 02 | L1/L2/L3 | PARTIAL：文档/主聊天/监督L1/L2；L3待验 |
-| AC-03 | ACK 后刷新/重开恢复，磁盘变化先冲突 | 02 | L1/L3 | PARTIAL：L1 重开/L2 刷新；L3 待验 |
-| AC-04 | 发送拒绝/队列失效/断线后输入及选择可恢复 | 02/03 | L1/L3 | PARTIAL：主聊天/队列/监督拒绝与未知L1/L2；临时插入/L3待验 |
-| AC-05 | 旧 ACK、新编辑、保存/备份竞态和多窗口隔离 | 02/03 | L1/L3 | PARTIAL：恢复在途/多窗口；完整入口待验 |
-| AC-06 | 重复提交/回执丢失不重复运行，同 ID 异内容拒绝 | 03 | L1/L3 | PARTIAL：Send/Queue/Steer/监督正常输入RPC/客户端；临时插入/L3待验 |
-| AC-07 | 脏文件引用选择与实际内容身份一致 | 04 | L1/L3 | PARTIAL：固定快照/摘要/选择顺序L1，实际脏稿选择与模型/工具读取分离L3；最终撤权/恢复矩阵待验 |
-| AC-08 | 外部/Agent 并发改写及再变化不覆盖，create-only 恢复 | 04 | L1/L3 | PARTIAL：CAS/再次变化/另存冲突/删除恢复L1/L2，真实并发文件链L3；最终矩阵待验 |
-| AC-09 | 有人工修改/脏稿时 retry/rewind/rollback 影响与失败真实 | 04 | L1/L3 | PARTIAL：保护草稿/回退错误L2，原文件恢复L1；完整故事待验 |
-| AC-10 | 运行状态、原因、下一动作、来源及结果准确 | 05/06 | L2/L3 | NOT_RUN |
-| AC-11 | launch Stale/重复/保存或 mirror 失败/断线安全 | 04/05/06/08 | L1/L3 | NOT_RUN |
-| AC-12 | 自动续聊与只保留结果策略正确，人工停止不重跑 | 05/06/08 | L1/L3 | NOT_RUN |
-| AC-13 | 预算/过期/撤权/未知副作用有准确分类，不能通用继续 | 06 | L1/L3 | NOT_RUN |
-| AC-14 | 新消息使旧自动续跑失效，显式接收结果和新绑定保留账本 | 06/08 | L1/L3 | NOT_RUN |
-| AC-15 | 停止/审批失败、未知、晚到事件不伪成功或换目标 | 03/05/06 | L1/L3 | PARTIAL：固定目标/Stop优先级及审批决定持久回执L1/L2；其他控制/未决清单/L3待验 |
-| AC-16 | 历史深链/最近位置/已删源会话不偷换身份 | 02/05 | L2/L3 | PARTIAL：位置/会话深链/缺失源L2；L3/历史run全链待验 |
-| AC-17 | Prompt/约定/模型笔记/证据的 scope、版本和可信等级 | 02/04/06/08 | L1/L3 | NOT_RUN |
-| AC-18 | 去除 1s/1.5s 业务轮询，重连/重复通知不丢终态 | 07 | L1/L3 | NOT_RUN |
-| AC-19 | 固定样本测性能与持续运行，阈值先登记 | 07/09 | L3/L5 | PARTIAL：基线与阈值；候选/持续运行待验 |
-| AC-20 | 两故事真实链路及受影响四类事件源 | 08/09 | L3/L4 | NOT_RUN |
-| AC-21 | 具体 preview revision 用户认可及正式接入保真 | 01/09 | L2/L3/用户 | PARTIAL：r2 已批准；r3/正式保真待验 |
-| AC-22 | 候选/旧数据/迁移/文档/产物一致与可恢复 | 09 | L1/L5 | NOT_RUN |
-| AC-23 | IME 候选确认、换行、快捷键、长按不误发/重复/绕过禁用 | 03/05 | L2/L3/用户 | PARTIAL：共享Composer L2合成序列通过；L3/真实IME待验 |
-| AC-24 | 无效原始草稿、rename/孤立稿、清理和丢弃晚到竞态 | 02/04 | L1/L3 | PARTIAL：文档/聊天/监督L1/L2；L3待验 |
-| AC-25 | 恢复记录 durable/容量/损坏/旧 schema 与 rewind 隔离 | 02/09 | L1/L5 | PARTIAL：L1存储/三类dw记录与checkpoint隔离；rewind/L5待验 |
-| AC-26 | 其他客户端/session 及旧版本不能绕过准入，新能力不静默降级 | 03/05/06/09 | L1/L3 | PARTIAL：能力拒绝降级/旧无目标控制拒绝；完整准入待验 |
-| AC-27 | 普通断流/detached/关闭页面/工作区/daemon/睡眠语义分开 | 03/05/08/09 | L1/L3/L5 | NOT_RUN |
-| AC-28 | 持续编辑记录有界且不触发全页状态刷新风暴 | 02/07/09 | L1/L3 | PARTIAL：L1 1000 次有界/零通知；L3 待验 |
-| AC-29 | 恢复输入保留顺序和来源，权限/资源重新核验，不复活授权 | 02/03/04/08/09 | L1/L3 | PARTIAL：scope及主聊天/监督重开顺序/不恢复权限；L3待验 |
-| AC-30 | 直接运行无源会话不伪造关联，聊天 launch 保留完整交接，两入口边界一致 | 05/06/08 | L1/L3 | NOT_RUN |
+| AC-01 | 主聊天保留原会话，A/B 切换与完成不抢页面 | 05 | L2/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-02 | 主聊天/监督/文本/画布草稿跨页和 scope 保留 | 02 | L1/L2/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-03 | ACK 后刷新/重开恢复，磁盘变化先冲突 | 02 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-04 | 发送拒绝/队列失效/断线后输入及选择可恢复 | 02/03 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-05 | 旧 ACK、新编辑、保存/备份竞态和多窗口隔离 | 02/03 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-06 | 重复提交/回执丢失不重复运行，同 ID 异内容拒绝 | 03 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-07 | 脏文件引用选择与实际内容身份一致 | 04 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-08 | 外部/Agent 并发改写及再变化不覆盖，create-only 恢复 | 04 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-09 | 有人工修改/脏稿时 retry/rewind/rollback 影响与失败真实 | 04 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-10 | 运行状态、原因、下一动作、来源及结果准确 | 05/06 | L2/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-11 | launch Stale/重复/保存或 mirror 失败/断线安全 | 04/05/06/08 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-12 | 自动续聊与只保留结果策略正确，人工停止不重跑 | 05/06/08 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-13 | 预算/过期/撤权/未知副作用有准确分类，不能通用继续 | 06 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-14 | 新消息使旧自动续跑失效，显式接收结果和新绑定保留账本 | 06/08 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-15 | 停止/审批失败、未知、晚到事件不伪成功或换目标 | 03/05/06 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-16 | 历史深链/最近位置/已删源会话不偷换身份 | 02/05 | L2/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-17 | Prompt/约定/模型笔记/证据的 scope、版本和可信等级 | 02/04/06/08 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-18 | 去除 1s/1.5s 业务轮询，重连/重复通知不丢终态 | 07 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-19 | 固定样本测性能与持续运行，阈值先登记 | 07/09 | L3/L5 | 待持续项；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-20 | 两故事真实链路及受影响四类事件源 | 08/09 | L3/L4 | 待L4；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-21 | 具体 preview revision 用户认可及正式接入保真 | 01/09 | L2/L3/用户 | 待人类；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-22 | 候选/旧数据/迁移/文档/产物一致与可恢复 | 09 | L1/L5 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-23 | IME 候选确认、换行、快捷键、长按不误发/重复/绕过禁用 | 03/05 | L2/L3/用户 | 待人类；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-24 | 无效原始草稿、rename/孤立稿、清理和丢弃晚到竞态 | 02/04 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-25 | 恢复记录 durable/容量/损坏/旧 schema 与 rewind 隔离 | 02/09 | L1/L5 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-26 | 其他客户端/session 及旧版本不能绕过准入，新能力不静默降级 | 03/05/06/09 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-27 | 普通断流/detached/关闭页面/工作区/daemon/睡眠语义分开 | 03/05/08/09 | L1/L3/L5 | 待人类项；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-28 | 持续编辑记录有界且不触发全页状态刷新风暴 | 02/07/09 | L1/L3 | 待持续项；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-29 | 恢复输入保留顺序和来源，权限/资源重新核验，不复活授权 | 02/03/04/08/09 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
+| AC-30 | 直接运行无源会话不伪造关联，聊天 launch 保留完整交接，两入口边界一致 | 05/06/08 | L1/L3 | 技术通过；详见[完整矩阵](ACCEPTANCE.md) |
 
 硬性失败：确认受保护内容丢失、跨目标串入、未授权执行、重复逻辑执行、Stop 失效、未知副作用重放、错误伪成功、未批准新 UI 接入正式流程。遇到失败先修对应边界，不能靠延时、跳过或改预期计为成功。
 

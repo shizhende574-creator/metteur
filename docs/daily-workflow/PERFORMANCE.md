@@ -16,3 +16,5 @@
 每版Tasks空闲10秒均无QueryContinuations/GetConciergeState/GetOversightReviews的1s/1.5s轮询。可见请求是最后一次延迟恢复备份，以及既有5秒ListWorkspaces基础状态；不把基础连接/工作区读取或本地时钟隐去。另有S3定向重复通知/Usage/Reviews合并证据，未因性能测量重跑该场景。
 
 持续观察将单列实际开始/结束时间、样本次数、恢复记录数量和内存，不将上述短区间称为长期稳定性通过。1000次同稿备份的真实DB恒定行数/无业务通知属于独立存储检查，不等于磁盘物理字节不增长。
+
+最新候选ccecd9c另在s4-performance-ccecd9c定向测量，复用未改动对照原始样本，没有重跑对照：新context到文件树260ms、热切页p95 83ms、插入p95 39ms、编辑后JS heap 30.7MB，原5000/500/100ms阈值均通过，10秒无目标业务轮询。最新8小时双窗口观察为s4-observation-ccecd9c，逐分钟确认两个独立原稿和恒定记录数、每10样本采集post-GC JS heap与native进程内存；64MiB/page及max(256MiB,初始private×1.25)守卫在开始时冻结。采样间隙超过90秒会单列，不能称完整连续窗口；不是实际OS睡眠验收。旧eeb930c单窗观察实际71.2分钟/71次ACK后停止，保留原数据，不能冒充修复候选的8小时。
