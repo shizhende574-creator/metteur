@@ -41,7 +41,7 @@ for (const scope of ['personal', 'project']) {
       draft: {
         id: randomUUID(),
         name: 'Trial normalization rules',
-        tags: ['ccecd9c-trial'],
+        tags: ['daily-workflow-trial'],
         body:
           scope === 'personal'
             ? 'DW_PERSONAL_NORMALIZATION: explain changes and preserve both public callers.'
@@ -95,7 +95,8 @@ for (const [id, name, path, command] of [
 }
 const proof = await (await fetch(`${ready.providerUrl}/fixture`)).json()
 const result = {
-  candidate: 'ccecd9c',
+  candidate: ready.nativeCommit ?? null,
+  frontendCandidate: ready.frontendCommit ?? null,
   readyPath,
   workspace,
   url: `${ready.baseURL}/?open=${encodeURIComponent(workspace)}`,

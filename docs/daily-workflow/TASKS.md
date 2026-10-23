@@ -1,19 +1,15 @@
 # 日常核心工作流任务表
 
-更新：2026-10-23。原交付2608bb9已推送fork现有Draft PR #9；原验收28项通过、2项人工暂接受后置。本轮按用户“直接帮我改好”修复复核发现的配额回收与AC-14重新绑定，定向验收已通过，并按新增“确定完善后推送”授权快进更新同一Draft PR，见[REVIEW_FIXES.md](REVIEW_FIXES.md)。当前正式19103仍属原宿主ccecd9c/前端65cc92f，修复版生产构建验收入口19104，独立合成数据；运行及证据见REVIEW_FIXES.md。当前任务已交付，下一阶段仅讨论目标、取舍与验收，不自动沿用下方历史实施授权扩展范围。
+更新：2026-10-23。原DW-00～09、G01～19和AC-01～30范围保持，配额回收、AC-14重新绑定与正式19103升级均纳入本轮收口；原数据已冷备份并逐项比对。当前产品与增量验收见[FINAL_CLOSURE.md](FINAL_CLOSURE.md)，运行清单为证据根final-closure/ready.json。原28项通过、2项人工暂接受决定如实保留；不把正式交付遗漏另列下一阶段。
 
 ## 1. 当前接续点
 
-- AC-19/28原观察实际约6小时3分／353样本，进程已退出；经告知后用户明确“记作通过,时间已经够了”，本轮通过，不重跑／延长，也不改称已完成8h。AC-23/27按用户最新决定暂接受、后续补验，不等待人工回复、不再催验，也不代签实测结果。[人工清单](MANUAL_ACCEPTANCE.md)和专用样本保留；准备时0run/0task/0history，无新增模型调用，不重复已验场景。
-- 用户人工反馈当前使用暂时没问题；页面统一度增量已做成[UI-CONSISTENCY r1](UI_CONSISTENCY.md)，r1已获明确批准并正式接入19103；19101预览原件及19093原观察保留。未明示的IME、实际睡眠/唤醒仍保留。
-- 已完成准备 PREP-01：确认 D-WF-01/02/03，二次核对设计与源码，更新范围计划、实施设计和本任务表。
-- 三项决策及完整契约见 [DESIGN.md](DESIGN.md)；本地范围/AC 原文见 [NEXT_STAGE_PLAN.md](../../../../../NEXT_STAGE_PLAN.md)。
-- 实施起点：codex/workspace-reliability-20261021，HEAD 6b19ffa36ea1013c8cd4eb14f49e5e32590081b1。已有规划/交接改动已保留于完整基线提交。
-- 当前实施分支 `codex/daily-workflow-20261022`；DW-00 记录见 BASELINE.md。三组 r2 用户原文“批准三组 r2，保留现有 IDE 布局”，具体范围见 PREVIEWS.md；继续完成宿主恢复和产品链路。
-- 原 SPEC/TASKS、NX 编号和 R8 审计保持历史；本表 DW 编号承接本次增量，不将旧 DONE 改成未完成。
-- 用户已要求本对话持续实施与完整验收；原规划对话保留快速复核和后续讨论职责。完整启动指令见工作区根 NEXT_CHAT_PROMPT.md。按依赖持续推进，不逐包等待授权。默认单代理串行。
-- 本目录 REVIEW_HANDOFF.md 维护具体候选、改动、检查/失败/未测、预览与运行入口及待复核问题。用户新增信息密度约束已记录 DESIGN.md，不改变 IDE 布局。
-- 用户2026-10-23最新明确授权：吸取此前推进过慢和重复测试教训，继续高质量完成全部剩余任务；此前“DW-03 后复盘交接”的收窄不再是停工边界。复盘见 [PROGRESS_REVIEW_20261023.md](PROGRESS_REVIEW_20261023.md)，新接续提示词见 [CONTINUE_PROMPT.md](CONTINUE_PROMPT.md)；复盘/提示词不替代实施。
+- 原计划范围内的实现、正式入口升级、原数据保全与任务文档已收口，详见[FINAL_CLOSURE.md](FINAL_CLOSURE.md)。不再沿用旧阶段记录重新启动已完成工作，后续由用户提出新目标或具体问题。
+- 正式19103原生ff7b346、前端eed8e8e；原三个工作区保持路径与内容，完成冷备份、升级前后及补验后的RPC对照。实际进程/源码/资产见20261023/final-closure/ready.json、artifact-manifest.json。
+- AC-19/28原约6小时3分/353样本由用户明确接受；AC-23/27真实IME/实际S3睡眠按用户先前明确决定暂接受，未代签物理操作。其余26项技术证据及本轮增量见ACCEPTANCE.md，不新增付费模型或重复长观察。
+- 保留D-WF-01/02/03、已批准r2与UI r1、原IDE布局及信息密度。范围与设计仍为根NEXT_STAGE_PLAN.md和DESIGN.md，历史SPEC/TASKS原件不改写。
+- 活动源码仅为incoming/metteur-cloud-ff7b795-20261015/repo，分支codex/daily-workflow-20261022；原实施起点6b19ffa，DW-00提交1b39ce8。工作区根是另一个Git仓库，不误提交。默认单代理串行。
+- 用户明确要求全部收口、验收后推送；只快进fork现有codex/nx-final-acceptance与Draft PR #9，不推origin、不强推、不自动合并。最终远端回执见根CURRENT.txt。
 
 ## 2. 状态、证据和执行纪律
 
@@ -33,9 +29,9 @@
 |---|---|---|---|
 | DW-00 | 冻结实施起点并复现缺口 | 无 | VERIFIED（基线，非 AC） |
 | DW-01 | 三组隔离交互预览 | DW-00 | VERIFIED（r2 已批准；正式行为另验） |
-| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | VERIFIED（技术范围，恢复/重开/冷副本已验；最终跨包AC保留） |
-| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包AC最终验收保留） |
-| DW-04 | 文件引用、冲突和回退 | DW-00/02 | VERIFIED（当前Windows文件场景及生产链；跨包AC最终验收保留） |
+| DW-02 | 宿主持久草稿及位置恢复 | DW-00 | VERIFIED（技术范围，恢复/重开/冷副本已验；跨包技术AC已收口） |
+| DW-03 | 可靠提交、控制回执与输入语义 | DW-00 | VERIFIED（本包实现及当前Windows定向/生产链；跨包技术AC已收口） |
+| DW-04 | 文件引用、冲突和回退 | DW-00/02 | VERIFIED（当前Windows文件场景及生产链；跨包技术AC已收口） |
 | DW-05 | 主聊天与蓝图监督分离 | DW-00/02/03 | VERIFIED（技术范围，实际A/B/独立监督/准入已验） |
 | DW-06 | 交接、可读结果与分类处置 | DW-03/05 | VERIFIED（原结果链及本轮AC-14重新绑定定向/生产验收已通过） |
 | DW-07 | 状态事件刷新与有界开销 | DW-00 | VERIFIED（事件/固定性能已验，用户明确接受现有持续时长；非原8h跑满） |
@@ -82,7 +78,7 @@
 
 ### DW-02 · 宿主持久草稿及位置恢复
 
-**状态**：VERIFIED（当前Windows/Linux恢复存储及生产恢复范围；跨包最终体验/持续验收另计）。详见[当前验收矩阵](ACCEPTANCE.md)。
+**状态**：VERIFIED（Windows/Linux恢复、生产恢复及正式原数据升级已验）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/daemon/src/storage/persistence/db.rs、storage/resources.rs（复用原语）；modules/webcore/src/stores/documents.ts、tabs.ts、chat.ts；BlueprintView、ChatComposer、ConciergePanel。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -96,11 +92,11 @@
 
 **验收**：AC-02/03/04/05/16/17/24/25/28/29。**证据交付**：恢复协议、迁移说明及定向 host/browser 证据；实际文件清单和 schema 变更。
 
-**实际记录**：宿主有界存储、鉴权 RPC/代理/生成协议及文本/画布/Prompt 文档恢复已完整提交 97436a6。Windows 宿主/真实文件 RPC、前端控制器竞态、浏览器恢复及旧文档定向回归已运行，详细命令和首轮失败见 REVIEW_HANDOFF.md 与证据；追加丢弃竞态/容量约束复测通过，证据见交接。主聊天/新聊天与未决ID现已接入：ACK固定原稿及当前稿再提交、只清对应版本、跨会话晚到守卫、重开仅对账、未备份内存副本可查看/导出。客户端27、L2聊天9与受影响回归18通过，有重叠不累加；来源存在检查RPC7通过。监督正常输入亦已接入宿主原子正文/身份、受控草稿、原ID对账/关闭和宿主确认副本恢复；存储6/RPC7/客户端8/L2新增4及受影响场景已集中检查，首轮失败与窄复测见交接。位置副本已接入标签/会话/分栏/文本选区滚动/画布视口，明确深链和来源删除守卫。存储11/RPC4/客户端34、L2集中首轮52通过及失败/受影响9项窄复测通过，细节及首轮证据见VIEW_STATE.md/交接；生产真实链、Linux和完整退出条件尚未完成，本工作包未关闭。
+**实际记录**：宿主恢复、四类输入、监督/位置、原始无效稿、scope/CAS/ACK及Windows/Linux/生产恢复已验；详见RECOVERY.md、VIEW_STATE.md和ACCEPTANCE.md。ce3e5da另补旧4096记录回收、代次栅栏、活动稿保留和失败原子性，REVIEW_FIXES.md记录定向证据。原数据升级核对见FINAL_CLOSURE.md。
 
 ### DW-03 · 可靠提交、控制回执与输入语义
 
-**状态**：VERIFIED（本包实现与当前Windows契约/生产链范围；全阶段AC的跨包、平台、真实IME/模型/试用仍保留）。**依赖**：DW-00；未决身份持久化依赖 DW-02；WF-PV-01/02/03 r2 已批准，r3 密度修订已呈现。
+**状态**：VERIFIED（输入/控制完整实现及跨包技术证据已验；真实IME保留原人工验收决定）。**依赖**：DW-00；未决身份持久化依赖 DW-02；WF-PV-01/02/03 r2 已批准，r3 密度修订已呈现。
 
 **实现定位**：schema/proto/metteur.proto；modules/daemon/src/grpc/service/chat.rs、现有 chat/continuation 生命周期；modules/webcore/src/core/gateway.ts、grpc-gateway.ts、mock-gateway.ts；ChatComposer.vue、stores/chat.ts；相关 CLI 调用方。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -114,7 +110,7 @@
 
 **验收**：AC-04/05/06/15/23/26/27/29。**证据交付**：接收崩溃窗口与兼容矩阵、定向 daemon/CLI/browser 检查。
 
-**实际记录**：手工 Send 的可选 durable 接收/查询/关闭未接收 ID 协议及网关/独立客户端状态机完整提交 9aa23cc；已备份未决身份启动前对账增量亦已完成定向验证；复用原 runner，session/revision/receipt/关联新 task 原子 sync WAL。宿主 8、RPC 5、客户端 7 项定向检查通过，SSE/原序列 3 项通过，全协议消费者 clippy 及定向前端 lint 通过。首轮 RPC 的 continuation 样本预算过小被真实预算守卫拒绝，修正合成预算后通过，失败保留。Composer/主聊天草稿及IME已接入并完成定向检查；主聊天Queue/Steer持久接收/消费回执和聊天Stop固定目标现已接入；监督正常消息原子接收/原ID对账亦已完成定向验证。审批决定现已接入固定目标/内容、持久Claim/Accepted/Unknown/Retired及Web/CLI；首轮存储5/RPC7/grant3/旧权限21/客户端8、L2新增7通过，失败及窄复测见APPROVAL_DECISIONS.md/交接。蓝图临时插入、Stop/Pause/Resume回执、跨重启未决清单和整个工作包仍未完成；完整细节见 REVIEW_HANDOFF.md。
+**实际记录**：手工Send、Queue/Steer、监督消息、临时输入、固定目标Stop/Pause/Resume和审批持久回执均已完成；未知结果按原ID对账，旧客户端能力拒绝及跨重启未决身份已验。详见DELIVERY.md、LIVE_INPUTS.md、APPROVAL_DECISIONS.md、WORKFLOW_RECEIPTS.md及ACCEPTANCE.md。IME合成键盘守卫已验，实际IME按已记录的用户验收决定处理。
 
 2026-10-23收尾记录（覆盖上文“临时插入/控制待完成”的历史状态）：基线3119cb0加本包完整差异，摘要dw03-close-batch-source.json。Stop/Pause/Resume与蓝图Urgent的宿主持久回执、revision顺序、旧ID关闭、消费节点提交、跨重开查询和Web/CLI均已接入；契约见WORKFLOW_RECEIPTS.md。当前Windows存储/RPC7、bus7、受影响delivery15、客户端15、L2目标/前台/回执9均首轮通过；workspace/all-targets clippy仅既有27 lib/1旧测试告警，类型/lint通过。生产Web与原生二进制已构建，真实Web→网关→daemon→本地provider的普通聊天工具/刷新、监督消息、临时消费、Pause/Resume和固定目标Stop两条集中场景首轮通过。运行19086，隔离数据/二进制/源码归属和结果见REVIEW_HANDOFF及dw03-close-result.json。早期类型UUID默认参数/旧proto构造缺字段的检查失败保留，配套修正后集中检查通过；不重复已通过场景。DW-06整体未决/分类界面、DW-08/09完整生命周期/平台/试用和相关AC继续，不将本包验证写成全阶段完成。
 
@@ -134,11 +130,11 @@
 
 **验收**：AC-07/08/09/11/17/24/29。**证据交付**：文件冲突、引用快照、回退失败和镜像失败的定向证据。
 
-**实际记录**：固定文件引用、三方比较/条件保存/保留双方、独立ACK恢复副本、BOM/CRLF及回退错误呈现已接入，见FILES.md。首轮L2文件协作及受影响入口22通过，native文件RPC3/历史/意图/恢复通过，workspace全部消费者clippy exit0仅既有告警。L3首轮发现protobuf JS吞BOM，已补可选原始UTF-8字节；仅复测该RPC及完整文件链通过，旧证据保留。控制器新增能力拒绝用例仅错误文案断言失配，窄修复测通过。生产入口19088，冻结bin/Web与ready归属见REVIEW_HANDOFF；没有付费调用或远端操作。文件引用长上下文在历史中仍展开，纳入DW-06共享可读展示；最终AC尚未关闭。
+**实际记录**：固定文件引用、三方比较/条件保存/保留双方、独立ACK恢复、BOM/CRLF和回退错误呈现已验；历史所选文件上下文在TurnUser的详情中折叠。详见FILES.md、STORIES.md及ACCEPTANCE.md；正式入口的完整故事补验见FINAL_CLOSURE.md。
 
 ### DW-05 · 主聊天与蓝图监督分离
 
-**状态**：VERIFIED（主Chat/独立监督、统一准入及生产A/B归属；跨包最终验收另计）。详见[当前验收矩阵](ACCEPTANCE.md)。
+**状态**：VERIFIED（主Chat/独立监督、统一准入及生产A/B归属；正式入口增量复验通过）。详见[当前验收矩阵](ACCEPTANCE.md)。
 
 **实现定位**：modules/webcore/src/views/ChatView.vue、ExecutionView.vue；components/execution/ExecutionLayout.vue、ConciergePanel.vue；stores/chat.ts、execution.ts；宿主现有 workspace admission。这些是复用入口，不意味着必须修改所有列出的文件。
 
@@ -152,7 +148,7 @@
 
 **验收**：AC-01/10/11/12/15/16/23/26/27/30。**证据交付**：两会话/双工作区/run 切换及真实宿主准入的定向证据。
 
-**实际记录**：已接入原会话保留、明确监督入口、宿主前台占用查询、未知/暂停禁发、无模型直接控制与Stop优先级。源码基线67e0578加当前差异，FOREGROUND.md定义实际范围；RPC9、只读DB1、L2分离/A-B6及受影响监督/Execution27定向通过（有重叠不累加）。旧Interrupt固定turn/持久回执、生产链、生命周期和完整退出条件未验收，不能关闭本包。
+**实际记录**：主聊天保留原会话、监督独立入口、宿主统一准入、缺模型直接控制、固定目标持久回执、Stop优先级及A/B归属均已验；不自动导航或发送草稿。详见FOREGROUND.md、WORKFLOW_RECEIPTS.md及ACCEPTANCE.md。
 
 ### DW-06 · 交接、可读结果与分类处置
 
@@ -187,7 +183,7 @@
 
 **验收**：AC-18/19/28。**证据交付**：空闲与连续编辑请求计数、真实变更／重连、固定样本性能对比。
 
-**实际记录**：基线190b48d上的S3工作树已接入；当前检查、首轮失败和受影响复测见REVIEW_HANDOFF/RESULTS.md。19089已通过交接/结果生产场景；无source异常入口、完整矩阵和性能仍待收口，不能关闭本包或AC。
+**实际记录**：共享工作区事件流、终态/重连对账、恢复写与业务通知分离、双窗口及固定性能已验，见EVENTS.md、PERFORMANCE.md。原约6小时3分/353样本时长由用户明确接受；ce3e5da补跨草稿反复创建/丢弃的配额回收，正式入口增量验证见FINAL_CLOSURE.md。
 
 ### DW-08 · 完整工作流与生命周期回归
 
@@ -223,7 +219,7 @@
 
 **验收**：AC-19/20/21/22/25/26/27/28/29 及全阶段结论。**证据交付**：候选验收报告、实际用户反馈、模型记录、运行清单与恢复说明。
 
-**实际记录**：候选三项L4共14请求，UI r1已批准接入，实际观察时长已获接受；2608bb9分六批快进推送fork现有Draft PR #9成功。交付原件见FINAL_REVIEW.md及根CURRENT.txt。
+**实际记录**：原候选三项L4、批准UI、用户时长接受及fork交付保留；本轮正式19103升级、114文件冷备份、原数据前后及补验后对照、完整故事与更新提示修复已收口。准确候选/证据见FINAL_CLOSURE.md，最终远端回执见根CURRENT.txt。
 
 ## 5. 验收分配
 

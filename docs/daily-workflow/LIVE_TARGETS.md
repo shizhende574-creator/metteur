@@ -18,6 +18,8 @@ capabilities.targeted_controls=true是新Chat控制能力门槛。CLI与Web在�
 
 TS生成物、网关接口/真实实现、主聊天/监督、CLI及必要测试同完整功能提交。Mock依然只是本窗口演示，不提供持久性证明。主聊天activeTurn来自已验证的Send回执，普通断流语义没有变为detached。
 
-本功能没有解决Queue/Steer的durable接收、消费/未消费恢复或审批Unknown对账；当前durable_queue=false。它们是下一可执行任务，不得据本功能关闭AC-04/06/15/26/27。主聊天审批当前仍有先清UI再等待RPC的旧行为，必须继续修复并验收；监督草稿、位置和其他DW工作亦未完成。
+以下是本目标身份提交时的历史边界；Queue/Steer、审批、监督草稿、位置和完整AC此后均已收口，见LIVE_INPUTS.md、APPROVAL_DECISIONS.md、SUPERVISION_INPUTS.md、VIEW_STATE.md和ACCEPTANCE.md。原始提交记录保留如下。
+
+本功能当时没有解决Queue/Steer的durable接收、消费/未消费恢复或审批Unknown对账；当前durable_queue=false。它们当时是下一可执行任务，不得据本功能关闭AC-04/06/15/26/27。主聊天审批当前仍有先清UI再等待RPC的旧行为，必须继续修复并验收；监督草稿、位置和其他DW工作亦未完成。
 
 Windows检查和首次失败保留在daily-workflow-evidence/20261022/targets-*.log：全workspace/all-targets类型检查、协议消费者、真实RPC旧turn拒绝、控制查询不等admission、聊天及审批作用域烟测、本地HTTP/R-batch、L2目标快照/旧能力与聊天/监督回归。具体命令、退出码和结果见REVIEW_HANDOFF。没有生产运行包更新、付费调用、push或合并，不计L3/L4/L5或最终体验验收。

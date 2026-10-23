@@ -1,6 +1,6 @@
 # 手工发送的持久接收协议
 
-最新主聊天 Queue/Steer 持久接收、正文和消费契约见 [LIVE_INPUTS.md](LIVE_INPUTS.md)。下方“Queue/Steer 待接入”“durable_queue=false”是手工 Send 提交阶段的历史边界，以新文档为准；蓝图监督及控制/审批仍未完成。
+最新主聊天 Queue/Steer 持久接收、正文和消费契约见 [LIVE_INPUTS.md](LIVE_INPUTS.md)。下方“Queue/Steer 待接入”“durable_queue=false”是手工 Send 提交阶段的历史边界，以新文档为准；蓝图监督、控制和审批已在SUPERVISION_INPUTS.md、WORKFLOW_RECEIPTS.md、APPROVAL_DECISIONS.md完成；全阶段结果见ACCEPTANCE.md。
 
 固定实时输入/控制目标增量见LIVE_TARGETS.md；该增量不提供Queue/Steer的durable消费回执。
 

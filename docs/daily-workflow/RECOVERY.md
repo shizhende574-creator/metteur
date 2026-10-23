@@ -1,6 +1,6 @@
 # 输入恢复协议及当前接入边界
 
-2026-10-23；当前正式接入文本、蓝图原始画布输入、Prompt 文档、主聊天/新聊天、监督输入及位置恢复。监督与位置的详细增量见 SUPERVISION_INPUTS.md、VIEW_STATE.md、WORKFLOW_RECEIPTS.md；DW-03生产链已有当前证据，完整恢复场景/平台与全阶段AC仍未关闭。
+2026-10-23；当前正式接入文本、蓝图原始画布输入、Prompt 文档、主聊天/新聊天、监督输入及位置恢复。监督与位置的详细增量见 SUPERVISION_INPUTS.md、VIEW_STATE.md、WORKFLOW_RECEIPTS.md；完整恢复场景、Windows/Linux及全阶段技术AC已验；配额回收增量见REVIEW_FIXES.md，原数据升级见FINAL_CLOSURE.md。
 
 主聊天在每窗口/实体使用独立输入副本；新聊天使用预分配 UUID，在宿主接收前不创建会话。每次 Send 另外保留点击时的固定输入；当前编辑稿与该原稿分别取得宿主 ACK 后才发起 Send。接收只清理匹配的正文/选择版本，拒绝不覆盖较新输入；未知保持原 pending ID，重开后仅对账。原稿保留到执行终态且源会话仍可读取；缺失来源保持可取回输入，不自动重建。恢复会重新核验 Prompt 当前权限及 revision/digest，不信任原 snapshot ID，不恢复 full/AllowOnce。
 

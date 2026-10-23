@@ -147,7 +147,7 @@ IME composition 期间 Enter 不发送；compositionend 后根据真实按键意
 
 ## 8. 预览、验证和完成
 
-三组预览 WF-PV-01 主聊天／监督，WF-PV-02 草稿／文件，WF-PV-03 任务／结果。全部 NOT_CREATED / NOT_PRESENTED。记录 preview_id、revision、source commit/digest、fixture、范围、反馈和真实用户确认；具体 UI 接入遵守原 SPEC C14，不用本轮计划确认替代。
+三组预览 WF-PV-01 主聊天／监督，WF-PV-02 草稿／文件，WF-PV-03 任务／结果。三组r2均已获用户批准并接入，UI-CONSISTENCY r1亦已批准；原件和反馈见PREVIEWS.md、UI_CONSISTENCY.md。记录 preview_id、revision、source commit/digest、fixture、范围、反馈和真实用户确认；具体 UI 接入遵守原 SPEC C14，不用本轮计划确认替代。
 
 覆盖空／加载／错误／断线／等待／只读／缺模型／权限不足／陈旧版本／未决提交，明暗主题、窄屏、长文本、键盘及 reduced motion。采用现有 Vue 和共享组件；正式构建无 fixture 路由泄漏。
 

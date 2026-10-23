@@ -10,6 +10,6 @@ ChatDelivery的增量admission查询在workspace admission锁下读取实际runn
 
 客户端复用workspace事件刷新，合并在途查询；切换workspace、断线和晚到响应有epoch守卫，没有新增周期业务轮询。普通Send/Retry在执行前重查占用，Queue/Steer有当前会话占用检查；输入、快捷键、菜单和按钮同时受界面守卫。所有客户端的普通Send仍由宿主已有准入最终裁决。旧Interrupt协议尚无固定turn和durable回执，不能据此宣称Queue/Steer的RPC竞态、旧客户端绕过与控制Unknown分支已全部解决；这些继续归DW-03/05。
 
-主栏Pause/Stop捕获明确run，沿用宿主run_id核验；Stop可以越过未返回的Pause/审批请求，不受共享busy状态锁死。完成旧控制请求不能清空新控制的busy状态。没有模型仍可直接操作；尚未加入持久控制回执，网络未知不能称为成功。
+主栏Pause/Stop捕获明确run，沿用宿主run_id核验；Stop可以越过未返回的Pause/审批请求，不受共享busy状态锁死。完成旧控制请求不能清空新控制的busy状态。没有模型仍可直接操作；持久控制回执已由WORKFLOW_RECEIPTS.md所述增量接入；网络未知保留原身份对账，不称为成功。
 
 Windows证据见REVIEW_HANDOFF与daily-workflow-evidence/20261022：真实DB只读/无迁移检查、真实聊天/蓝图暂停与legacy Send拒绝、L2 A/B、状态未知、全部输入路径、显式监督及Stop优先级。L3生产完整链、Linux/生命周期、监督草稿/位置、具体交接/结果和最终用户体验仍待完成。模型调用0，无push或合并。
