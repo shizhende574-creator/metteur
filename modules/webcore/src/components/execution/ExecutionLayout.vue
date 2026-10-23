@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { PanelBottom, PanelRight, ShieldCheck, X } from '@lucide/vue'
 import WorkflowReceipts from '@/components/WorkflowReceipts.vue'
@@ -68,7 +69,10 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 <template>
   <div class="execution-layout">
-    <header class="run-header"><slot name="header" /></header>
+    <PageHeader class="run-header" title="Execution" toolbar>
+      <template #title><slot name="header-title">Execution</slot></template>
+      <slot name="header" />
+    </PageHeader>
     <div ref="body" class="run-body">
       <section ref="column" class="main-column">
         <div class="graph-area">
@@ -180,15 +184,6 @@ onBeforeUnmount(() => observer?.disconnect())
   font-size: 12px;
   min-height: 0;
 }
-.run-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 49px;
-  padding: 8px 17px;
-  border-bottom: 1px solid var(--divider);
-  flex-wrap: wrap;
-}
 .run-body {
   display: flex;
   flex: 1;
@@ -255,7 +250,7 @@ onBeforeUnmount(() => observer?.disconnect())
 .panel-tabs > button {
   height: 100%;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted-foreground);
 }
 .panel-tabs > button.active {

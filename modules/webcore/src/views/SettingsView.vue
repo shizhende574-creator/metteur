@@ -854,7 +854,7 @@ const modelsText = computed(() => {
           <button
             v-for="s in SETTINGS_SCOPES"
             :key="s.key"
-            class="rounded-md px-2.5 py-1 text-[12px] transition-colors duration-150"
+            class="rounded-md px-2.5 py-1 text-[13px] transition-colors duration-150"
             :class="
               settings.layer === s.key
                 ? 'bg-surface text-foreground shadow-card'
@@ -873,7 +873,7 @@ const modelsText = computed(() => {
           </button>
         </div>
         <button
-          class="btn-icon h-7! w-7!"
+          class="btn-icon"
           type="button"
           title="Open the user config.toml in the editor"
           :aria-label="'Open user config.toml'"
@@ -882,7 +882,7 @@ const modelsText = computed(() => {
           <UserCog class="h-4 w-4" />
         </button>
         <button
-          class="btn-icon h-7! w-7!"
+          class="btn-icon"
           type="button"
           :title="
             config.hasWorkspace
@@ -895,21 +895,11 @@ const modelsText = computed(() => {
         >
           <FileCog class="h-4 w-4" />
         </button>
-        <button
-          class="btn btn-outline h-7! px-2.5! text-[12px]!"
-          type="button"
-          :disabled="config.saving"
-          @click="reload"
-        >
+        <button class="btn btn-outline" type="button" :disabled="config.saving" @click="reload">
           <RotateCcw class="h-3.5 w-3.5" />
           Reload
         </button>
-        <button
-          class="btn btn-primary h-7! px-2.5! text-[12px]!"
-          type="button"
-          :disabled="config.saving"
-          @click="saveLayer"
-        >
+        <button class="btn btn-primary" type="button" :disabled="config.saving" @click="saveLayer">
           <Check class="h-3.5 w-3.5" />
           Save
         </button>

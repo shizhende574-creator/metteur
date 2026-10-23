@@ -79,7 +79,7 @@ function opTone(op: string): string {
       <div class="ml-auto flex items-center gap-1.5">
         <input
           v-model="snapDesc"
-          class="input h-8 w-48 text-[12px]!"
+          class="input w-48"
           placeholder="Snapshot description…"
           aria-label="Snapshot description"
           @keydown.enter="handleCreate"
@@ -88,6 +88,7 @@ function opTone(op: string): string {
           class="btn btn-primary h-8!"
           type="button"
           title="Create snapshot"
+          aria-label="Create snapshot"
           @click="handleCreate"
         >
           <GitCommitVertical class="h-4 w-4" />

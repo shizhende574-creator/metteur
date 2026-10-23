@@ -4,6 +4,7 @@
 
 ## 1. 当前接续点
 
+- 用户人工反馈当前使用暂时没问题；页面统一度增量已做成[UI-CONSISTENCY r1](UI_CONSISTENCY.md)，隔离预览19101、当前19093仍为原冻结候选，具体差异确认后接入。未明示的IME、实际睡眠/唤醒仍保留。
 - 已完成准备 PREP-01：确认 D-WF-01/02/03，二次核对设计与源码，更新范围计划、实施设计和本任务表。
 - 三项决策及完整契约见 [DESIGN.md](DESIGN.md)；本地范围/AC 原文见 [NEXT_STAGE_PLAN.md](../../../../../NEXT_STAGE_PLAN.md)。
 - 实施起点：codex/workspace-reliability-20261021，HEAD 6b19ffa36ea1013c8cd4eb14f49e5e32590081b1。已有规划/交接改动已保留于完整基线提交。

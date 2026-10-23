@@ -16,7 +16,14 @@ for (const theme of ['light', 'dark'])
         const path = '/src/stores/theme.ts'
         ;(await import(path)).useThemeStore().mode = selectedTheme
       }, theme)
-      const geometry: unknown[] = []
+      const geometry: {
+        size: string
+        weight: string
+        paddingLeft: string
+        paddingRight: string
+        offset: number
+        paneWidth: number
+      }[] = []
       for (const [route, title] of [
         ['tasks', 'Tasks'],
         ['memory', 'Project Memory'],
@@ -38,6 +45,7 @@ for (const theme of ['light', 'dark'])
               shellStyle = getComputedStyle(shell)
             return {
               weight: style.fontWeight,
+              paneWidth: shell.getBoundingClientRect().width,
               size: style.fontSize,
               paddingLeft: shellStyle.paddingLeft,
               paddingRight: shellStyle.paddingRight,
@@ -64,7 +72,14 @@ for (const theme of ['light', 'dark'])
         if (route === 'addon-pages')
           await expect(page).toHaveURL(/\/settings\?section=addon-pages$/)
       }
-      for (const value of geometry) expect(value).toEqual(geometry[0])
+      for (const value of geometry) {
+        expect(value.size).toBe('18px')
+        expect(value.weight).toBe('600')
+        const gutter = value.paneWidth <= 600 ? 16 : 24
+        expect(value.paddingLeft).toBe(`${gutter}px`)
+        expect(value.paddingRight).toBe(`${gutter}px`)
+        expect(value.offset).toBe(gutter)
+      }
       expect(errors).toEqual([])
       await expect(
         page.locator(

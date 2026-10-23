@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import InlineHelp from '@/components/resources/InlineHelp.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useExecutionStore } from '@/stores/execution'
 import TaskStartDialog from './TaskStartDialog.vue'
@@ -100,6 +101,10 @@ const models = computed(() => Object.keys(config.effective.llm?.models ?? {}))
 let preferredSession = ''
 let generation = 0
 const available = computed(() => gateway.connected.value && !busy.value)
+function start() {
+  if (available.value && !launching.value) starting.value = true
+}
+defineExpose({ start, refresh: load, available, launching })
 function load(append = false) {
   return updates.run(() => loadSnapshot(append))
 }
@@ -324,21 +329,14 @@ function reviewApproval(request: {
     <p v-if="updates.error" class="nx-live-alert" role="status">
       Live Updates Disconnected. {{ updates.error }}
     </p>
-    <header class="surface-header">
-      <div v-if="!embedded">
-        <h1 class="surface-title">
-          Tasks
-          <InlineHelp
-            text="Saved waits and bounded automatic turns. Current permissions are rechecked for every turn."
-          />
-        </h1>
-      </div>
+    <PageHeader v-if="!embedded" title="Tasks">
+      <template #help>
+        <InlineHelp
+          text="Saved waits and bounded automatic turns. Current permissions are rechecked for every turn."
+        />
+      </template>
       <div class="nx-live-actions" style="margin: 0">
-        <button
-          class="btn btn-primary"
-          :disabled="!available || launching"
-          @click="starting = true"
-        >
+        <button class="btn btn-primary" :disabled="!available || launching" @click="start">
           <Plus :size="15" />New task</button
         ><button
           class="btn btn-outline"
@@ -349,7 +347,7 @@ function reviewApproval(request: {
           <RefreshCw :size="16" />
         </button>
       </div>
-    </header>
+    </PageHeader>
     <p v-if="!gateway.connected.value" role="status" class="nx-live-alert">
       Disconnected. Showing last saved state; controls are unavailable.
     </p>

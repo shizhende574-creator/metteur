@@ -108,6 +108,7 @@ body {
   border-radius: 0 0 13px 13px;
 }
 .workspace-editor-surface {
+  container-type: inline-size;
   margin: 6px;
   border: 1px solid var(--divider);
   border-radius: 12px;
@@ -173,7 +174,7 @@ body {
   }
 
   .btn-icon {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* Inputs                                                              */

@@ -183,19 +183,7 @@
 }
 
 .chat-header {
-  display: flex;
-  height: 56px;
   flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--divider);
-  padding: 0 24px;
-}
-
-.chat-header-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
 .chat-header-button {

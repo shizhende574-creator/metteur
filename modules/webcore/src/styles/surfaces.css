@@ -1,35 +1,54 @@
 /* Shared page geometry and typography. Panels do not own outer gutters. */
+:root {
+  --page-gutter: 24px;
+  --page-title-size: 18px;
+  --page-title-height: 28px;
+  --page-header-height: 56px;
+}
 .surface-page {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1200px;
-  margin-inline: auto;
-  padding: 24px 28px;
+  min-width: 0;
+  padding: 0 var(--page-gutter) 24px;
   color: var(--foreground);
 }
 .surface-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 36px;
-  margin-bottom: 24px;
+  gap: 8px 16px;
+  min-height: var(--page-header-height);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  padding-block: 12px;
+  margin-bottom: 20px;
+}
+.surface-header-toolbar {
+  padding-inline: var(--page-gutter);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--divider);
+}
+.surface-heading-group {
+  min-width: 0;
+  max-width: 100%;
 }
 .surface-heading {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .surface-title {
   margin: 0;
-  font-size: 22px;
-  line-height: 1.4;
+  min-width: 0;
+  font-size: var(--page-title-size);
+  line-height: var(--page-title-height);
   font-weight: 600;
   letter-spacing: -0.025em;
 }
 .surface-description {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted-foreground);
   overflow-wrap: anywhere;
 }
@@ -39,6 +58,8 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  margin-left: auto;
 }
 .surface-tabs {
   display: flex;
@@ -61,15 +82,14 @@
   outline-offset: 2px;
 }
 @media (max-width: 760px) {
-  .surface-page {
-    padding: 20px 16px;
+  .surface-page,
+  .surface-header-toolbar {
+    --page-gutter: 16px;
   }
-  .surface-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .surface-title {
-    font-size: 20px;
+}
+@container (max-width: 600px) {
+  .surface-page,
+  .surface-header-toolbar {
+    --page-gutter: 16px;
   }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import InlineHelp from '@/components/resources/InlineHelp.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { CalendarClock, Plus, Pause, Play, Square, Pencil } from '@lucide/vue'
 import { useSurfaceNavigation } from '@/lib/surface'
@@ -41,6 +42,7 @@ const eligible = computed(() =>
   ),
 )
 const available = computed(() => gateway.connected.value && !busy.value)
+defineExpose({ open, eligible, available })
 function load() {
   return updates.run(() => loadSnapshot())
 }
@@ -279,19 +281,14 @@ async function control(t: TaskRecord, action: string) {
     <p v-if="updates.error" class="nx-live-alert" role="status">
       Live Updates Disconnected. {{ updates.error }}
     </p>
-    <header class="surface-header">
-      <div v-if="!embedded">
-        <h1 class="surface-title">
-          Schedules
-          <InlineHelp
-            text="Schedule a bounded continuation of an existing saved task and session."
-          />
-        </h1>
-      </div>
+    <PageHeader v-if="!embedded" title="Schedules">
+      <template #help>
+        <InlineHelp text="Schedule a bounded continuation of an existing saved task and session." />
+      </template>
       <button v-if="eligible" class="btn btn-primary" :disabled="!available" @click="open">
         <Plus :size="16" />New schedule
       </button>
-    </header>
+    </PageHeader>
     <p v-if="!gateway.connected.value" class="nx-live-alert">
       Disconnected. Changes are unavailable.
     </p>

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useWorkspaceRefresh } from '@/lib/workspace-refresh'
 import { useRouter } from 'vue-router'
-import { FileCode2, Play, Pause, Square, GitBranch } from '@lucide/vue'
+import { ChevronDown, FileCode2, Play, Pause, Square, GitBranch } from '@lucide/vue'
 import { gateway, type Blueprint } from '@/core'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -219,19 +219,24 @@ function openSource() {
 </script>
 <template>
   <ExecutionLayout ref="layout">
-    <template #header>
+    <template #header-title>
       <button
         class="blueprint-select"
+        aria-label="Select blueprint"
+        :title="graph?.name || 'Select a saved blueprint'"
         :disabled="execution.active || execution.launching || busy"
         @click="picker = true"
       >
-        {{ graph?.name || 'Select blueprint' }}
+        <span>{{ graph?.name || 'Execution' }}</span
+        ><ChevronDown :size="15" />
       </button>
+    </template>
+    <template #header>
       <span class="status">{{ label }}</span>
       <span class="status">{{ duration }}</span>
       <template v-if="execution.active"
         ><button
-          class="action"
+          class="btn btn-outline"
           :disabled="execution.controlBusy || !execution.runId || !execution.connected"
           @click="runtime?.pause_requested ? execution.resume() : execution.pause()"
         >
@@ -239,7 +244,7 @@ function openSource() {
             runtime?.pause_requested ? 'Continue' : 'Pause'
           }}</button
         ><button
-          class="action stop"
+          class="btn btn-danger-outline"
           :disabled="execution.stopping || !execution.runId"
           @click="execution.cancel()"
         >
@@ -248,7 +253,7 @@ function openSource() {
       >
       <button
         v-else-if="execution.current?.status === 'Suspended' && !selected"
-        class="action"
+        class="btn btn-outline"
         :disabled="execution.controlBusy || !execution.connected"
         @click="execution.recover()"
       >
@@ -256,7 +261,7 @@ function openSource() {
       </button>
       <button
         v-else
-        class="action primary"
+        class="btn btn-primary"
         :disabled="!graph || execution.active || execution.launching || busy"
         @click="run"
       >
@@ -424,33 +429,28 @@ function openSource() {
 </template>
 <style scoped>
 .blueprint-select {
-  font-size: 13px;
-  max-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(300px, 100%);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.blueprint-select span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.blueprint-select svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
 }
 .status {
   color: var(--muted-foreground);
   font-size: 12px;
-}
-.action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin-left: auto;
-}
-.action + .action {
-  margin-left: 0;
-}
-.primary {
-  background: var(--primary);
-  color: white;
-}
-button:disabled {
-  opacity: 0.45;
 }
 .io {
   display: grid;

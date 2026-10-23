@@ -3,12 +3,15 @@ import TaskPanel from '@/components/continuations/TaskPanel.vue'
 import SchedulePanel from '@/components/continuations/SchedulePanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import PageTabs from '@/components/PageTabs.vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { Plus, RefreshCw } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 const route = useRoute(),
   router = useRouter()
 const schedules = computed(() => route.query.view === 'schedules')
+const taskPanel = ref<InstanceType<typeof TaskPanel> | null>(null)
+const schedulePanel = ref<InstanceType<typeof SchedulePanel> | null>(null)
 function select(view: string) {
   void router.replace({ query: view === 'schedules' ? { view } : {} })
 }
@@ -16,7 +19,33 @@ useTabsStore().openSurface('tasks')
 </script>
 <template>
   <div class="surface-page">
-    <PageHeader title="Tasks" />
+    <PageHeader title="Tasks">
+      <template v-if="!schedules">
+        <button
+          class="btn btn-primary"
+          :disabled="!taskPanel?.available || taskPanel.launching"
+          @click="taskPanel?.start()"
+        >
+          <Plus :size="15" />New task
+        </button>
+        <button
+          class="btn btn-outline"
+          :disabled="!taskPanel?.available"
+          aria-label="Refresh tasks"
+          @click="taskPanel?.refresh()"
+        >
+          <RefreshCw :size="16" />
+        </button>
+      </template>
+      <button
+        v-else-if="schedulePanel?.eligible"
+        class="btn btn-primary"
+        :disabled="!schedulePanel.available"
+        @click="schedulePanel.open()"
+      >
+        <Plus :size="16" />New schedule
+      </button>
+    </PageHeader>
     <PageTabs
       :model-value="schedules ? 'schedules' : 'tasks'"
       label="Tasks"
@@ -26,7 +55,7 @@ useTabsStore().openSurface('tasks')
       ]"
       @update:model-value="select"
     />
-    <SchedulePanel v-if="schedules" embedded />
-    <TaskPanel v-else embedded />
+    <SchedulePanel v-if="schedules" ref="schedulePanel" embedded />
+    <TaskPanel v-else ref="taskPanel" embedded />
   </div>
 </template>
