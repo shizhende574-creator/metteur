@@ -4,6 +4,8 @@
 
 ## 当前进展
 
+- 最新：用户明确批准UI-CONSISTENCY r1接入，生产前端65cc92f已在19103接原daemon61576/原数据，原生ccecd9c不变。s4-ui-production-first真实控件/宿主ACK/长标题/窄屏暗色首轮通过，未调用模型、未创建任务；清单s4-ui-integrated-r1。AC-21技术通过，当前26项齐备，剩AC-19/23/27/28。19093保持原观察，不能把新Web进程称已长测；下文“r1待确认”是批准前快照。
+
 - 最新人工反馈“暂时没问题”，随后要求统一页面主标题与控件细节。UI-CONSISTENCY r1已完成共享PageHeader/18px标题/一致位置、任务标题操作、执行/设置共享控件，未加UI依赖；隔离冻结预览19101，详见UI_CONSISTENCY.md。当前19093/ccecd9c与持续观察未替换，当前工作树/后续UI提交不再等同其冻结网页源码；新增可见差异按C14待具体版本确认后接入。IME/实际睡眠/时长不由一般正面反馈代签。
 - 最新人类答复已批准新增US$1/最多36请求，并开始试用、稍后反馈。当前候选三项L4首轮全部通过，14请求全部settled、峰值费率估算US$0.0298446（provider实际金额null），未重跑。源码前后不变、二进制对应ccecd9c；证据s4-real-model-ccecd9c-first及s4-real-model-result.json。AC-20技术通过，当前25项齐备，剩AC-19/21/23/27/28；此前下文“额度0/待预算答复”是授权前快照。持续观察及实际人类结果仍未代签。
 - 当前产品候选ccecd9c，运行19093；s4-lifecycle-runtime-r1/manifest.json已对应产品提交，运行源码零差异（测试夹具修正另记录）。真实断流后修改文件、关闭ACK先于DB释放两项阻塞已修复；原失败、gRPC/SSE两桥、Job/child取消/实际重启证据见LIFECYCLE.md。s4-session-ownership-first首轮通过原A启动后B选择/占用输入/完成不抢页/新页位置与草稿恢复。

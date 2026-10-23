@@ -23,9 +23,9 @@
 
 [打开UI-CONSISTENCY r1](http://127.0.0.1:19101/?open=D%3A%2Fmetteur-demo%2Fmetrics)。这是冻结打包的隔离demo：可切换页面、设置分类、主题及窗口宽度，页脚标有demo；未连接真实工作区、不会调用付费模型。断开状态的任务动作仍禁用，不能把示例状态当作真实执行。Prompt Library仍从Explorer的书本按钮进入。
 
-预览产物在证据根`s4-ui-consistency-r1/web`，清单`manifest.json`记录源码/网页摘要及检查。当前正式试用入口19093仍运行ccecd9c，未替换；其8h观察继续，不能把该观察冒充本预览已长期运行。
+预览产物在证据根`s4-ui-consistency-r1/web`，清单`manifest.json`记录源码/网页摘要及检查。r1已获明确批准并接入正式入口19103（前端65cc92f，复用原宿主ccecd9c），生产清单`s4-ui-integrated-r1/manifest.json`。19093仅保留原8h观察；不把该观察冒充新Web进程已运行8h。
 
-本次涉及标题位置/字号的可见差异，依[SPEC C14](../../../package/authority-history/SPEC.md)的“接入后的布局、信息结构、授权文案或可见行为有显著变化，必须提供差异预览”，r1待具体版本反馈后接入。已批准r2及原产品决策不重复确认。
+本次涉及标题位置/字号的可见差异，依[SPEC C14](../../../package/authority-history/SPEC.md)的“接入后的布局、信息结构、授权文案或可见行为有显著变化，必须提供差异预览”，用户已明确答复“批准 UI-CONSISTENCY r1 接入（推荐）”，现已完成正式接入。已批准r2及原产品决策不重复确认。
 
 ## 验证与边界
 
@@ -36,3 +36,11 @@
 - 没有Rust改动、没有付费调用、没有重跑已通过业务故事/模型任务。首轮证据为`s4-ui-consistency-first`、`s4-ui-regression-first`；上下文首轮/补验为`s4-ui-workspace-context-first/retest`；打包及冒烟为`s4-ui-build-first.log`、`s4-ui-frozen-smoke-first`。
 
 用户“人工使用暂时没问题”已记录为当前候选的正面试用反馈，不推断实际IME、OS睡眠/唤醒或未说明的试用时长已验收。
+
+## 已批准的正式接入
+
+正式入口为[19103](http://127.0.0.1:19103/)，复用现有daemon/data；没有新建或拷贝用户工作区。19093原观察窗口不重载，19101批准的demo原件仍保留。
+
+`s4-ui-production-first`首轮通过真实生产Web→网关→daemon：聊天菜单及新会话、中文草稿宿主ACK、任务标题新建/刷新及原弹窗、键盘切到Schedules、蓝图选择与长中文标题/可用Run、Memory/Prompt/Version、带侧栏800px暗色Settings。没有点击Send/Run/Start task，未创建持久任务；该工作区LLM审计0，付费账本前后均14请求。实际截图/trace/结果保留。生产构建及新检查脚本定向lint通过。
+
+仅UI呈现与方法转接变更；草稿状态机、事件合并、请求策略、存储和原生执行代码未改。复用原模型/业务/持续记录，保留其原版本来源；新UI的生产控件和固定性能另验，不把旧长观察改名为新Web进程的观察。
