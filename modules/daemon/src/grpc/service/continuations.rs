@@ -19,6 +19,7 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
+    PrepareRebind { id: Uuid },
     List {
         after: Option<Uuid>,
     },
@@ -39,6 +40,8 @@ enum Query {
 struct Control {
     id: Uuid,
     action: String,
+    #[serde(default)]
+    rebind_digest: Option<String>,
 }
 fn response(value: serde_json::Value) -> Response<ResourceResponse> {
     Response::new(ResourceResponse {
@@ -55,7 +58,7 @@ fn decode<T: serde::de::DeserializeOwned>(req: &ResourceRequest) -> Result<T, St
         .map_err(|_| Status::invalid_argument("Invalid continuation fields"))
 }
 fn projection(r: &crate::continuation::store::TaskRecord) -> serde_json::Value {
-    serde_json::json!({"revision":r.revision,"task":r.task,"policy":r.policy,"schedules":r.schedules,"has_saved_context":r.saved_context.is_some(),"launch_intent":r.launch_intent})
+    serde_json::json!({"revision":r.revision,"task":r.task,"policy":r.policy,"schedules":r.schedules,"has_saved_context":r.saved_context.is_some(),"launch_intent":r.launch_intent,"rebind_receipt":r.rebind_receipt})
 }
 impl DaemonService {
     pub(crate) async fn query_continuations(
@@ -110,6 +113,21 @@ impl DaemonService {
                 Ok(value)
             };
         let value = match decode::<Query>(&req)? {
+            Query::PrepareRebind { id } => {
+                let _gate = ws.admit().await.map_err(to_status)?;
+                if self.state.chats.read().await.contains_key(ws.root()) || self.state.running.read().await.contains_key(ws.root()) {
+                    return Err(Status::failed_precondition("Finish the foreground execution before reviewing a new binding"));
+                }
+                let r = store.get(id).map_err(to_status)?.ok_or_else(|| Status::not_found("Task not found"))?;
+                if r.owner_subject != subject { return Err(Status::permission_denied("Task owner mismatch")); }
+                let context = crate::chat::session::load_thread(&ws.db, &r.task.session).map_err(to_status)?
+                    .ok_or_else(|| Status::not_found("Original conversation is unavailable"))?;
+                let registry = self.state.registry_for(Some(ws.root()), true).await?;
+                let config = ws.config.read().await;
+                let digest = crate::continuation::policy::binding_digest(&config, r.model_options.get("model").and_then(|v| v.as_str()), &registry);
+                crate::continuation::rebind::proposal(&r, ws.db.chat_revision(r.task.session.as_bytes()).map_err(to_status)?, &context, &digest,
+                    self.state.acl_store.read().unwrap().is_allowed(&subject, "/metteur.Daemon/SendChat"), now_ms()).map_err(to_status)?
+            }
             Query::List {
                 after,
             } => {
@@ -178,6 +196,44 @@ impl DaemonService {
         // Policy controls only mutate the existing task ledger. Stop must not
         // wait behind the execution it is meant to cancel.
         let store = ContinuationStore::new(ws.db.clone(), ws.root()).map_err(to_status)?;
+        if input.action == "rebind" {
+            let _gate = ws.admit().await.map_err(to_status)?;
+            let request_id = Uuid::parse_str(&req.request_id).map_err(|_| Status::invalid_argument("Rebind request UUID required"))?;
+            if request_id.is_nil() { return Err(Status::invalid_argument("Rebind request UUID required")); }
+            let digest = input.rebind_digest.as_deref().filter(|v| v.len() == 64)
+                .ok_or_else(|| Status::invalid_argument("Review a concrete rebind proposal first"))?;
+            let record = store.get(input.id).map_err(to_status)?.ok_or_else(|| Status::not_found("Task not found"))?;
+            if record.owner_subject != subject { return Err(Status::permission_denied("Task owner mismatch")); }
+            if let Some((id, previous)) = &record.rebind_receipt {
+                if *id == request_id {
+                    if previous != digest { return Err(Status::failed_precondition("Rebind request identity conflict")); }
+                    return Ok(response(projection(&record)));
+                }
+            }
+            if self.state.chats.read().await.contains_key(ws.root()) || self.state.running.read().await.contains_key(ws.root())
+                || super::foreground::unresolved_writes(&ws.db, ws.root()).map_err(to_status)? {
+                return Err(Status::failed_precondition("Workspace is occupied or has unresolved write effects"));
+            }
+            let context = crate::chat::session::load_thread(&ws.db, &record.task.session).map_err(to_status)?
+                .ok_or_else(|| Status::not_found("Original conversation is unavailable"))?;
+            let registry = self.state.registry_for(Some(ws.root()), true).await?;
+            let config = ws.config.read().await;
+            let config_digest = crate::continuation::policy::binding_digest(&config, record.model_options.get("model").and_then(|v| v.as_str()), &registry);
+            let r = store.update(input.id, req.expected_revision, |r| {
+                let current = ws.db.chat_revision(r.task.session.as_bytes())?;
+                let proposal = crate::continuation::rebind::proposal(r, current, &context, &config_digest,
+                    self.state.acl_store.read().unwrap().is_allowed(&subject, "/metteur.Daemon/SendChat"), now_ms())?;
+                if proposal["digest"].as_str() != Some(digest) {
+                    return Err(DaemonError::Execution("Rebind proposal changed; review it again".into()));
+                }
+                crate::continuation::rebind::apply(r, current, context, now_ms());
+                r.rebind_receipt = Some((request_id, digest.to_owned()));
+                Ok(())
+            }).map_err(to_status)?;
+            let mut value = projection(&r);
+            value["workflow"] = crate::continuation::presentation::workflow(&r, r.task.expected_revision, true, now_ms());
+            return Ok(response(value));
+        }
         let r = store
             .update(input.id, req.expected_revision, |r| {
                 if r.owner_subject != subject {

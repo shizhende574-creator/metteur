@@ -33,6 +33,77 @@ const facts = computed(() => entry.value?.workflow)
 const allowed = (action: string) => !!facts.value?.allowed_actions.includes(action)
 const stopTarget = ref<{ root: string; id: string; revision: number; goal: string } | null>(null)
 const taskPrepared = ref<{ root: string; entity: string } | null>(null)
+interface RebindProposal {
+  task: string
+  revision: number
+  session: string
+  session_revision: number
+  digest: string
+  goal: string
+  latest_user_input: string | null
+  policy: { expires_ms: number; detached: boolean }
+  budget: TaskRecord['task']['budget']
+  wait: NonNullable<TaskRecord['task']['wait']>
+}
+const rebindReview = ref<{ root: string; request: string; proposal: RebindProposal } | null>(null)
+const rebindError = ref('')
+async function prepareRebind() {
+  const root = workspace.active?.path,
+    record = entry.value,
+    ticket = generation
+  if (!root || !record || !available.value) return
+  busy.value = true
+  try {
+    const res = await gateway.resourceRequest('queryContinuations', root, {
+      operation: 'prepare_rebind',
+      id: record.task.id,
+    })
+    if (ticket !== generation || entry.value?.task.id !== record.task.id) return
+    if (!res.ok) {
+      error.value = res.error
+      return
+    }
+    const proposal = res.data as RebindProposal
+    if (proposal.task !== record.task.id || !proposal.digest || !proposal.wait) {
+      error.value = 'Invalid binding proposal; refresh the task.'
+      return
+    }
+    rebindReview.value = { root, request: crypto.randomUUID(), proposal }
+    rebindError.value = ''
+  } finally {
+    busy.value = false
+  }
+}
+async function confirmRebind() {
+  const review = rebindReview.value,
+    ticket = generation
+  if (!review || review.root !== workspace.active?.path || !available.value) return
+  busy.value = true
+  try {
+    const res = await gateway.resourceRequest(
+      'controlContinuation',
+      review.root,
+      {
+        id: review.proposal.task,
+        action: 'rebind',
+        rebind_digest: review.proposal.digest,
+      },
+      review.proposal.revision,
+      review.request,
+    )
+    if (ticket !== generation) return
+    if (!res.ok) {
+      rebindError.value = res.error
+      return
+    }
+    rebindReview.value = null
+    await load()
+  } catch (cause) {
+    rebindError.value = `Outcome unknown; retry this same confirmation to reconcile. ${String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
 function requestStop() {
   const r = entry.value,
     root = workspace.active?.path
@@ -167,6 +238,8 @@ watch(
     launching.value = false
     taskPrepared.value = null
     stopTarget.value = null
+    rebindReview.value = null
+    rebindError.value = ''
   },
   { immediate: true },
 )
@@ -411,6 +484,14 @@ function reviewApproval(request: {
           <strong>{{ facts.reason }}</strong>
           <p>{{ facts.next_action }}</p>
           <button
+            v-if="allowed('rebind')"
+            class="btn"
+            :disabled="!available"
+            @click="prepareRebind"
+          >
+            Review new binding
+          </button>
+          <button
             v-if="
               allowed('new_plan') &&
               !Object.values(entry.task.sources).some((source) => !!source.terminal)
@@ -551,6 +632,55 @@ function reviewApproval(request: {
           <button class="btn btn-outline" @click="confirm = false">Keep task</button
           ><button class="btn nx-live-danger" :disabled="busy" @click="control('stop')">
             Stop task
+          </button>
+        </div>
+      </section>
+    </div>
+    <div v-if="rebindReview" class="nx-live-overlay" @keydown.esc="!busy && (rebindReview = null)">
+      <section
+        v-dialog-focus
+        role="dialog"
+        aria-modal="true"
+        aria-label="Review new binding"
+        class="nx-live-modal"
+      >
+        <h2>Continue with the updated conversation?</h2>
+        <p>{{ rebindReview.proposal.goal }}</p>
+        <p>
+          The original task will use its conversation’s latest saved input and the same selected
+          sources. Existing usage and consumed results are retained.
+        </p>
+        <blockquote>{{ rebindReview.proposal.latest_user_input }}</blockquote>
+        <p>
+          {{ rebindReview.proposal.budget.used_turns }} of
+          {{ rebindReview.proposal.budget.max_turns }} turns used;
+          {{ rebindReview.proposal.budget.consumed_tokens }} of
+          {{ rebindReview.proposal.budget.token_limit }} tokens used.
+        </p>
+        <p>
+          Authorization expires
+          {{ new Date(rebindReview.proposal.policy.expires_ms).toLocaleString() }}.
+          {{
+            rebindReview.proposal.policy.detached
+              ? 'Authorized background continuation remains enabled.'
+              : 'The existing connection policy remains in effect.'
+          }}
+        </p>
+        <details class="nx-live-disclosure">
+          <summary>Conversation and sources</summary>
+          <p>
+            Session {{ rebindReview.proposal.session }} · revision
+            {{ rebindReview.proposal.session_revision }}
+          </p>
+          <p v-for="source in rebindReview.proposal.wait.sources" :key="source">{{ source }}</p>
+        </details>
+        <p v-if="rebindError" class="nx-live-alert" role="alert">{{ rebindError }}</p>
+        <div class="nx-live-actions">
+          <button class="btn btn-outline" :disabled="busy" @click="rebindReview = null">
+            Cancel
+          </button>
+          <button class="btn" :disabled="busy" @click="confirmRebind">
+            Confirm binding and continue
           </button>
         </div>
       </section>

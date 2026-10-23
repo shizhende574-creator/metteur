@@ -15,6 +15,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecord {
+    #[serde(default)]
+    pub rebind_receipt: Option<(Uuid, String)>,
     pub schema_version: u32,
     pub revision: u64,
     pub workspace: String,
@@ -193,6 +195,7 @@ impl ContinuationStore {
             return Err(DaemonError::Execution("Task already exists".into()));
         }
         self.write(TaskRecord {
+            rebind_receipt: None,
             schema_version: 1,
             revision: 1,
             workspace: self.workspace.clone(),

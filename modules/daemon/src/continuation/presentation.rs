@@ -115,6 +115,9 @@ pub fn workflow_with_approval(
     if code == "permission_revoked" {
         actions.push("open_settings");
     }
+    if super::rebind::eligible(r, current_revision, may_send, now) {
+        actions.push("rebind");
+    }
     let waiting: Vec<_> = t
         .wait
         .iter()

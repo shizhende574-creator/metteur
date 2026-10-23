@@ -153,6 +153,84 @@ async function tasks(page: Page) {
   await expect(page.getByRole('heading', { name: 'First task', exact: true })).toBeVisible()
 }
 
+test('rebind requires concrete confirmation and retries a lost receipt with the same identity', async ({
+  page,
+}) => {
+  await open(page)
+  await page.evaluate(async () => {
+    const c = '/src/core/index.ts',
+      { gateway } = await import(c)
+    const f = gateway.resultFixture,
+      row = f.rows[0]
+    row.workflow.allowed_actions.push('rebind')
+    row.task.wait = { sources: ['saved'], mode: 'all', deadline_ms: Date.now() + 60000, params: {} }
+    const original = gateway.resourceRequest.bind(gateway)
+    f.rebinds = []
+    gateway.resourceRequest = async (
+      method: string,
+      root: string,
+      payload: any,
+      expected: number,
+      request: string,
+    ) => {
+      if (method === 'queryContinuations' && payload.operation === 'prepare_rebind')
+        return {
+          ok: true,
+          data: {
+            task: row.task.id,
+            revision: row.revision,
+            session: row.task.session,
+            session_revision: 3,
+            digest: 'a'.repeat(64),
+            goal: row.policy.purpose,
+            latest_user_input: 'Preserve the existing API',
+            budget: row.task.budget,
+            policy: row.policy,
+            wait: row.task.wait,
+          },
+        }
+      if (method === 'controlContinuation' && payload.action === 'rebind') {
+        f.rebinds.push({ root, payload, expected, request })
+        if (f.rebinds.length === 1)
+          return { ok: false, error: 'Connection lost after confirmation' }
+        row.workflow.allowed_actions = ['stop']
+        return { ok: true, data: row }
+      }
+      return original(method, root, payload, expected, request)
+    }
+  })
+  await tasks(page)
+  await page.getByRole('button', { name: 'Review new binding', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Review new binding' })
+  await expect(dialog).toContainText('Preserve the existing API')
+  await expect(dialog).toContainText('2 of 4 turns used')
+  expect(
+    await page.evaluate(
+      async () => (await import('/src/core/index.ts')).gateway.resultFixture.rebinds.length,
+    ),
+  ).toBe(0)
+  await dialog.getByRole('button', { name: 'Confirm binding and continue' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Connection lost')
+  await dialog.getByRole('button', { name: 'Confirm binding and continue' }).click()
+  await expect(dialog).toBeHidden()
+  const result = await page.evaluate(async () => {
+    const c = '/src/core/index.ts',
+      s = '/src/stores/chat.ts'
+    const f = (await import(c)).gateway.resultFixture
+    return {
+      calls: f.rebinds,
+      sends: f.sends,
+      draft: (await import(s)).useChatStore().draft,
+      budget: f.rows[0].task.budget,
+    }
+  })
+  expect(result.calls).toHaveLength(2)
+  expect(result.calls[0]).toEqual(result.calls[1])
+  expect(result.sends).toBe(0)
+  expect(result.draft).toBe('keep existing draft')
+  expect(result.budget.consumed_tokens).toBe(1200)
+})
+
 test('saved results keep failed checks visible and enter the existing draft without a model call', async ({
   page,
 }) => {
