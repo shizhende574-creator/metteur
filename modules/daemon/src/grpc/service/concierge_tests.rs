@@ -84,6 +84,7 @@ async fn pending_supervision_reconciliation_is_owner_scoped_and_does_not_touch_c
     let mut copies = Vec::new();
     for (kind, id) in [("supervision", accepted), ("supervision", missing), ("chat", chat)] {
         let draft = crate::storage::recovery::DraftInput {
+            creation_epoch: None,
             id: Uuid::new_v4(),
             window_id: Uuid::new_v4(),
             kind: kind.into(),

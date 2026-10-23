@@ -294,6 +294,7 @@ mod tests {
             .unwrap()
             .backup(
                 DraftInput {
+                    creation_epoch: None,
                     id: Uuid::new_v4(),
                     window_id: Uuid::new_v4(),
                     kind: "view_state".into(),

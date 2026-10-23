@@ -12,6 +12,7 @@ pub const MAX_RECORD_BYTES: usize = 1024 * 1024;
 pub const MAX_SCOPE_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_ACTIVE: usize = 512;
 pub const MAX_RECORDS: usize = 4096;
+pub const MAX_TOMBSTONES: usize = 128;
 pub const MAX_PAGE: usize = 50;
 const SCHEMA: u32 = 1;
 
@@ -22,6 +23,9 @@ fn unavailable(_: impl std::fmt::Display) -> metteur_shared::resources::Resource
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct DraftInput {
+    /// Required for new identities after the first tombstone compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_epoch: Option<Uuid>,
     pub id: Uuid,
     pub window_id: Uuid,
     pub kind: String,
@@ -94,12 +98,23 @@ impl RecoveryStore {
     fn records_prefix(&self) -> Vec<u8> {
         format!("{}records/", self.prefix).into_bytes()
     }
+    fn epoch_key(&self) -> Vec<u8> {
+        format!("{}creation_epoch", self.prefix).into_bytes()
+    }
+    pub fn creation_epoch(&self) -> Result<Option<Uuid>> {
+        self.check_schema()?;
+        self.db
+            .get(cf::EXECUTION_STATE, &self.epoch_key())
+            .map_err(unavailable)?
+            .map(|raw| Uuid::from_slice(&raw).map_err(unavailable))
+            .transpose()
+    }
     fn check_schema(&self) -> Result<()> {
         if self
             .db
             .get(cf::EXECUTION_STATE, &self.marker())
             .map_err(unavailable)?
-            .is_some_and(|value| value != b"1")
+            .is_some_and(|value| value != b"1" && value != b"2")
         {
             return Err(fault(
                 "unsupported_schema",
@@ -291,6 +306,12 @@ impl RecoveryStore {
         let _guard = self.db.resource_gate.lock().map_err(unavailable)?;
         self.check_schema()?;
         let old = self.get(input.id)?;
+        if old.is_none() && self.creation_epoch()? != input.creation_epoch {
+            return Err(fault(
+                "creation_epoch_required",
+                "Recovery generation changed; refresh before creating a new copy",
+            ));
+        }
         if let Some(previous) = &old {
             if previous.request_id == request {
                 if previous.request_digest != fingerprint {
@@ -305,6 +326,7 @@ impl RecoveryStore {
                 return Err(fault("discarded", "Draft was discarded; late writes are rejected"));
             }
             if previous.input.window_id != input.window_id
+                || previous.input.creation_epoch != input.creation_epoch
                 || previous.input.kind != input.kind
                 || previous.input.entity != input.entity
             {
@@ -355,8 +377,15 @@ impl RecoveryStore {
             &serde_json::to_vec(&("discard", id, expected, saved_sequence)).map_err(unavailable)?,
         );
         let _guard = self.db.resource_gate.lock().map_err(unavailable)?;
-        let mut record =
-            self.get(id)?.ok_or_else(|| fault("not_found", "Recovery copy not found"))?;
+        let mut record = self.get(id)?.ok_or_else(|| {
+            if expected > 0 && self.creation_epoch().ok().flatten().is_some() {
+                // Active records are never reclaimed. A missing previously
+                // acknowledged copy is therefore already retired.
+                fault("retired", "Recovery copy was already discarded and compacted")
+            } else {
+                fault("not_found", "Recovery copy not found")
+            }
+        })?;
         if record.request_id == request {
             if record.request_digest != fingerprint {
                 return Err(fault("request_conflict", "Recovery request ID has different content"));
@@ -471,11 +500,23 @@ impl RecoveryStore {
             .db
             .resource_scan(&self.records_prefix(), &[], MAX_RECORDS + 1)
             .map_err(unavailable)?;
+        let mut retired: Vec<_> = rows
+            .iter()
+            .filter_map(|(key, raw)| {
+                let other = Self::decode(raw).ok()?;
+                (other.discarded && *key != self.key(record.input.id))
+                    .then_some((other.updated_ms, key.clone()))
+            })
+            .collect();
+        retired.sort();
+        let excess = retired.len().saturating_sub(MAX_TOMBSTONES - usize::from(record.discarded));
+        let deletes: std::collections::BTreeSet<_> =
+            retired.into_iter().take(excess).map(|(_, key)| key).collect();
         let mut total = bytes.len();
         let mut count = 1;
         let mut active = usize::from(!record.discarded);
         for (other_key, raw) in rows {
-            if other_key == key {
+            if other_key == key || deletes.contains(&other_key) {
                 continue;
             }
             count += 1;
@@ -491,7 +532,19 @@ impl RecoveryStore {
                 "Recovery capacity reached; existing copies were retained",
             ));
         }
-        self.db.recovery_batch(&[(self.marker(), b"1".to_vec()), (key, bytes)]).map_err(unavailable)
+        let compacted = !deletes.is_empty();
+        let version = if compacted || self.creation_epoch()?.is_some() {
+            b"2"
+        } else {
+            b"1"
+        };
+        let mut writes = vec![(self.marker(), version.to_vec()), (key, bytes)];
+        if compacted {
+            writes.push((self.epoch_key(), Uuid::new_v4().as_bytes().to_vec()));
+        }
+        self.db
+            .recovery_compact_batch(&writes, &deletes.into_iter().collect::<Vec<_>>())
+            .map_err(unavailable)
     }
 }
 
@@ -506,6 +559,7 @@ mod tests {
     }
     fn input() -> DraftInput {
         DraftInput {
+            creation_epoch: None,
             id: Uuid::new_v4(),
             window_id: Uuid::new_v4(),
             kind: "canvas".into(),
@@ -522,6 +576,85 @@ mod tests {
             selected_model: Some("chosen-model".into()),
             view: Some(serde_json::json!({"cursor":17})),
         }
+    }
+
+    #[test]
+    fn saved_copy_churn_reclaims_capacity_without_reviving_retired_ids() {
+        let (root, db, store) = setup();
+        let live = input();
+        store.backup(live.clone(), 0, Uuid::new_v4(), 1).unwrap();
+        let old = input();
+        store.backup(old.clone(), 0, Uuid::new_v4(), 2).unwrap();
+        let retired = store.discard(old.id, 1, 1, Uuid::new_v4(), 3).unwrap();
+        // A legacy scope already full of tombstones must repair on its next
+        // ordinary write; no deletion of active/corrupt copies is allowed.
+        let mut seed = Vec::new();
+        for n in 0..MAX_RECORDS - 2 {
+            let mut row = retired.clone();
+            row.input.id = Uuid::new_v4();
+            row.updated_ms = 4 + n as u64;
+            seed.push((store.key(row.input.id), serde_json::to_vec(&row).unwrap()));
+        }
+        db.recovery_batch(&seed).unwrap();
+        for n in 0..MAX_TOMBSTONES * 2 {
+            let mut draft = input();
+            draft.creation_epoch = store.creation_epoch().unwrap();
+            store.backup(draft.clone(), 0, Uuid::new_v4(), 10_000 + n as u64).unwrap();
+            store.discard(draft.id, 1, 1, Uuid::new_v4(), 20_000 + n as u64).unwrap();
+        }
+        assert!(
+            db.resource_scan(&store.records_prefix(), &[], MAX_RECORDS + 1).unwrap().len()
+                <= MAX_TOMBSTONES + 1
+        );
+        assert_eq!(store.get(live.id).unwrap().unwrap().input.raw, live.raw);
+        assert!(store.get(old.id).unwrap().is_none());
+        assert_eq!(
+            store.backup(old.clone(), 0, Uuid::new_v4(), 30_000).unwrap_err().code,
+            "creation_epoch_required"
+        );
+        assert_eq!(
+            store.discard(old.id, 1, 1, Uuid::new_v4(), 30_000).unwrap_err().code,
+            "retired"
+        );
+        let mut newer = live.clone();
+        newer.edit_sequence += 1;
+        newer.raw = "still editable after compaction".into();
+        store.backup(newer, 1, Uuid::new_v4(), 30_001).unwrap();
+        drop(store);
+        drop(db);
+        let reopened =
+            RecoveryStore::new(Db::open(&root).unwrap(), "project:fixture", "local").unwrap();
+        assert_eq!(
+            reopened.backup(old, 0, Uuid::new_v4(), 30_002).unwrap_err().code,
+            "creation_epoch_required"
+        );
+        assert_eq!(
+            reopened.get(live.id).unwrap().unwrap().input.raw,
+            "still editable after compaction"
+        );
+    }
+
+    #[test]
+    fn failed_compaction_keeps_old_generation_and_all_records() {
+        let (_, db, store) = setup();
+        for n in 0..MAX_TOMBSTONES {
+            let draft = input();
+            store.backup(draft.clone(), 0, Uuid::new_v4(), n as u64).unwrap();
+            store.discard(draft.id, 1, 1, Uuid::new_v4(), n as u64).unwrap();
+        }
+        let draft = input();
+        store.backup(draft.clone(), 0, Uuid::new_v4(), 1000).unwrap();
+        db.fail_recovery_write.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            store.discard(draft.id, 1, 1, Uuid::new_v4(), 1001).unwrap_err().code,
+            "storage_unavailable"
+        );
+        assert_eq!(store.creation_epoch().unwrap(), None);
+        assert!(!store.get(draft.id).unwrap().unwrap().discarded);
+        assert_eq!(
+            db.resource_scan(&store.records_prefix(), &[], MAX_RECORDS + 1).unwrap().len(),
+            MAX_TOMBSTONES + 1
+        );
     }
 
     #[test]

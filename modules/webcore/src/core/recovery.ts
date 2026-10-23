@@ -3,6 +3,7 @@ import type { DaemonGateway } from './gateway'
 
 export type RecoveryKind = 'text' | 'canvas' | 'chat' | 'new_chat' | 'supervision' | 'view_state'
 export interface RecoveryInput {
+  creation_epoch?: string | null
   id: string
   window_id: string
   kind: RecoveryKind
@@ -46,7 +47,12 @@ export class RecoveryCopy {
   error = ''
   private inFlight: Promise<boolean> | null = null
   private discardInFlight: Promise<boolean> | null = null
-  private pending: { request: string; expected: number; input: RecoveryInput } | null = null
+  private pending: {
+    request: string
+    expected: number
+    input: RecoveryInput
+    uncertain: boolean
+  } | null = null
   private debounce?: ReturnType<typeof setTimeout>
   private maximum?: ReturnType<typeof setTimeout>
   private stopped = false
@@ -138,6 +144,7 @@ export class RecoveryCopy {
     }
   }
   private async backupLoop(): Promise<boolean> {
+    let epochRefreshes = 0
     while (
       !this.stopped &&
       !this.discarding &&
@@ -147,6 +154,7 @@ export class RecoveryCopy {
         request: crypto.randomUUID(),
         expected: this.revision,
         input: clone(this.input),
+        uncertain: false,
       }
       const pending = this.pending
       this.state = 'backing_up'
@@ -174,9 +182,40 @@ export class RecoveryCopy {
         } catch {
           /* Transport outcome remains unknown. */
         }
+        if (
+          code === 'creation_epoch_required' &&
+          pending.expected === 0 &&
+          !pending.uncertain &&
+          epochRefreshes++ < 2
+        ) {
+          // Only a definitive first-write rejection permits a fresh identity.
+          // Never turn a lost ACK into a new copy of possibly discarded input.
+          try {
+            const caps = await this.transport.resourceRequest('recovery', this.workspace, {
+              scope: this.scope,
+              action: { operation: 'capabilities' },
+            })
+            const epoch = caps.ok && (caps.data as { creation_epoch?: string }).creation_epoch
+            if (epoch && /^[0-9a-f-]{36}$/i.test(epoch)) {
+              this.input.id = crypto.randomUUID()
+              this.input.creation_epoch = epoch
+              this.pending = null
+              continue
+            }
+          } catch {
+            /* Keep the rejected snapshot and all local input. */
+          }
+        }
+        if (!code) pending.uncertain = true
         this.state = /unimplemented|unsupported_schema/i.test(result.error)
           ? 'unsupported'
-          : ['revision_conflict', 'identity_conflict', 'discarded', 'stale_edit'].includes(code)
+          : [
+                'revision_conflict',
+                'identity_conflict',
+                'discarded',
+                'stale_edit',
+                'creation_epoch_required',
+              ].includes(code)
             ? 'conflict'
             : code
               ? 'unbacked'
@@ -196,6 +235,7 @@ export class RecoveryCopy {
         !Number.isSafeInteger(record.revision) ||
         record.revision <= this.revision
       ) {
+        pending.uncertain = true
         this.state = 'unknown'
         this.error = 'Invalid recovery acknowledgment; reconcile this copy.'
         this.changed()
@@ -270,6 +310,21 @@ export class RecoveryCopy {
         )
       } catch (error) {
         result = { ok: false, error: String(error) }
+      }
+      if (!result.ok) {
+        let retired = false
+        try {
+          retired = JSON.parse(result.error).code === 'retired'
+        } catch {
+          /* Unknown outcome. */
+        }
+        if (retired) {
+          // The host only retires discarded records; active copies are retained.
+          result = {
+            ok: true,
+            data: { discarded: true, input: { id: this.input.id }, revision: this.revision + 1 },
+          }
+        }
       }
       if (!result.ok) {
         this.discarding = false

@@ -31,6 +31,63 @@ function copy(transport) {
   )
 }
 
+test('compacted generation refreshes only definitively rejected new identities', async () => {
+  const epoch = crypto.randomUUID(),
+    calls = []
+  const instance = copy({
+    resourceRequest: async (_method, _ws, payload) => {
+      calls.push(structuredClone(payload))
+      if (payload.action.operation === 'capabilities')
+        return { ok: true, data: { creation_epoch: epoch } }
+      if (payload.action.input.creation_epoch !== epoch)
+        return { ok: false, error: '{"code":"creation_epoch_required"}' }
+      return ack(payload, 1)
+    },
+  })
+  const oldId = instance.input.id
+  instance.edit({ raw: 'retain exact input\r\n中文', selections: ['one', 'one'] })
+  assert.equal(await instance.flush(), true)
+  assert.notEqual(instance.input.id, oldId)
+  assert.equal(instance.input.creation_epoch, epoch)
+  assert.equal(instance.input.raw, 'retain exact input\r\n中文')
+  assert.deepEqual(instance.input.selections, ['one', 'one'])
+  assert.equal(calls.length, 3)
+  instance.dispose()
+})
+
+test('a lost initial ACK followed by retirement never automatically recreates input', async () => {
+  let count = 0
+  const instance = copy({
+    resourceRequest: async (_method, _ws, payload) => {
+      assert.equal(payload.action.operation, 'backup')
+      if (++count === 1) throw Error('lost ACK')
+      return { ok: false, error: '{"code":"creation_epoch_required"}' }
+    },
+  })
+  instance.edit({ raw: 'unknown old copy' })
+  const id = instance.input.id
+  assert.equal(await instance.flush(), false)
+  assert.equal(await instance.flush(), false)
+  assert.equal(instance.input.id, id)
+  assert.equal(instance.state, 'conflict')
+  assert.equal(instance.input.raw, 'unknown old copy')
+  instance.dispose()
+})
+
+test('a compacted discard receipt closes only the acknowledged copy', async () => {
+  const instance = copy({
+    resourceRequest: async (_method, _ws, payload) =>
+      payload.action.operation === 'backup'
+        ? ack(payload, 1)
+        : { ok: false, error: '{"code":"retired"}' },
+  })
+  instance.edit({ raw: 'saved' })
+  assert.equal(await instance.flush(), true)
+  assert.equal(await instance.discard(), true)
+  assert.equal(instance.state, 'discarded')
+  assert.equal(instance.input.raw, '')
+})
+
 test('backup ACK confirms its snapshot, then serially backs up a newer edit', async () => {
   const calls = [],
     gates = [deferred(), deferred()]

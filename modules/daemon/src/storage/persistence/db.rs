@@ -286,11 +286,29 @@ impl Db {
     /// Recovery input is not an execution/resource change. Backups must not
     /// wake every workspace subscriber or the continuation dispatcher.
     pub(crate) fn recovery_batch(&self, values: &[(Vec<u8>, Vec<u8>)]) -> DaemonResult<()> {
+        self.recovery_compact_batch(values, &[])
+    }
+
+    /// Retirement fences and deleted tombstones must share the durable commit.
+    /// Like backups, compaction must not notify business-state subscribers.
+    pub(crate) fn recovery_compact_batch(
+        &self,
+        values: &[(Vec<u8>, Vec<u8>)],
+        deletes: &[Vec<u8>],
+    ) -> DaemonResult<()> {
         #[cfg(test)]
         if self.fail_recovery_write.swap(false, std::sync::atomic::Ordering::SeqCst) {
             return Err(DaemonError::Persistence("injected recovery WAL failure".into()));
         }
-        self.durable_resource_batch(values, false)
+        let handle = self.inner.cf_handle(cf::EXECUTION_STATE)
+            .ok_or_else(|| DaemonError::Persistence("missing resource family".into()))?;
+        let mut batch = rocksdb::WriteBatch::default();
+        for key in deletes { batch.delete_cf(handle, key); }
+        for (key, value) in values { batch.put_cf(handle, key, value); }
+        let mut options = rocksdb::WriteOptions::default();
+        options.set_sync(true);
+        self.inner.write_opt(batch, &options)
+            .map_err(|e| DaemonError::Persistence(e.to_string()))
     }
 
     fn durable_resource_batch(

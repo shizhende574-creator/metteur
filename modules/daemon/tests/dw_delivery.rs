@@ -694,6 +694,7 @@ async fn host_backed_pending_inputs_are_reconciled_before_another_browser_can_re
         [("chat", unreceived), ("new_chat", received), ("supervision", Uuid::new_v4())]
     {
         let draft = metteur_daemon::storage::recovery::DraftInput {
+            creation_epoch: None,
             id: Uuid::new_v4(),
             window_id: Uuid::new_v4(),
             kind: kind.into(),

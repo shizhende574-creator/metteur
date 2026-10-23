@@ -12,7 +12,9 @@
 
 namespace 为 `dw/recovery/<SHA256(scope, subject)>/`，位于既有 EXECUTION_STATE；使用 sync WAL 原子批写。恢复内容不进入 append-only 资源历史、不广播业务变化、不参与执行 checkpoint 或文件 rollback。没有新增 column family；旧程序可以打开原数据库，但不提供本能力。未知 marker/schema 不自动降级写入；损坏记录隔离，支持有界原始导出。
 
-单记录序列化上限 1 MiB；每 owner/scope 64 MiB，活动记录最多 512，含 tombstone 总记录最多 4096。分页最多 50，只返回 metadata，原文需逐条 read。损坏记录占用配额；没有按年龄静默淘汰。达到上限保留现有副本和内存输入并返回失败。整库灾备回滚不在“已备份”保证内，应先导出最新恢复数据；业务 rewind 不影响本 namespace。
+单记录序列化上限 1 MiB；每 owner/scope 64 MiB，活动记录最多 512，含 tombstone 总记录最多 4096。已明确保存或丢弃的 tombstone 最多保留128条；超过后与本次写入一起原子回收最旧标记，同时持久化新的 creation_epoch。活动稿、损坏/未知记录不回收。分页最多50，只返回metadata，原文需逐条read。达到活动稿/字节容量上限仍保留现有副本和内存输入并返回失败。整库灾备回滚不在“已备份”保证内，应先导出最新恢复数据；业务rewind不影响本namespace。
+
+首次回收将namespace marker升为2，记录正文仍为schema1。旧宿主拒绝读取marker2，不能原地降级；升级前冷副本/导出要求继续适用。新身份必须携带当前creation_epoch，旧身份的晚到创建请求不能复活已回收副本；已存在活动稿不受代次轮换影响。新客户端仅在首次写入明确拒绝且从未出现未知回执时读取能力、更新代次并创建新身份；未知回执保持原请求和原文，要求显式处置。丢弃重试遇retired表示宿主确认该已ACK身份已回收，可完成原丢弃；确认期间的新编辑仍另建副本。
 
 ## 版本与回执
 
