@@ -2,7 +2,7 @@
 
 A Visualization-First Agent Based on the Plan-and-Execute Paradigm.
 
-Current daily-workflow candidate: see [usage and trial](docs/daily-workflow/DAILY_USE.md), [AC-01–30 status](docs/daily-workflow/ACCEPTANCE.md), and [recoverable upgrade/rollback](docs/daily-workflow/RESTORE_GUIDE.md). Core implementation and technical scenarios are verified; real-model authorization, human IME/sleep/trial feedback, and the ongoing continuous observation are recorded separately. Earlier local-acceptance documents below remain historical evidence.
+Current daily-workflow candidate: see [usage and trial](docs/daily-workflow/DAILY_USE.md), [AC-01–30 status](docs/daily-workflow/ACCEPTANCE.md), and [recoverable upgrade/rollback](docs/daily-workflow/RESTORE_GUIDE.md). Core implementation, technical scenarios, and three approved real-model tasks are verified; human IME/sleep/trial feedback and the ongoing continuous observation remain pending. Earlier local-acceptance documents below remain historical evidence.
 
 ## Running the tests
 

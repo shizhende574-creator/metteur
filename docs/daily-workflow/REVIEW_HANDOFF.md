@@ -4,6 +4,7 @@
 
 ## 当前进展
 
+- 最新人类答复已批准新增US$1/最多36请求，并开始试用、稍后反馈。当前候选三项L4首轮全部通过，14请求全部settled、峰值费率估算US$0.0298446（provider实际金额null），未重跑。源码前后不变、二进制对应ccecd9c；证据s4-real-model-ccecd9c-first及s4-real-model-result.json。AC-20技术通过，当前25项齐备，剩AC-19/21/23/27/28；此前下文“额度0/待预算答复”是授权前快照。持续观察及实际人类结果仍未代签。
 - 当前产品候选ccecd9c，运行19093；s4-lifecycle-runtime-r1/manifest.json已对应产品提交，运行源码零差异（测试夹具修正另记录）。真实断流后修改文件、关闭ACK先于DB释放两项阻塞已修复；原失败、gRPC/SSE两桥、Job/child取消/实际重启证据见LIFECYCLE.md。s4-session-ownership-first首轮通过原A启动后B选择/占用输入/完成不抢页/新页位置与草稿恢复。
 - 当前技术矩阵见ACCEPTANCE.md，24项技术证据齐备，剩AC-19/20/21/23/27/28明确保留。8h双窗口观察在s4-observation-ccecd9c运行（launcher exec22384、Node54492），不提前宣称完成；旧eeb单窗实际71.2分钟/71次ACK后停止，数据保留。新预算US$1/36请求及用户实际试用反馈仍待人类答复，付费调用0。
 - Windows真实R8与当前程序：原地向后打开新增namespace的ListExecutions失败，原记录保留；前进升级/升级前冷副本回退/返回当前与双方新内容保全已实测，见RESTORE_GUIDE.md。旧冻结二进制摘要已核对，没有修改原运行包。完整人类试用样本已准备，DAILY_USE.md列入口和操作；未启动试用模型。
