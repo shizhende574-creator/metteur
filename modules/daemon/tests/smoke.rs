@@ -634,6 +634,7 @@ async fn smoke_open_save_execute() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -687,6 +688,7 @@ async fn smoke_completed_run_cannot_continue() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -760,6 +762,7 @@ async fn smoke_cancel_marks_run_cancelled() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -934,6 +937,7 @@ async fn smoke_audit_log() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -1283,6 +1287,7 @@ async fn smoke_sandbox_approval_allow_once() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: id,
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -1357,6 +1362,7 @@ async fn smoke_sandbox_approval_deny_once_fails_run() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: id,
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -1544,6 +1550,7 @@ async fn smoke_abstract_node_expands_and_runs() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -1827,6 +1834,7 @@ command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws.clone(),
             blueprint_id: blueprint.id,
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -1940,6 +1948,7 @@ command=["/usr/bin/python3","${{package}}/server.py","cli","normal",{}]
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws.clone(),
             blueprint_id: blueprint.id,
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -2113,6 +2122,7 @@ async fn addon_hooks_real_workspace_and_run_events_reach_rpc_and_cli() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws.clone(),
             blueprint_id: blueprint.id,
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -2313,6 +2323,7 @@ async fn smoke_addon_install_call_uninstall() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -2787,6 +2798,7 @@ res -> check
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: compiled.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -3069,6 +3081,7 @@ async fn smoke_function_library_save_execute() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: root.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -3268,6 +3281,7 @@ sum -> check
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: compiled.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -3773,6 +3787,7 @@ check -> stop
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: compiled.id.clone(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await
@@ -3860,6 +3875,7 @@ beta
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3930,6 +3946,7 @@ wait -> stop
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.clone(),
             blueprint_id: blueprint.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -3998,6 +4015,7 @@ wait -> stop
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path.to_string(),
             blueprint_id: blueprint.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         })
         .await
@@ -4182,6 +4200,7 @@ pause -> stop
             .execute_blueprint(ExecuteBlueprintRequest {
                 workspace_path: run_ws_path.clone(),
                 blueprint_id: blueprint.id.to_string(),
+                workflow_confirmation: String::new(),
                 blueprint_json: serde_json::to_string(&blueprint).unwrap(),
             })
             .await
@@ -4634,6 +4653,7 @@ async fn smoke_rejects_narrowing_float_into_int_edge() {
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: ws_path,
             blueprint_id: blueprint.id,
+            workflow_confirmation: String::new(),
             blueprint_json: inline,
         })
         .await

@@ -31,6 +31,13 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import type { Blueprint, BlueprintEdge, BlueprintNode, BlueprintPin, NodeCategory } from '@/core'
 import { gateway } from '@/core'
+import { useCodingWorkflowsStore } from '@/stores/coding-workflows'
+const codingWorkflows = useCodingWorkflowsStore()
+function startTemplate() {
+  if (!workspace.active) return
+  void codingWorkflows.openPlan(workspace.active.path)
+  openExecutionSurface('tasks')
+}
 import { useFeedbackStore } from '@/stores/feedback'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { usePromptResourcesStore } from '@/stores/prompt-resources'
@@ -1607,6 +1614,7 @@ function openVersionPanel() {
     <div class="flex h-11 shrink-0 items-center gap-2 border-b border-divider px-3">
       <Workflow class="h-4 w-4 text-muted-foreground" />
       <span class="text-[13px] font-medium">{{ blueprintTitle }}</span>
+      <button class="btn" type="button" @click="startTemplate">Start from template</button>
       <span v-if="dirty" class="h-1.5 w-1.5 rounded-full" style="background: var(--primary)" />
       <span v-else class="h-1.5 w-1.5 rounded-full bg-subtle" />
 

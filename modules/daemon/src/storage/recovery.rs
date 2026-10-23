@@ -266,7 +266,7 @@ impl RecoveryStore {
     fn check_input(input: &DraftInput) -> Result<()> {
         if !matches!(
             input.kind.as_str(),
-            "text" | "canvas" | "chat" | "new_chat" | "supervision" | "view_state"
+            "text" | "canvas" | "chat" | "new_chat" | "supervision" | "view_state" | "workflow" | "workflow_review"
         ) || input.entity.is_empty()
             || input.entity.len() > 2048
             || input.selections.len() > 64

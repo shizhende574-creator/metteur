@@ -85,6 +85,7 @@ pub(crate) async fn handle_exec(
             blueprint_id: blueprint_id.clone(),
             // The CLI always runs the stored blueprint; the canvas override is
             // for the GUI client holding an in-memory copy.
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await

@@ -83,6 +83,8 @@ async function copySelected() {
   }
 }
 function sourceLabel(kind: string | null, entity: string | null) {
+  if (kind === 'workflow') return 'Coding Plan'
+  if (kind === 'workflow_review') return 'Delivery Review'
   return kind === 'chat' || kind === 'new_chat'
     ? 'Chat Input'
     : kind === 'supervision'

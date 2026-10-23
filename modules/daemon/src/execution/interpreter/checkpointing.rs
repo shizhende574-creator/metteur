@@ -62,6 +62,8 @@ impl Interpreter {
         error: Option<String>,
     ) -> DaemonResult<()> {
         self.view.root = self.shared_blueprint.as_ref().map(|bp| bp.read().clone());
+        self.view.workflow_handoff = ctx.handoff_ref;
+        self.view.workflow_task = ctx.continuation.as_ref().map(|task| task.id);
         let mut checkpoint = ExecutionCheckpoint {
             view: self.view.clone(),
             transition_version: CHECKPOINT_TRANSITION_VERSION,

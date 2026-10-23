@@ -36,6 +36,9 @@ import type { RecoveryRecord } from '@/core/recovery'
 import { useForegroundStore } from '@/stores/foreground'
 import { useDocumentsStore } from '@/stores/documents'
 import { useSurfaceNavigation } from '@/lib/surface'
+import { useCodingWorkflowsStore } from '@/stores/coding-workflows'
+const codingWorkflows=useCodingWorkflowsStore()
+function startTemplate(){if(!workspace.active)return;void codingWorkflows.openPlan(workspace.active.path,chat.sessionId?{session:chat.sessionId,entity:chat.draftEntity}:null,chat.draft);openSurface('tasks')}
 
 /**
  * The ReAct chat surface.
@@ -579,6 +582,7 @@ const starterPrompts = [
     </div>
 
     <WorkflowReceipts />
+    <div class="px-3 py-1 text-[13px]"><button class="btn" :disabled="!workspace.active" @click="startTemplate">Start from template</button></div>
     <ChatThread
       :key="rerender"
       :messages="chat.messages"

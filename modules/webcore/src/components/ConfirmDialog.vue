@@ -33,6 +33,12 @@ const feedback = useFeedbackStore()
           <p class="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground wrap-break-word">
             {{ feedback.pending.req.message }}
           </p>
+          <details v-if="feedback.pending.req.details" class="mt-3 text-[13px]">
+            <summary>Commands & exact dependencies</summary>
+            <pre class="mt-2 max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word">{{
+              feedback.pending.req.details
+            }}</pre>
+          </details>
           <div class="mt-5 flex justify-end gap-2">
             <button class="btn" type="button" autofocus @click="feedback.settle(false)">
               {{ feedback.pending.req.rejectLabel || 'Cancel' }}

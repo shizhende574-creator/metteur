@@ -7,6 +7,10 @@ import { computed, ref } from 'vue'
 import { Plus, RefreshCw } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useCodingWorkflowsStore } from '@/stores/coding-workflows'
+import { useWorkspaceStore } from '@/stores/workspace'
+import WorkflowWorkbench from '@/components/workflows/WorkflowWorkbench.vue'
+const workflows=useCodingWorkflowsStore(),workspace=useWorkspaceStore()
 const route = useRoute(),
   router = useRouter()
 const schedules = computed(() => route.query.view === 'schedules')
@@ -18,9 +22,11 @@ function select(view: string) {
 useTabsStore().openSurface('tasks')
 </script>
 <template>
-  <div class="surface-page">
+  <WorkflowWorkbench v-if="workflows.current.mode" />
+  <div v-else class="surface-page">
     <PageHeader title="Tasks">
       <template v-if="!schedules">
+        <button class="btn" @click="workspace.active && workflows.openPlan(workspace.active.path)">Start from template</button>
         <button
           class="btn btn-primary"
           :disabled="!taskPanel?.available || taskPanel.launching"

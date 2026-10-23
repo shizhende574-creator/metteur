@@ -217,6 +217,7 @@ export interface DaemonGateway {
     /** The canvas being edited; sent so Run executes what the user sees even
      *  when the daemon mirror of the blueprint is stale. */
     blueprint?: Blueprint,
+    workflowConfirmation?: string,
   ): Promise<Result<void>>
   continueExecution(
     workspacePath: string,

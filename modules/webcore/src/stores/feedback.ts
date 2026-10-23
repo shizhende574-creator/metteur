@@ -13,6 +13,7 @@ export interface ToastMsg {
 export interface ConfirmRequest {
   header: string
   message: string
+  details?: string
   acceptLabel?: string
   rejectLabel?: string
   /** Stroke the accept button as destructive. */

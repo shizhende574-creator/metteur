@@ -18,6 +18,10 @@ package metteur;
 
 // The Metteur daemon service.
 service Daemon {
+  // Template compilation and evidence queries never execute the workflow.
+  rpc QueryCodingWorkflows(ResourceRequest) returns (ResourceResponse);
+  // Authenticated human review, separate from execution approval.
+  rpc RecordWorkflowReview(ResourceRequest) returns (ResourceResponse);
   // Input-only recovery. Ownership derives from the authenticated request.
   rpc Recovery(ResourceRequest) returns (ResourceResponse);
   // Durable manual-send receipts; querying never starts or replays a turn.
@@ -185,6 +189,8 @@ message ExecuteBlueprintRequest {
   // Optional canvas/native JSON asserting the saved graph the caller expects.
   // Save first: mismatched content cannot overwrite file authority or the mirror.
   string blueprint_json = 3;
+  // Exact dependency digest confirmed by the user for workflow template instances.
+  string workflow_confirmation = 4;
 }
 
 message ExecutionEvent {

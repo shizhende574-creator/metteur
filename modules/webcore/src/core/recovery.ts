@@ -1,7 +1,7 @@
 import type { Result } from './types'
 import type { DaemonGateway } from './gateway'
 
-export type RecoveryKind = 'text' | 'canvas' | 'chat' | 'new_chat' | 'supervision' | 'view_state'
+export type RecoveryKind = 'text' | 'canvas' | 'chat' | 'new_chat' | 'supervision' | 'view_state' | 'workflow' | 'workflow_review'
 export interface RecoveryInput {
   creation_epoch?: string | null
   id: string

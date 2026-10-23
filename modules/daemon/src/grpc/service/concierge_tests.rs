@@ -256,6 +256,7 @@ async fn concierge_receipt_arrives_during_a_real_long_node_without_restarting_it
         .execute_blueprint(Request::new(crate::grpc::proto::ExecuteBlueprintRequest {
             workspace_path: ws.root.to_string_lossy().into(),
             blueprint_id: blueprint.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: serde_json::to_string(&blueprint).unwrap(),
         }))
         .await

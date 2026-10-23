@@ -5,6 +5,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useChatStore } from '@/stores/chat'
 import { useSurfaceNavigation } from '@/lib/surface'
 import { type SavedResultReference, validResultReference } from '@/core/workflow'
+import { useCodingWorkflowsStore } from '@/stores/coding-workflows'
+const workflows=useCodingWorkflowsStore()
 const props = defineProps<{
   reference: SavedResultReference
   label: string
@@ -81,6 +83,8 @@ const body = computed(() => {
   }
 })
 const run = computed(() => body.value?.run ?? body.value)
+const reviewRun=computed(()=>props.reference.kind==='run'?props.reference.runId:run.value?.run_id??body.value?.result?.run_id)
+function reviewDelivery(){if(workspace.active&&typeof reviewRun.value==='string'){void workflows.openReview(workspace.active.path,reviewRun.value);openSurface('tasks')}}
 const checks = computed(() =>
   Array.isArray(body.value?.recorded_checks)
     ? body.value.recorded_checks.filter(
@@ -129,7 +133,7 @@ function add(newPlan = false) {
         <dt>Checks</dt>
         <dd>{{ checkSummary }}</dd>
         <dt>Human acceptance</dt>
-        <dd>Not recorded</dd>
+        <dd>{{ reviewRun ? 'Open the delivery review for current acceptance' : 'Not recorded for this result type' }}</dd>
       </dl>
       <p v-if="run?.error" role="alert">{{ run.error }}</p>
       <p v-if="run?.in_flight || run?.unresolved_background_effects" role="alert">
@@ -146,6 +150,7 @@ function add(newPlan = false) {
       </details>
       <p class="destination">Current draft: {{ destination }}</p>
       <div class="actions">
+        <button v-if="reviewRun" class="btn" @click="reviewDelivery">Review delivery</button>
         <button class="btn" :disabled="chat.sessionUnavailable" @click="add()">
           Add result to draft</button
         ><button

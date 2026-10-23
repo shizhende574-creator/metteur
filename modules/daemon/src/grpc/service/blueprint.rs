@@ -166,6 +166,17 @@ impl DaemonService {
         // would fail halfway through.
         ensure_valid(&blueprint, &registry)?;
         let run_id = uuid::Uuid::new_v4();
+        if metteur_shared::workflow::read_contract(&blueprint)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?.is_some()
+        {
+            let ctx=super::launches::probe(&self.state,&ws,registry.clone(),&subject);
+            let (_,_,manifest)=crate::registry::tools::launch::manifest(&ctx,id).map_err(to_status)?;
+            let config=ws.config.read().await;
+            if req.workflow_confirmation != super::coding_workflows::confirmation_digest(&manifest,&config)
+                .map_err(|e|Status::failed_precondition(e.to_string()))? {
+                return Err(Status::failed_precondition("Review and confirm the current workflow requirements, saved version and dependencies before running"));
+            }
+        }
         let mut prompt_manifest = std::collections::BTreeMap::new();
         for node in blueprint.nodes.iter().filter(|node| node.kind == "PromptResource") {
             let selection = node
@@ -735,6 +746,13 @@ impl DaemonService {
             crate::storage::blueprint_files::load(&ws.db, &ws.version_manager, id)
                 .map_err(to_status)?
         };
+        if metteur_shared::workflow::read_contract(&blueprint)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?.is_some()
+        {
+            return Err(Status::failed_precondition(
+                "DSL export cannot preserve workflow requirement identities. Copy the native .blueprint file instead.",
+            ));
+        }
         Ok(Response::new(DecompileDslResponse {
             source: metteur_shared::dsl::decompile(&blueprint),
         }))

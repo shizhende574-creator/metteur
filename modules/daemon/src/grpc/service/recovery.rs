@@ -85,7 +85,7 @@ fn validate_target(root: &std::path::Path, scope: &str, input: &mut DraftInput) 
                 .to_string_lossy()
                 .replace('\\', "/");
         }
-        "chat" | "new_chat" | "supervision" => {
+        "chat" | "new_chat" | "supervision" | "workflow" | "workflow_review" => {
             Uuid::parse_str(&input.entity)
                 .map_err(|_| fault("invalid_target", "Recovery target must have a stable UUID"))?;
         }

@@ -1332,6 +1332,7 @@ export class GrpcGateway implements DaemonGateway {
     blueprintId: string,
     onEvent: (e: ExecutionEvent) => void,
     blueprint?: Blueprint,
+    workflowConfirmation = '',
   ): Promise<Result<void>> {
     try {
       // The daemon verifies this canvas against the authoritative saved file.
@@ -1340,6 +1341,7 @@ export class GrpcGateway implements DaemonGateway {
         workspacePath,
         blueprintId,
         blueprintJson,
+        workflowConfirmation,
       })) {
         onEvent(fromProtoEvent(ev))
       }

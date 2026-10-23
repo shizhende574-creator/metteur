@@ -124,6 +124,8 @@ impl Daemon for ForwardService {
     ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
         self.client.clone().query_continuations(request).await
     }
+    async fn query_coding_workflows(&self,request:Request<metteur_proto::proto::ResourceRequest>)->Result<Response<metteur_proto::proto::ResourceResponse>,Status>{self.client.clone().query_coding_workflows(request).await}
+    async fn record_workflow_review(&self,request:Request<metteur_proto::proto::ResourceRequest>)->Result<Response<metteur_proto::proto::ResourceResponse>,Status>{self.client.clone().record_workflow_review(request).await}
     async fn control_continuation(
         &self,
         request: Request<metteur_proto::proto::ResourceRequest>,
@@ -688,6 +690,8 @@ mod tests {
         ) -> Result<Response<metteur_proto::proto::ResourceResponse>, Status> {
             Err(Status::unimplemented("query_continuations"))
         }
+        async fn query_coding_workflows(&self,_:Request<metteur_proto::proto::ResourceRequest>)->Result<Response<metteur_proto::proto::ResourceResponse>,Status>{Err(Status::unimplemented("query_coding_workflows"))}
+        async fn record_workflow_review(&self,_:Request<metteur_proto::proto::ResourceRequest>)->Result<Response<metteur_proto::proto::ResourceResponse>,Status>{Err(Status::unimplemented("record_workflow_review"))}
         async fn control_continuation(
             &self,
             _: Request<metteur_proto::proto::ResourceRequest>,

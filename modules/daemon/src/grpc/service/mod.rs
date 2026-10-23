@@ -31,6 +31,7 @@ mod sandbox;
 mod state;
 mod versioning;
 mod workflow_receipts;
+mod coding_workflows;
 #[cfg(test)]
 mod workflow_tests;
 mod workspace;
@@ -80,6 +81,12 @@ impl DaemonService {
 
 #[tonic::async_trait]
 impl Daemon for DaemonService {
+    async fn query_coding_workflows(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>,Status> {
+        Self::query_coding_workflows(self,request).await
+    }
+    async fn record_workflow_review(&self, request: Request<super::proto::ResourceRequest>) -> Result<Response<super::proto::ResourceResponse>,Status> {
+        Self::record_workflow_review(self,request).await
+    }
     async fn approval_delivery(
         &self,
         request: Request<super::proto::ResourceRequest>,

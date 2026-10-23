@@ -167,6 +167,7 @@ async fn r_batch_real_rpc_combines_http_accounting_concierge_approval_versions_a
         .execute_blueprint(ExecuteBlueprintRequest {
             workspace_path: path.clone(),
             blueprint_id: graph.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: String::new(),
         })
         .await

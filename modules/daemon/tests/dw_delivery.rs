@@ -425,6 +425,7 @@ async fn blueprint_pause_keeps_foreground_admission_and_legacy_send_is_rejected(
         Request::new(metteur_proto::proto::ExecuteBlueprintRequest {
             workspace_path: root.to_string_lossy().into(),
             blueprint_id: graph.id.to_string(),
+            workflow_confirmation: String::new(),
             blueprint_json: file,
         }),
     )

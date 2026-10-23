@@ -94,6 +94,7 @@ watch(
   () => execution.active,
   (active, _previous, onCleanup) => {
     if (!active) return
+    selected.value = null
     const clock = setInterval(() => {
       now.value = Date.now()
     }, 1000)
@@ -206,7 +207,6 @@ function run() {
   const bp = graph.value,
     file = source.value
   if (bp) {
-    selected.value = null
     void execution.run(bp.id, bp, file)
   }
 }

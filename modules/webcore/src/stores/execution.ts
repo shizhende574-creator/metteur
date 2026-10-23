@@ -309,7 +309,34 @@ export const useExecutionStore = defineStore('execution', () => {
     const generation = ++epoch
     launching.value = true
     error.value = ''
+    let workflowConfirmation = ''
+    graph = graph ? JSON.parse(JSON.stringify(graph)) : undefined
     try {
+      if (graph?.nodes.some((n) => n.data?.['_workflow_contract'])) {
+        const prepared = await gateway.resourceRequest('queryCodingWorkflows', ws.path, {
+          operation: 'prepare_run',
+          blueprint_id: blueprintId,
+        })
+        if (!prepared.ok) throw new Error(prepared.error)
+        if (generation !== epoch) return
+        const data = prepared.data as {
+          digest: string
+          manifest: { file_version: { blob_hash: string } }
+          contract: { criteria: { description: string }[] }
+        }
+        const accepted = await feedback.confirm({
+          header: 'Review & run',
+          message: `Independent run. Requirements: ${data.contract.criteria.map((c) => c.description).join('; ')}. Saved version ${data.manifest.file_version.blob_hash}. Commands, prompts and dependencies are bound to this confirmation.`,
+          acceptLabel: 'Run confirmed version',
+          details: JSON.stringify(
+            { requirements: data.contract, dependencies: data.manifest },
+            null,
+            2,
+          ),
+        })
+        if (!accepted || generation !== epoch || workspace.active?.path !== ws.path) return
+        workflowConfirmation = data.digest
+      }
       const runsBefore = await gateway.listExecutions(ws.path)
       if (generation !== epoch) return
       if (!runsBefore.ok) throw new Error(runsBefore.error)
@@ -363,6 +390,7 @@ export const useExecutionStore = defineStore('execution', () => {
           push(ev)
         },
         graph,
+        workflowConfirmation,
       )
     } catch (e) {
       result = { ok: false as const, error: String(e) }

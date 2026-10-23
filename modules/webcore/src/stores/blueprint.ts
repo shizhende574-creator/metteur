@@ -181,9 +181,12 @@ const KIND_ALIASES: Record<string, string> = { Arithmetic: 'Add' }
  */
 function canonicalizePinNames(n: BlueprintNode, signatures: NodeKindInfo[]): BlueprintNode {
   const kind = KIND_ALIASES[n.type] ?? n.type
+  // Tool pins are parameter names from the selected tool's schema. Renaming
+  // `command` to the legacy UI label `Command` changes its executable contract.
+  const toolInstance = kind === 'Tool' && typeof n.data?.['tool_name'] === 'string'
   // Package instances retain the authored contract; the daemon rejects stale bindings.
   const signature =
-    n.data?.['_addon_binding'] || n.data?.['_addon_function_binding']
+    toolInstance || n.data?.['_addon_binding'] || n.data?.['_addon_function_binding']
       ? undefined
       : signatures.find((s) => s.kind === kind)
   const values = { ...n.values }
@@ -196,7 +199,7 @@ function canonicalizePinNames(n: BlueprintNode, signatures: NodeKindInfo[]): Blu
     const contract = signature?.pins.find(
       (d) => d.kind === p.kind && ((p.key && d.key === p.key) || d.name === p.name),
     )
-    const label = contract?.name || (!signature && p.key ? LEGACY_PIN_NAMES[p.key] : undefined)
+    const label = toolInstance ? p.name : contract?.name || (!signature && p.key ? LEGACY_PIN_NAMES[p.key] : undefined)
     const name = (label ?? p.name ?? '').replace(/\s+/g, '')
     return contract
       ? {
