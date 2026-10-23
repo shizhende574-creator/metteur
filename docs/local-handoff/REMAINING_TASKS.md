@@ -1,3 +1,5 @@
+> **2026-10-24 最新交付：编程工作流 WD-00～07 已完成。** 四类模板、逐项验收、三模式真实对照及正式 19103 升级已收口；当前版本、证据和推送回执见 [最新交接](../workflow-delivery/REVIEW_HANDOFF.md)。下方状态仅代表原历史时点，不重新激活已完成任务。
+
 > **2026-10-24 当前阶段：可复用编程工作流与逐项验收，已授权实施。** 四类模板、逐项验收和三模式对照按新 [计划](../workflow-delivery/PLAN.md) 与 [任务表](../workflow-delivery/TASKS.md) 推进。原 DW-00～09 已交付，见 [FINAL_CLOSURE.md](../daily-workflow/FINAL_CLOSURE.md)；本文件下方准备/剩余描述只作历史，不得重开已完成事项或复用旧模型额度。
 
 当前接续：workflow-delivery/TASKS.md。原 NX/DW 完成证据保留，不重开历史矩阵。

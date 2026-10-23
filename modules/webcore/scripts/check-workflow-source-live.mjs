@@ -49,40 +49,10 @@ try {
   report.checks.push(
     'Template from an existing conversation returns to the original draft, preserving prior text, without sending or running',
   )
-  // The saved native file opens through the ordinary file route.
+  // Record the saved native file identity; editor/run coverage is in the confirmation check.
   const file = name + '.blueprint'
   const graph = JSON.parse(await readFile(ready.workspace + '/' + file, 'utf8'))
   report.blueprint = { id: graph.id, file }
-  await page
-    .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('button', { name: 'Tasks', exact: true })
-    .click()
-  await page.getByRole('button', { name: 'Edit saved blueprint', exact: true }).click()
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  const saved = JSON.parse(await readFile(ready.workspace + '/' + file, 'utf8'))
-  expect(saved.nodes.find((n) => n.data?._workflow_contract).data._workflow_contract).toEqual(
-    graph.nodes.find((n) => n.data?._workflow_contract).data._workflow_contract,
-  )
-  report.checks.push('Ordinary blueprint editor save preserves the acceptance contract')
-  await page.getByRole('button', { name: 'Run', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Review & run' })
-  await expect(dialog).toBeVisible()
-  await dialog.getByText('Commands & exact dependencies', { exact: true }).click()
-  await expect(dialog).toContainText('node -e')
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-  expect(runs).toHaveLength(0)
-  await page
-    .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('button', { name: 'Execution', exact: true })
-    .click()
-  await page.getByRole('button', { name: 'Run', exact: true }).click()
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-  expect(runs).toHaveLength(0)
-  expect(sends).toHaveLength(sent)
-  report.checks.push(
-    'Editor and Execution entries both require exact saved-version confirmation; cancellation causes zero execution',
-  )
 } catch (e) {
   report.failure = String(e)
   await writeFile(output + '.page.txt', await page.locator('body').innerText())

@@ -30,8 +30,8 @@ try {
     const graph = JSON.parse(await readFile(ready.workspace + '/' + file, 'utf8'))
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     const saved = JSON.parse(await readFile(ready.workspace + '/' + file, 'utf8'))
-    expect(saved.nodes.find((n) => n.data?._workflow_contract).data._workflow_contract).toEqual(
-      graph.nodes.find((n) => n.data?._workflow_contract).data._workflow_contract,
+    expect(saved.nodes.find((n) => n.data?.['_workflow_contract']).data['_workflow_contract']).toEqual(
+      graph.nodes.find((n) => n.data?.['_workflow_contract']).data['_workflow_contract'],
     )
     report.checks.push('Ordinary blueprint save preserves acceptance metadata')
     await page.getByRole('button', { name: 'Run', exact: true }).click()

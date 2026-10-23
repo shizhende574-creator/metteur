@@ -28,14 +28,17 @@ try {
     .at(-1)
   assert(name, 'Use the saved production UI instance')
   const graph = JSON.parse(await readFile(join(workspacePath, name), 'utf8'))
+  await client.openWorkspace({ path: workspacePath })
+  const prepared = await rpc('queryCodingWorkflows', { operation: 'prepare_run', blueprint_id: graph.id })
   let run
   for await (const event of client.executeBlueprint(
-    { workspacePath, blueprintId: graph.id, blueprintJson: JSON.stringify(graph) },
+    { workspacePath, blueprintId: graph.id, blueprintJson: JSON.stringify(graph), workflowConfirmation: prepared.digest },
     { timeoutMs: 60000 },
   )) {
     const detail = JSON.parse(event.detailJson || '{}')
     if (detail.run_id) run = detail.run_id
     report.events.push({ kind: event.kind, message: event.message, detail })
+    assert.notEqual(event.kind, 'error', event.message)
     if (event.kind === 'approval_request') {
       const allowed = JSON.stringify(detail).includes('process.exit(0)')
       await client.respondApproval({
