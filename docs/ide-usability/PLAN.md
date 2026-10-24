@@ -36,4 +36,4 @@ IU-PV-01 编辑器/工具栏/引脚/长文本；IU-PV-02 Output/停止状态/Cha
 
 ## 交付状态
 
-两组r1已获明确确认并接入，14项及追加缺口整体完成；产品fb17635已切换正式19103。验收与边界见TASKS/USAGE/MODEL_REPORT/REVIEW_HANDOFF。仅本地提交，无远端写入；本轮不再调用模型，未来阶段不自动继承US$1/40剩余额度。
+两组r1已获明确确认并接入，14项及追加缺口整体完成；产品fb17635已切换正式19103。验收与边界见TASKS/USAGE/MODEL_REPORT/REVIEW_HANDOFF。用户追加授权后，按既有fork分支快进推送并读回核对，最终回执见REVIEW_HANDOFF；没有强推、推origin或PR变更。本轮不再调用模型，未来阶段不自动继承US$1/40剩余额度。

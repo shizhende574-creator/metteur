@@ -2,7 +2,7 @@
 
 2026-10-24。用户14项反馈及追加的要求/人工修改备注传递缺口已整体实现、接入并完成本轮必要验收。两组r1经用户“确认两组 r1，按此接入”批准；实施前计划提交 `1fdb6f1`，产品提交 `fb17635d02fb8e15f6969bb55c5db61a14fd0b14`。后续收口提交仅更新验证辅助脚本与文档，不改变部署产品代码。
 
-活动仓库 `F:/space/06_Projects/Agent/incoming/metteur-cloud-ff7b795-20261015/repo`，分支 `codex/ide-usability-20261024`；外层 Agent 根是另一仓库。仅本地提交，未推送、强推、写origin或创建/更新/合并PR，也未向其他聊天发消息。开工核对PR9实际已合并，旧“保持Draft”是历史状态；本轮没有合并它。fork/codex/nx-final-acceptance仍是本轮起点2fcfe205，任何后续推送需新授权并遵守fork快进边界。
+活动仓库 `F:/space/06_Projects/Agent/incoming/metteur-cloud-ff7b795-20261015/repo`，分支 `codex/ide-usability-20261024`；外层 Agent 根是另一仓库。用户于2026-10-24追加确认按既有fork快进边界推送并同步交接。已通过现有remote `fork` 将 `shizhende574-creator/metteur` 的 `refs/heads/codex/nx-final-acceptance` 从 `2fcfe2058d648464fb26367a1b513a47269fade4` 快进至 `2fdbb031d231628537accb8dbf99b7ec0a8e0139`，Git远端读回一致；随后仅同步本交接说明。最终包含本说明的提交与远端SHA见证据 `formal/push-receipt.json` 及根CURRENT.txt，避免文档自引用自身提交。未强推、推origin、创建/更新/合并PR，也未向其他聊天发消息。PR9开工时已合并，旧“保持Draft”是历史状态，本轮没有合并操作。
 
 ## 正式运行与数据
 
@@ -47,3 +47,9 @@
 真实模型独立账本30次结算，上界US$0.0935517；另1次故障脚本鉴权失败无usage，宿主0费用但成本完整性未确认，共31次外部尝试。401回执单列，不充当结算或零费用证明；之后已停止付费请求。不沿用旧阶段余额。下阶段需要明确新预算。
 
 物理IME/S3、旧约6h03观察按此前人工接受边界继承，本轮未新增人工实测或长期观察。UI中文/快捷键、持久记录和断连通过不等于物理IME实测；三项真实合成样本不覆盖所有节点和长任务，也不支持任何模式普遍更优。新增128调用/2MiB记录上限不是完整压力基准。本阶段没有待开发或待接入的批准项；这些边界如实保留，不把已批准修复转交“下一阶段”。
+
+## 推送与远端核对
+
+本轮产品、预览、辅助验证及交接文档沿既有fork分支推送，不改分支边界。推送前验证工作树干净、远端旧tip为本地祖先，命令指定唯一目标 `HEAD:refs/heads/codex/nx-final-acceptance` 并关闭随推标签；没有force参数。`formal/push-preflight.json`、`push-first-receipt.json`保留首次快进回执，`push-receipt.json`记录含本文的最终本地/远端SHA、祖先关系及核对结果。
+
+现有 `.github/workflows/ci.yml` 只在main push、pull_request或显式workflow_dispatch触发；该fork分支普通push不自动启动CI。最终远端ref、commit status、check runs及Actions回执存入 `formal/remote-readback.json`，没有检查或运行不能写成CI绿色。没有额外dispatch、重跑已成功测试或调用模型；产品提交/冻结资产保持fb17635，无需重新部署。
