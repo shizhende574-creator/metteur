@@ -8,7 +8,7 @@ use metteur_shared::{Node, PinId, Value};
 
 use crate::error::DaemonResult;
 use crate::execution::context::ExecutionContext;
-use crate::execution::react::{ReactOptions, run_react};
+use crate::execution::react::{ReactOptions, run_react_streaming};
 use crate::registry::NodeExecutor;
 
 use super::string_output;
@@ -67,7 +67,15 @@ impl NodeExecutor for CallLlmExecutor {
         };
 
         let opts = react_options_from_node(node, ctx).await;
-        let outcome = run_react(ctx, context, &opts).await?;
+        let recorder=std::sync::Arc::new(std::sync::Mutex::new(crate::execution::output::Recorder::new(ctx,node.id)?));
+        let delta_recorder=recorder.clone();
+        let event_recorder=recorder.clone();
+        let hide_thinking=opts.anonymize_thinking;
+        let mut on_delta=move |delta|{if let Ok(mut log)=delta_recorder.lock(){log.delta(delta,hide_thinking)}};
+        let mut on_event=move |event|{if let Ok(mut log)=event_recorder.lock(){log.event(event)}};
+        let outcome=run_react_streaming(ctx,context,&opts,Some(&mut on_delta),&mut on_event).await;
+        recorder.lock().map_err(|_|crate::error::DaemonError::Persistence("Node output recorder unavailable".into()))?.finish()?;
+        let outcome=outcome.map_err(|(error,_)|error)?;
         ctx.tree_ops.push(crate::execution::TreeOp::AddTokens(outcome.usage.total_tokens));
 
         // Stream the final context composition so the audit UI can render a

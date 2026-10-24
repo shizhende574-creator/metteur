@@ -283,6 +283,7 @@ async fn expand_blueprint(ctx: &mut ExecutionContext, blueprint: Blueprint) -> D
 /// Wraps a nested event into an outer message event.
 fn forward_event(event: ExecutionEvent, label: &str) -> ExecutionEvent {
     match event {
+        output @ ExecutionEvent::NodeOutput { .. } => output,
         ExecutionEvent::NodeStarted {
             node_id,
         } => ExecutionEvent::Message {

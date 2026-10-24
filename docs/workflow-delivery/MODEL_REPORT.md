@@ -1,3 +1,5 @@
+> 当前接续：14项IDE反馈及要求/人工备注传递修复见 [IDE修复计划](../ide-usability/PLAN.md) 和 [任务与验收](../ide-usability/TASKS.md)。下文为上一阶段交付快照；PR9实际已于2026-10-24合并，新阶段不写远端。
+
 # 四类任务与三模式真实评测
 
 2026-10-24。全阶段实际付费请求 **179 次**，费用保守上界 **US$0.459912**，用户授权总额 US$3，未决/未知计费请求 0。原始失败和补验分开保留。机器可读记录见 [MODEL_RESULTS.json](MODEL_RESULTS.json)，生成器为 `scripts/report_workflow_evaluation.py`。

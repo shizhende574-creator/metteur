@@ -10,7 +10,7 @@ import {
   watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bug, Compass, ListChecks } from '@lucide/vue'
+import { Bug, Compass, ListChecks, LayoutTemplate } from '@lucide/vue'
 import { gateway } from '@/core'
 import { useExecutionStore } from '@/stores/execution'
 import { useChatStore } from '@/stores/chat'
@@ -21,7 +21,6 @@ import { fileRoute } from '@/lib/file-token'
 import { onHighlightReady, warmHighlighter } from '@/lib/markdown'
 import { clearRenderCache } from '@/lib/chat/stream-render'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
-import WorkflowReceipts from '@/components/WorkflowReceipts.vue'
 import FileReferenceDialog from '@/components/FileReferenceDialog.vue'
 import ChatThread from '@/components/chat/ChatThread.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
@@ -37,8 +36,16 @@ import { useForegroundStore } from '@/stores/foreground'
 import { useDocumentsStore } from '@/stores/documents'
 import { useSurfaceNavigation } from '@/lib/surface'
 import { useCodingWorkflowsStore } from '@/stores/coding-workflows'
-const codingWorkflows=useCodingWorkflowsStore()
-function startTemplate(){if(!workspace.active)return;void codingWorkflows.openPlan(workspace.active.path,chat.sessionId?{session:chat.sessionId,entity:chat.draftEntity}:null,chat.draft);openSurface('tasks')}
+const codingWorkflows = useCodingWorkflowsStore()
+function startTemplate() {
+  if (!workspace.active) return
+  void codingWorkflows.openPlan(
+    workspace.active.path,
+    chat.sessionId ? { session: chat.sessionId, entity: chat.draftEntity } : null,
+    chat.draft,
+  )
+  openSurface('tasks')
+}
 
 /**
  * The ReAct chat surface.
@@ -545,7 +552,17 @@ const starterPrompts = [
       :on-delete-session="(id) => void deleteSession(id)"
       :on-new-session="() => void newSession()"
       :on-toggle-addon="(id, enabled) => void chat.toggleAddon(id, enabled)"
-    />
+      ><template #tools
+        ><button
+          class="editor-tool-icon"
+          type="button"
+          :disabled="!workspace.active"
+          title="Start from template"
+          aria-label="Start from template"
+          @click="startTemplate"
+        >
+          <LayoutTemplate class="h-4 w-4" /></button></template
+    ></ChatHeader>
 
     <div
       v-if="inputBlocked"
@@ -581,8 +598,6 @@ const starterPrompts = [
       </details>
     </div>
 
-    <WorkflowReceipts />
-    <div class="px-3 py-1 text-[13px]"><button class="btn" :disabled="!workspace.active" @click="startTemplate">Start from template</button></div>
     <ChatThread
       :key="rerender"
       :messages="chat.messages"

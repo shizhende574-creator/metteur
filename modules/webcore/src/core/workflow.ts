@@ -1,6 +1,13 @@
 export type SavedResultReference =
   | { kind: 'task'; taskId: string; sourceId: string; digest: string }
   | { kind: 'run'; runId: string; digest: string }
+  | {
+      kind: 'workflow'
+      runId: string
+      reviewRevision: number
+      evidenceDigest: string
+      digest: string
+    }
 export interface ResultChoice {
   label: string
   reference: SavedResultReference
@@ -17,7 +24,14 @@ export function validResultReference(value: unknown): value is SavedResultRefere
         uuid.test(r.taskId) &&
         typeof r.sourceId === 'string' &&
         r.sourceId.length > 0
-      : r.kind === 'run' && typeof r.runId === 'string' && uuid.test(r.runId))
+      : (r.kind === 'run' ||
+          (r.kind === 'workflow' &&
+            Number.isSafeInteger(r.reviewRevision) &&
+            Number(r.reviewRevision) >= 0 &&
+            typeof r.evidenceDigest === 'string' &&
+            /^[a-f0-9]{64}$/i.test(r.evidenceDigest))) &&
+        typeof r.runId === 'string' &&
+        uuid.test(r.runId))
   )
 }
 export interface WorkflowFacts {

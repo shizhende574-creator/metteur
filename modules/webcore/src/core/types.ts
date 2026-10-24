@@ -366,6 +366,7 @@ export interface ExecutionEvent {
     | 'started'
     | 'finished'
     | 'node_data'
+    | 'node_output'
     | 'message'
     | 'approval_request'
     | 'context'

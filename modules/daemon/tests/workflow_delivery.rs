@@ -121,6 +121,41 @@ fn request(root: &std::path::Path, payload: serde_json::Value) -> ResourceReques
 }
 
 #[tokio::test]
+async fn ide_review_feedback_is_exact_source_data_and_stale_references_are_rejected() {
+    let (root,state)=setup().await;
+    let mut parameters=input();
+    parameters.manual_checks[0].description="HUMAN_REQUIREMENT: preserve Chinese messages".into();
+    let graph=compile_template(&parameters,&state.registry.authoring_catalog()).unwrap();
+    assert!(graph.nodes.iter().find(|n|n.kind=="CallLLM").unwrap().data["prompt"].as_str().unwrap().contains("HUMAN_REQUIREMENT"));
+    let checkpoint=execute(&root,&state,&parameters).await;
+    let ws=state.workspaces.get(&root).await.unwrap();
+    let original=project(&root,&checkpoint).unwrap();
+    let store=ReviewStore::new(ws.db.clone(),&root,"local").unwrap();
+    store.record(ReviewInput{run_id:checkpoint.run_id,evidence_digest:original.digest.clone(),criterion_id:"scope".into(),decision:Decision::ChangesRequested,note:"REVISION_NOTE: keep exact 中文 and add boundary coverage".into()},0,Uuid::new_v4(),&original).unwrap();
+    let service=DaemonService::new(state.clone());
+    let reference=json!({"kind":"workflow","runId":checkpoint.run_id,"reviewRevision":1,"evidenceDigest":original.digest,"digest":""});
+    let captured=service.query_continuations(tonic::Request::new(request(&root,json!({"operation":"capture_result","reference":reference})))).await.unwrap().into_inner();
+    assert!(captured.error_json.is_empty(),"{}",captured.error_json);
+    let result:serde_json::Value=serde_json::from_str(&captured.payload_json).unwrap();
+    assert!(result["content"].as_str().unwrap().contains("REVISION_NOTE"));
+    let saved=result["reference"].clone();
+    store.record(ReviewInput{run_id:checkpoint.run_id,evidence_digest:original.digest.clone(),criterion_id:"scope".into(),decision:Decision::ChangesRequested,note:"New note".into()},1,Uuid::new_v4(),&original).unwrap();
+    let stale=service.query_continuations(tonic::Request::new(request(&root,json!({"operation":"capture_result","reference":saved})))).await;
+    assert!(stale.is_err(),"An edited review must not reuse the previously selected reference");
+    let output=metteur_daemon::execution::output::read(&ws.db,checkpoint.run_id).unwrap();
+    assert_eq!(output.nodes.len(),1);
+    let activity=&output.nodes[0];
+    assert!(checkpoint.view.invocations.iter().any(|i|i.node_id==activity.node_id&&i.sequence==activity.invocation&&i.scope==activity.scope&&i.frame==activity.frame&&i.attempt==activity.attempt));
+    assert!(activity.messages.iter().any(|m|m["content"].as_str().is_some_and(|s|s.contains("Implementation-stage fixture"))));
+    let before=ws.db.get(metteur_daemon::storage::persistence::cf::EXECUTION_STATE,checkpoint.run_id.as_bytes()).unwrap();
+    let readback=service.query_coding_workflows(tonic::Request::new(request(&root,json!({"operation":"output","run_id":checkpoint.run_id})))).await.unwrap().into_inner();
+    assert!(readback.error_json.is_empty());
+    assert!(ws.db.get(metteur_daemon::storage::persistence::cf::EXECUTION_STATE,checkpoint.run_id.as_bytes()).unwrap()==before,"Output queries must not replay or rewrite the checkpoint");
+    let missing=service.query_coding_workflows(tonic::Request::new(request(&root,json!({"operation":"output","run_id":Uuid::new_v4()})))).await.unwrap().into_inner();
+    assert!(!missing.error_json.is_empty());
+}
+
+#[tokio::test]
 async fn real_process_results_are_version_bound_and_file_changes_invalidate_only_current_acceptance()
  {
     let (root, state) = setup().await;

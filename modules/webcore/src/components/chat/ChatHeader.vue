@@ -50,6 +50,7 @@ const enabledAddons = computed(() => props.addons.filter((a) => a.enabled))
 <template>
   <PageHeader class="chat-header" title="Chat" toolbar>
     <div class="ml-auto flex items-center gap-1">
+      <slot name="tools" />
       <!-- Session switcher -->
       <div class="relative">
         <button

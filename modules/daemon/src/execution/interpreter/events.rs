@@ -7,6 +7,8 @@ use metteur_shared::{NodeId, PinId, Value};
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum ExecutionEvent {
+    /// Durable node activity changed; clients query the exact run output.
+    NodeOutput { node_id: NodeId, revision: u64 },
     /// Trusted review lifecycle notification; model text cannot emit this.
     Oversight { review_id: String, detail: String },
     /// A node started executing.

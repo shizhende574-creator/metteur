@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import ToolCallCard from './ToolCallCard.vue'
+import ReasoningBlock from './ReasoningBlock.vue'
 import { formatDuration, toolDetail, toolSubject, toolVerb } from '@/lib/chat/tool-summary'
 import type { ChatMessage } from '@/core'
 
@@ -20,9 +21,15 @@ const props = defineProps<{
 
 const expanded = ref(false)
 
-const running = computed(() => props.messages.some((m) => m.pending === true))
+const running = computed(() =>
+  props.messages.some((m) => m.pending === true || m.reasoningPending === true),
+)
 const totalMs = computed(() =>
-  props.messages.reduce((sum, m) => sum + (toolDetail(m).elapsedMs ?? 0), 0),
+  props.messages.reduce(
+    (sum, m) =>
+      sum + (m.role === 'tool' ? (toolDetail(m).elapsedMs ?? 0) : (m.reasoningElapsedMs ?? 0)),
+    0,
+  ),
 )
 const failures = computed(
   () => props.messages.filter((m) => m.pending !== true && toolDetail(m).ok === false).length,
@@ -53,7 +60,9 @@ const open = computed(() => expanded.value || running.value)
         :class="open ? 'rotate-90' : ''"
       />
       <span class="font-medium text-foreground/85">
-        {{ running ? toolVerb(current.actor) : summary }}
+        {{
+          running ? (current.role === 'assistant' ? 'Thinking' : toolVerb(current.actor)) : summary
+        }}
       </span>
       <span v-if="running" class="min-w-0 flex-1 truncate font-mono text-[12.5px] text-subtle">
         {{ toolSubject(current) }}
@@ -63,12 +72,17 @@ const open = computed(() => expanded.value || running.value)
       </span>
     </button>
     <div v-if="open" class="chat-group-body">
-      <ToolCallCard
-        v-for="message in messages"
-        :key="message.id"
-        :message="message"
-        :on-open-file="onOpenFile"
-      />
+      <template v-for="message in messages" :key="message.id"
+        ><ToolCallCard
+          v-if="message.role === 'tool'"
+          :message="message"
+          :on-open-file="onOpenFile" /><ReasoningBlock
+          v-else
+          :text="message.reasoning ?? ''"
+          :streaming="!!message.reasoningPending"
+          :elapsed-ms="message.reasoningElapsedMs"
+          :started-at="message.reasoningStartedAt"
+      /></template>
     </div>
   </div>
 </template>

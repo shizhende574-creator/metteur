@@ -3,6 +3,7 @@ import { X } from '@lucide/vue'
 import { DATA_COLORS } from '@/lib/blueprint'
 import { valueText } from '@/core/node-catalog'
 import type { BlueprintPin } from '@/core'
+import LiteralTextEditor from './LiteralTextEditor.vue'
 
 /** The pin data of a selected flow node (its `data` payload). */
 interface InspectorNodeData {
@@ -11,6 +12,7 @@ interface InspectorNodeData {
   inputs?: BlueprintPin[]
   outputs?: BlueprintPin[]
   values?: Record<string, string>
+  connectedIn?: string[]
 }
 
 /** Inspector shows the selected node's pins; data inputs that are not wired
@@ -22,6 +24,7 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'change'): void
   (e: 'recase', cases: string[]): void
+  (e: 'save'): void
 }>()
 
 const ROOT = (type?: string): string => (type ?? 'any').split(/[<{]/)[0]
@@ -35,8 +38,10 @@ function valueOf(pin: BlueprintPin): string {
 }
 
 /** The inspector edits data inputs only; exec pins carry no parameters. */
-const dataInputs = (): BlueprintPin[] => (props.node.inputs ?? []).filter((p) => p.kind === 'data-in')
-const dataOutputs = (): BlueprintPin[] => (props.node.outputs ?? []).filter((p) => p.kind === 'data-out')
+const dataInputs = (): BlueprintPin[] =>
+  (props.node.inputs ?? []).filter((p) => p.kind === 'data-in')
+const dataOutputs = (): BlueprintPin[] =>
+  (props.node.outputs ?? []).filter((p) => p.kind === 'data-out')
 
 /** Whether the pin's value is edited through a checkbox. */
 function isBool(pin: BlueprintPin): boolean {
@@ -54,10 +59,10 @@ function editable(pin: BlueprintPin): boolean {
 }
 
 function setValue(pin: BlueprintPin, raw: string) {
-  const values = props.node.values ?? (props.node.values = {})
-  if (raw === '') delete values[pin.id]
-  else values[pin.id] = raw
   emit('change')
+  const values = props.node.values ?? (props.node.values = {})
+  if (raw === '' && ROOT(pin.type) !== 'string') delete values[pin.id]
+  else values[pin.id] = raw
 }
 
 /** Whether the inspected node is a Switch (editable case branches). */
@@ -74,7 +79,10 @@ function switchCases(): string[] {
 
 /** Rebuild the Switch branches from a comma-separated case list. */
 function applySwitchCases(raw: string) {
-  const cases = raw.split(',').map((c) => c.trim()).filter((c) => c.length > 0)
+  const cases = raw
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0)
   emit('recase', cases)
 }
 </script>
@@ -84,7 +92,9 @@ function applySwitchCases(raw: string) {
     class="glass absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-72 flex-col overflow-hidden rounded-xl border border-border shadow-xl"
   >
     <header class="flex items-center gap-2 border-b border-border px-3 py-2">
-      <span class="truncate text-[13px] font-semibold text-foreground">{{ node.title ?? 'Node' }}</span>
+      <span class="truncate text-[13px] font-semibold text-foreground">{{
+        node.title ?? 'Node'
+      }}</span>
       <span class="truncate text-[10px] text-subtle mono">{{ node.category ?? '' }}</span>
       <button
         class="ml-auto grid h-6 w-6 place-items-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-foreground"
@@ -119,20 +129,27 @@ function applySwitchCases(raw: string) {
             <option v-for="c in pin.choices" :key="c" :value="c">{{ c }}</option>
           </select>
           <input
-            v-else-if="editable(pin)"
-            :type="isBool(pin) ? 'checkbox' : 'text'"
-            :value="isBool(pin) ? valueOf(pin) === 'true' : valueOf(pin)"
-            :checked="isBool(pin) ? valueOf(pin) === 'true' : undefined"
-            class="input mt-1 h-7! w-full text-[12px]"
-            :class="isBool(pin) ? 'h-4! w-4' : ''"
-            :placeholder="isBool(pin) ? '' : pin.optional ? 'optional' : 'default value'"
-            @input="
-              setValue(
-                pin,
-                isBool(pin) ? (($event.target as HTMLInputElement).checked ? 'true' : 'false') : ($event.target as HTMLInputElement).value,
-              )
-            "
+            v-else-if="isBool(pin)"
+            type="checkbox"
+            :aria-label="pin.name"
+            :checked="valueOf(pin) === 'true'"
+            class="mt-1 block h-4 w-4 accent-primary"
+            @change="setValue(pin, ($event.target as HTMLInputElement).checked ? 'true' : 'false')"
           />
+          <LiteralTextEditor
+            v-else-if="editable(pin)"
+            :model-value="valueOf(pin)"
+            :label="pin.name"
+            :placeholder="pin.optional ? 'optional' : 'default value'"
+            @update:model-value="(value) => setValue(pin, value)"
+            @save="emit('save')"
+          />
+          <p
+            v-if="node.connectedIn?.includes(pin.id)"
+            class="mt-1 text-[11px] text-muted-foreground"
+          >
+            Connected input · wire value takes precedence over this default.
+          </p>
         </div>
       </section>
 

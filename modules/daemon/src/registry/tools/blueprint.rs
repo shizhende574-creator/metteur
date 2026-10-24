@@ -39,7 +39,7 @@ impl Tool for DraftBlueprint {
     }
 
     fn description(&self) -> &str {
-        "Compiles a plan into a blueprint. Write `draft` as compact JSON:\n\
+        "First discover actual kinds and exact pin/argument signatures with QueryBlueprintNodes. Compiles a plan into a blueprint. Write `draft` as compact JSON:\n\
          {\"name\": \"...\", \"nodes\": {\"alias\": {\"kind\": \"Kind\", ...args}},\n\
          \x20\"flow\": [\"a -> b -> c\"], \"wires\": [\"target.pin <- source.pin\"]}\n\
          Rules: keys inside a node are its input values; a string \"$alias.pin\" \
@@ -58,6 +58,15 @@ impl Tool for DraftBlueprint {
             "properties": {
                 "draft": {
                     "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "nodes"],
+                    "properties": {
+                        "name": {"type":"string","minLength":1,"maxLength":120},
+                        "entry": {"type":"string"},
+                        "nodes": {"type":"object","minProperties":1,"maxProperties":256,"additionalProperties":{"type":"object","required":["kind"],"properties":{"kind":{"type":"string"},"at":{"type":"array","items":{"type":"number"}},"args":{"type":"object"}},"additionalProperties":true}},
+                        "flow": {"type":"array","items":{"type":"string"}},
+                        "wires": {"type":"array","items":{"type":"string"}}
+                    },
                     "description": "The plan: name, nodes keyed by alias, optional flow and wires."
                 },
                 "save": {
@@ -99,7 +108,7 @@ impl Tool for DraftBlueprint {
             &draft_json,
             &ctx.registry.authoring_catalog(),
         )
-        .map_err(|err| DaemonError::Execution(err.to_string()))?;
+        .map_err(|err| DaemonError::Execution(format!("{err}. Inspect QueryBlueprintNodes for the exact kind and input/output signature, then correct this draft; do not repeat the same invalid call.")))?;
 
         let version = if save {
             Some(crate::replan::draft::save(ctx, &blueprint).await?)
@@ -144,6 +153,7 @@ fn render_report(blueprint: &metteur_shared::Blueprint, saved: bool) -> String {
         blueprint.nodes.len(),
         blueprint.edges.len()
     ));
+    out.push_str(&format!("Blueprint ID: {}\n", blueprint.id));
     out.push_str(if saved {
         "Saved to the workspace; run it by id.\n"
     } else {

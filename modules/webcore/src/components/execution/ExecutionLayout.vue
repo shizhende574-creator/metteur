@@ -10,8 +10,12 @@ const width = ref(420),
 const body = ref<HTMLElement>(),
   column = ref<HTMLElement>()
 const bottom = ref('Node details'),
-  right = ref('Chat')
+  right = ref('Output')
 defineExpose({
+  diagnostics: () => {
+    bottom.value = 'Execution log'
+    showDetails.value = true
+  },
   inspect: () => {
     bottom.value = 'Node details'
     showDetails.value = true
@@ -148,7 +152,7 @@ onBeforeUnmount(() => observer?.disconnect())
         </header>
         <nav class="panel-tabs">
           <button
-            v-for="tab in ['Chat', 'Requests', 'Reviews']"
+            v-for="tab in ['Output', 'Chat', 'Requests', 'Reviews']"
             :key="tab"
             :class="{ active: right === tab }"
             @click="right = tab"

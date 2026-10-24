@@ -249,12 +249,17 @@ function nodeData(node: BlueprintNode): Record<string, unknown> {
   const values = node.values ?? {}
   for (const pin of node.inputs) {
     if (pin.kind !== 'data-in') continue
-    const raw = values[pin.id] ?? valueText(inlineValue(data, pin))
+    const inline = inlineValue(data, pin)
+    const raw = Object.hasOwn(values, pin.id)
+      ? values[pin.id]
+      : inline === undefined
+        ? undefined
+        : valueText(inline)
     // Pin values are authoritative for inline inputs; preserve unrelated configuration.
     delete data[pin.name]
     if (pin.key) delete data[pin.key]
     delete data[pin.id]
-    if (raw === undefined || raw === '') continue
+    if (raw === undefined || (raw === '' && pin.type !== 'string')) continue
     data[pin.name || pin.key || pin.id] = coerceValue(pin.type, raw)
   }
   return data

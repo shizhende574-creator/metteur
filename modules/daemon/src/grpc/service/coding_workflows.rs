@@ -21,6 +21,7 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Query {
+    Output { run_id: Uuid },
     Catalog,
     PrepareRun {
         blueprint_id: Uuid,
@@ -59,7 +60,7 @@ impl DaemonService {
         }
         Ok(())
     }
-    fn workflow_projection(
+    pub(super) fn workflow_projection(
         &self,
         ws: &crate::workspace::manager::Workspace,
         subject: &str,
@@ -92,6 +93,15 @@ impl DaemonService {
             .ok_or_else(|| Status::not_found("Workspace is not open"))?;
         let value=async {
             match decode::<Query>(&req)? {
+                Query::Output{run_id}=>{
+                    self.workflow_run_access(&subject)?;
+                    DbCheckpointSink::load(&ws.db,run_id).map_err(|_|fault("unavailable","Run is unavailable"))?.ok_or_else(||fault("unavailable","Run not found in this workspace"))?;
+                    let output=crate::execution::output::read(&ws.db,run_id).map_err(|_|fault("storage_unavailable","Node output could not be read"))?;
+                    let anon=crate::observability::anon::Anonymizer::new(&ws.config.read().await.anonymize.extra_patterns);
+                    let mut value=serde_json::to_value(output).map_err(|_|fault("unavailable","Cannot encode node output"))?;
+                    if let Some(nodes)=value["nodes"].as_array_mut(){for node in nodes{if let Some(rows)=node["messages"].as_array_mut(){for row in rows{for key in ["content","reasoning"]{if let Some(text)=row[key].as_str(){row[key]=json!(anon.anonymize(text).await);}}if let Some(text)=row["detail"]["summary"].as_str(){row["detail"]["summary"]=json!(anon.anonymize(text).await);}}}}}
+                    Ok(value)
+                },
                 Query::PrepareRun{blueprint_id}=>{
                     self.workflow_run_access(&subject)?;
                     let registry=self.state.registry_for(Some(ws.root()),true).await.map_err(|e|fault("unavailable",&e.to_string()))?;

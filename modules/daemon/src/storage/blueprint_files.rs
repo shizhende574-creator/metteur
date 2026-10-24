@@ -125,7 +125,7 @@ pub fn decode(bytes: &[u8]) -> DaemonResult<Blueprint> {
                         object.remove(name);
                         object.remove(key);
                         object.remove(id);
-                        if !raw.is_empty() {
+                        if !raw.is_empty() || ty=="string" {
                             let value = match ty {
                                 "int" | "float" | "number" => raw
                                     .parse::<f64>()
@@ -309,4 +309,25 @@ pub fn encode_native(graph: &Blueprint) -> DaemonResult<Vec<u8>> {
         doc["explicit_null_defaults"] = json!(nulls);
     }
     serde_json::to_vec_pretty(&doc).map_err(|e| DaemonError::Serialization(e.to_string()))
+}
+
+#[cfg(test)]
+mod ide_literal_tests {
+    use super::*;
+    #[test]
+    fn ide_literals_preserve_empty_false_null_and_multiline_across_canvas_and_native() {
+        let id=Uuid::new_v4();let node=Uuid::new_v4();
+        let ids:Vec<_>=(0..4).map(|_|Uuid::new_v4().to_string()).collect();
+        let pins:Vec<_>=[("Text","string"),("Flag","bool"),("Object","any"),("Long","string")].iter().enumerate().map(|(i,(name,ty))|json!({"id":ids[i],"key":name.to_lowercase(),"name":name,"type":ty,"kind":"data-in"})).collect();
+        let values=serde_json::Map::from_iter([(ids[0].clone(),json!("")),(ids[1].clone(),json!("false")),(ids[2].clone(),json!("null")),(ids[3].clone(),json!("line1\n中文  line2"))]);
+        let doc=json!({"id":id,"name":"literal regression","entryNodeId":node,"nodes":[{"id":node,"type":"CallLLM","nodeType":"Function","position":{"x":0,"y":0},"data":{"Text":"old"},"values":values,"inputs":pins,"outputs":[]}],"edges":[]});
+        let mut graph=decode(&serde_json::to_vec(&doc).unwrap()).unwrap();
+        assert_eq!(graph.nodes[0].data["Text"],"");
+        assert_eq!(graph.nodes[0].data["Flag"],false);
+        assert_eq!(graph.nodes[0].data["Object"],serde_json::Value::Null);
+        assert_eq!(graph.nodes[0].data["Long"],"line1\n中文  line2");
+        graph.nodes[0].pins[2].default=Some(Value::Null);
+        assert_eq!(decode(&encode_native(&graph).unwrap()).unwrap(),graph);
+        assert!(graph.nodes[0].pins[0].default.is_none());
+    }
 }

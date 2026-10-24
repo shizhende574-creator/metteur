@@ -31,6 +31,7 @@ import { useDocumentsStore, type DocumentReview } from '@/stores/documents'
 import { usePromptResourcesStore } from '@/stores/prompt-resources'
 import { useSurfaceNavigation } from '@/lib/surface'
 import RecoveryCopies from '@/components/RecoveryCopies.vue'
+import EditorRecoveryTools from '@/components/EditorRecoveryTools.vue'
 import { useRecoveryStore } from '@/stores/recovery'
 import type { RecoveryRecord } from '@/core/recovery'
 import { hash } from 'ohash'
@@ -478,42 +479,6 @@ async function compileToBlueprint() {
 
 <template>
   <div ref="pane" data-editor-pane class="flex h-full flex-col bg-background">
-    <div
-      v-if="loaded && filePath"
-      class="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-1.5 text-[13px]"
-    >
-      <span
-        v-if="backup"
-        role="status"
-        :title="backup.error"
-        :class="backup.state === 'backed_up' ? 'text-muted-foreground' : 'text-status-warning'"
-        >{{ backupLabel }}</span
-      >
-      <button
-        v-if="backup && !['backed_up', 'backing_up'].includes(backup.state)"
-        class="btn"
-        type="button"
-        @click="
-          recovery.flush(workspace.active?.path ?? '', documents.recoveryKind(filePath), filePath)
-        "
-      >
-        Back Up
-      </button>
-      <button class="btn" type="button" @click="recoveryOpen = true">Recovery Copies</button>
-      <details v-if="dirty || backup?.error" class="relative">
-        <summary class="cursor-pointer text-muted-foreground">Draft Options</summary>
-        <div
-          class="absolute left-0 top-full z-30 mt-2 w-72 rounded-lg border border-border bg-popover p-3 shadow-popover"
-        >
-          <p v-if="backup?.error" class="mb-3 break-words text-[13px] text-muted-foreground">
-            {{ backup.error }}
-          </p>
-          <button v-if="dirty" class="btn" type="button" @click="discardRecovery">
-            Discard Draft
-          </button>
-        </div>
-      </details>
-    </div>
     <RecoveryCopies
       v-if="recoveryOpen"
       :key="`${workspace.active?.path}:${filePath}`"
@@ -528,7 +493,23 @@ async function compileToBlueprint() {
     </p>
     <!-- Blueprint files are edited on the visual canvas. -->
     <template v-if="isBlueprint && loaded">
-      <BlueprintView :file-path="filePath" />
+      <BlueprintView :file-path="filePath"
+        ><template #recovery-tools
+          ><EditorRecoveryTools
+            :label="backupLabel"
+            :state="backup?.state"
+            :error="backup?.error"
+            :dirty="dirty"
+            @open="recoveryOpen = true"
+            @backup="
+              recovery.flush(
+                workspace.active?.path ?? '',
+                documents.recoveryKind(filePath),
+                filePath,
+              )
+            "
+            @discard="discardRecovery" /></template
+      ></BlueprintView>
     </template>
 
     <!-- Unsupported (binary) or oversized files show a plain hint instead of
@@ -544,6 +525,17 @@ async function compileToBlueprint() {
     <template v-else-if="loaded">
       <div class="flex h-10 shrink-0 items-center gap-3 border-b border-divider px-2">
         <span class="ml-1 mr-auto min-w-0 truncate text-[13px] font-medium">{{ fileName }}</span>
+        <EditorRecoveryTools
+          :label="backupLabel"
+          :state="backup?.state"
+          :error="backup?.error"
+          :dirty="dirty"
+          @open="recoveryOpen = true"
+          @backup="
+            recovery.flush(workspace.active?.path ?? '', documents.recoveryKind(filePath), filePath)
+          "
+          @discard="discardRecovery"
+        />
         <template v-if="buffer.resource">
           <span class="text-[11px] text-subtle"
             >{{ buffer.resource.reference.scope.scope }} · r{{

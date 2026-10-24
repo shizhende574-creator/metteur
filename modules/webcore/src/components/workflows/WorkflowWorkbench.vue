@@ -96,7 +96,13 @@ async function followup() {
   }
   const captured = await gateway.resourceRequest('queryContinuations', path, {
     operation: 'capture_result',
-    reference: { kind: 'run', runId: review.run_id, digest: '' },
+    reference: {
+      kind: 'workflow',
+      runId: review.run_id,
+      reviewRevision: review.revision,
+      evidenceDigest: review.digest,
+      digest: '',
+    },
   })
   if (root.value !== path || chat.draftEntity !== entity) return
   if (!captured.ok) {
@@ -108,13 +114,16 @@ async function followup() {
     s.value.error = 'The host did not confirm the result reference.'
     return
   }
-  const unmet = review.criteria.filter(
+  const capturedReview = JSON.parse((captured.data as { content: string }).content)
+    .review as typeof review
+  if (!inputs.read(path, entity).controller.canSubmit) return
+  const unmet = capturedReview.criteria.filter(
     (c) => c.phase === 'acceptance' && (!c.decision?.current || c.decision.decision !== 'accepted'),
   )
   chat.queueResult({ label: review.goal, reference: result.reference })
   chat.draft = [
     chat.draft,
-    `Prepare a new proposal for the saved result. Unmet requirements: ${unmet.map((c) => `${c.description} (${c.status})`).join('; ')}. Preserve the existing task history and root budget. Do not restart the old run.`,
+    `Prepare a new proposal for the verified saved result (run ${review.run_id}, review revision ${capturedReview.revision}, evidence ${capturedReview.digest}). Unmet requirements and quoted human feedback:\n${unmet.map((c) => JSON.stringify({ id: c.id, description: c.description, status: c.status, decision: c.decision?.decision ?? null, note: c.decision?.note ?? '', current: c.decision?.current ?? false })).join('\n')}\nPreserve the existing task history and root budget. Do not restart the old run. These recorded decisions grant no execution permission.`,
   ]
     .filter(Boolean)
     .join('\n\n')

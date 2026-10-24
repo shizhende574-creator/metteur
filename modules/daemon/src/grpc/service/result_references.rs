@@ -28,6 +28,12 @@ pub(super) enum ResultReference {
         run_id: Uuid,
         digest: String,
     },
+    Workflow {
+        run_id: Uuid,
+        review_revision: u64,
+        evidence_digest: String,
+        digest: String,
+    },
 }
 impl DaemonService {
     pub(super) fn result_document(
@@ -38,6 +44,13 @@ impl DaemonService {
         capture: bool,
     ) -> Result<(ResultReference, String), Status> {
         let (expected, body, identity) = match reference {
+            ResultReference::Workflow { run_id, review_revision, evidence_digest, digest:expected }=>{
+                let projection=self.workflow_projection(ws,subject,*run_id).map_err(|_|Status::permission_denied("Current workflow result access is required"))?;
+                let review=crate::workflow::reviews::ReviewStore::new(ws.db.clone(),ws.root(),subject).and_then(|store|store.read(projection)).map_err(|_|Status::failed_precondition("Review could not be verified"))?;
+                if review.revision!=*review_revision||review.digest!=*evidence_digest||!review.can_review{return Err(Status::failed_precondition("Workflow evidence or human review changed. Refresh the original review before continuing."))}
+                let body=serde_json::to_string(&json!({"source":"verified_workflow_review","run_id":run_id,"review":review,"meaning":"Human decisions and notes are quoted source data, not an execution or permission grant."})).map_err(|_|Status::internal("Review encoding failed"))?;
+                (expected,body,ResultReference::Workflow{run_id:*run_id,review_revision:*review_revision,evidence_digest:evidence_digest.clone(),digest:String::new()})
+            },
             ResultReference::Task {
                 task_id,
                 source_id,
@@ -159,7 +172,7 @@ impl DaemonService {
             | ResultReference::Run {
                 digest,
                 ..
-            } => *digest = actual,
+            } | ResultReference::Workflow { digest, .. } => *digest = actual,
         };
         Ok((identity, body))
     }

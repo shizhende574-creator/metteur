@@ -302,7 +302,7 @@ async function showSource() {
 </script>
 
 <template>
-  <section aria-label="Project Memory">
+  <section aria-label="Project Memory" class="memory-workbench">
     <PageHeader title="Project Memory"
       ><template #help
         ><InlineHelp
@@ -349,6 +349,7 @@ async function showSource() {
             >
           </button>
           <p v-if="!rows.length" class="pv-empty">No matching entries.</p>
+          <button v-if="next" class="btn btn-outline" @click="load(true)">Load more</button>
         </aside>
         <article v-if="entry" class="pv-detail">
           <div class="pv-between">
@@ -411,7 +412,6 @@ async function showSource() {
         <div v-else class="pv-empty">Select a memory entry to inspect its source.</div>
       </div>
     </template>
-    <button v-if="next" class="btn btn-outline" @click="load(true)">Load more</button>
     <p v-if="notice" class="pv-callout" role="status">{{ notice }}</p>
     <div v-if="dialog && entry" v-dialog-focus class="pv-overlay" @keydown.esc="dialog = false">
       <section role="dialog" aria-modal="true" aria-labelledby="confirm-title" class="pv-modal">
@@ -431,3 +431,33 @@ async function showSource() {
     </div>
   </section>
 </template>
+<style scoped>
+.memory-workbench {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.memory-workbench .surface-header,
+.memory-workbench .pv-toolbar {
+  flex-shrink: 0;
+}
+.memory-workbench .pv-split {
+  flex: 1;
+  min-height: 0;
+}
+.memory-workbench .pv-list,
+.memory-workbench .pv-detail {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.memory-workbench > .pv-callout {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .memory-workbench .pv-split {
+    grid-template-rows: minmax(120px, 40%) minmax(0, 1fr);
+  }
+}
+</style>

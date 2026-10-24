@@ -39,7 +39,10 @@ const emit = defineEmits<{ (e: 'update:open', open: boolean): void }>()
 const execution = useExecutionStore()
 const tab = ref<'log' | 'context' | 'node' | 'tree' | 'todo' | 'blackboard'>('log')
 
-async function openBlackboard() { await execution.reconcile(); tab.value = 'blackboard' }
+async function openBlackboard() {
+  await execution.reconcile()
+  tab.value = 'blackboard'
+}
 
 const close = () => emit('update:open', false)
 
@@ -61,6 +64,7 @@ const KIND_TONE: Record<EventLine['kind'], string> = {
   context: 'text-violet-500',
   todos: 'text-teal-600 dark:text-teal-400',
   node_data: 'text-sky-600 dark:text-sky-400',
+  node_output: 'text-sky-600 dark:text-sky-400',
   error: 'text-danger',
 }
 
@@ -84,7 +88,12 @@ const REGION_COLOR: Record<string, string> = {
 }
 
 const regionName = (r: string): string =>
-  ({ system: 'System / Prompt', user: 'User prompt', assistant: 'Assistant', tool: 'Tool results' })[r] ?? r
+  ({
+    system: 'System / Prompt',
+    user: 'User prompt',
+    assistant: 'Assistant',
+    tool: 'Tool results',
+  })[r] ?? r
 
 /** The inspected node: selection wins, else the running node. */
 const inspectedId = computed(() => props.nodeId ?? execution.runningNodeId)
@@ -118,19 +127,33 @@ const auditLabel = computed(() => inspectedId.value ?? '—')
     class="glass absolute bottom-2 right-2 z-20 flex w-105 max-w-[92%] flex-col overflow-hidden rounded-xl border border-divider shadow-card"
     style="height: min(58%, 520px)"
   >
-    <ExecutionBlackboard v-if="tab === 'blackboard'" class="order-last overflow-auto" :run-id="execution.runId" :connected="execution.connected && gateway.connected.value" :revision="execution.current?.updatedAt" />
+    <ExecutionBlackboard
+      v-if="tab === 'blackboard'"
+      class="order-last overflow-auto"
+      :run-id="execution.runId"
+      :connected="execution.connected && gateway.connected.value"
+      :revision="execution.current?.updatedAt"
+    />
     <!-- Header -->
     <div class="flex h-8 shrink-0 items-center gap-2 border-b border-divider px-2.5">
       <Activity class="h-3.5 w-3.5 text-muted-foreground" />
       <span class="text-[11px] font-semibold uppercase tracking-wider text-subtle">Audit</span>
-      <button class="text-[11px]" :class="{ 'text-primary': tab === 'blackboard' }" @click="openBlackboard">Blackboard</button>
+      <button
+        class="text-[11px]"
+        :class="{ 'text-primary': tab === 'blackboard' }"
+        @click="openBlackboard"
+      >
+        Blackboard
+      </button>
       <span
         class="chip ml-1"
         :class="{
           'bg-primary/15 text-primary': execution.status === 'running',
           'bg-amber-500/15 text-amber-600 dark:text-amber-400': execution.status === 'paused',
           'bg-danger-soft text-danger': ['cancelled', 'failed'].includes(execution.status),
-          'text-muted-foreground': !['running', 'paused', 'cancelled', 'failed'].includes(execution.status),
+          'text-muted-foreground': !['running', 'paused', 'cancelled', 'failed'].includes(
+            execution.status,
+          ),
         }"
       >
         <span
@@ -259,10 +282,7 @@ const auditLabel = computed(() => inspectedId.value ?? '—')
         <p v-if="audit.tokens" class="text-[11px] text-muted-foreground">
           {{ audit.tokens.toLocaleString() }} tokens
         </p>
-        <p
-          v-if="audit.startedAt || audit.finishedAt"
-          class="text-[10.5px] text-subtle"
-        >
+        <p v-if="audit.startedAt || audit.finishedAt" class="text-[10.5px] text-subtle">
           started {{ audit.startedAt ? new Date(audit.startedAt).toLocaleTimeString() : '—' }}
           · finished
           {{ audit.finishedAt ? new Date(audit.finishedAt).toLocaleTimeString() : '—' }}
@@ -270,8 +290,7 @@ const auditLabel = computed(() => inspectedId.value ?? '—')
         <pre
           v-if="Object.keys(audit.outputs).length"
           class="overflow-auto rounded-md bg-surface-muted p-2 text-[10.5px] leading-relaxed text-muted-foreground"
-          >{{ JSON.stringify(audit.outputs, null, 2) }}</pre
-        >
+          >{{ JSON.stringify(audit.outputs, null, 2) }}</pre>
       </div>
       <p v-else class="text-[11.5px] text-muted-foreground">
         Select a node on the canvas to inspect its audit data.
@@ -311,7 +330,9 @@ const auditLabel = computed(() => inspectedId.value ?? '—')
                     : ''
               "
             >
-              {{ todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content }}
+              {{
+                todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content
+              }}
             </span>
           </li>
         </ul>

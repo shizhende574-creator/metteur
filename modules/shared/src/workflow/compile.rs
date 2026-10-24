@@ -85,6 +85,8 @@ pub fn compile_template(input: &TemplateInput, catalog: &NodeCatalog) -> SharedR
             .collect::<Vec<_>>()
             .join("; ")
     );
+    let human_requirements=input.manual_checks.iter().map(|c|format!("{} [{}]: {}",c.id,if c.required{"required human review"}else{"optional human review"},c.description)).collect::<Vec<_>>().join("\n");
+    let prompt=format!("{prompt}\nHuman acceptance requirements (produce the requested behavior; only the user records acceptance):\n{human_requirements}");
     graph.nodes.iter_mut().find(|n| n.id == implement).unwrap().data =
         json!({"prompt":prompt,"model":input.model,"max_iterations":input.max_iterations});
     let mut criteria = Vec::new();

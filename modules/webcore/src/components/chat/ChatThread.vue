@@ -56,6 +56,32 @@ const rows = computed<Row[]>(() => {
       run.push(message)
       continue
     }
+    if (message.role === 'assistant') {
+      const activity =
+        !!message.reasoning || message.reasoningPending || (!message.content && message.pending)
+      if (activity) {
+        run.push({ ...message, content: '', pending: !!message.reasoningPending, id: message.id })
+        if (!message.content) continue
+      }
+      if (!message.content) continue
+      flush()
+      if (message.content) {
+        out.push({
+          kind: 'message',
+          message: {
+            ...message,
+            id: message.id + '-answer',
+            reasoning: undefined,
+            reasoningPending: false,
+            reasoningStartedAt: undefined,
+            reasoningElapsedMs: undefined,
+          },
+          showTurnTiming: activity ? false : showTurnTiming,
+        })
+        showTurnTiming = false
+        continue
+      }
+    }
     flush()
     out.push({ kind: 'message', message, showTurnTiming })
     if (message.role === 'assistant') showTurnTiming = false
@@ -161,7 +187,10 @@ defineExpose({ scrollToBottom })
       <template v-for="row in rows" :key="row.kind === 'tools' ? row.key : row.message.id">
         <div v-if="row.kind === 'tools'" class="chat-activity pl-0.5">
           <ToolCallGroup
-            v-if="row.messages.length > 1"
+            v-if="
+              row.messages.length > 1 ||
+              row.messages.some((message) => message.role === 'assistant')
+            "
             :messages="row.messages"
             :on-open-file="onOpenFile"
           />

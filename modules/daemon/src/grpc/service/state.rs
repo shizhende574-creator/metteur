@@ -431,6 +431,10 @@ fn proto_event(event: crate::execution::ExecutionEvent) -> ExecutionEvent {
             }))
             .unwrap_or_default(),
         },
+        E::NodeOutput { node_id, revision } => ExecutionEvent {
+            node_id:node_id.to_string(),kind:"node_output".into(),message:String::new(),
+            detail_json:serde_json::json!({"revision":revision}).to_string(),
+        },
     }
 }
 

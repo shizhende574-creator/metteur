@@ -40,9 +40,14 @@ const props = defineProps<{
 }>()
 
 /** Right-click a connected pin → daemon menu with a Disconnect action (item 5). */
-const pinContext = inject<(e: MouseEvent, nodeId: string, pin: { id: string; kind: string }) => void>(
-  'bp-pin-context',
-)
+const pinContext =
+  inject<(e: MouseEvent, nodeId: string, pin: { id: string; kind: string }) => void>(
+    'bp-pin-context',
+  )
+const beforeValueChange = inject<() => void>('bp-literal-change')
+function pinName(pin: BlueprintPin) {
+  return isExec(pin) && ['x-in', 'x-out'].includes(pin.name) ? '' : pin.name
+}
 
 /** Accent colour per category, mirroring Unreal's colour-coded node families. */
 const ACCENT: Record<string, string> = {
@@ -112,8 +117,9 @@ function editsValue(pin: BlueprintPin): boolean {
 }
 
 function setValue(pin: BlueprintPin, value: string) {
+  beforeValueChange?.()
   const values = props.data.values ?? (props.data.values = {})
-  if (value === '') delete values[pin.id]
+  if (value === '' && pin.type !== 'string') delete values[pin.id]
   else values[pin.id] = value
 }
 
@@ -132,7 +138,7 @@ function onValue(pin: BlueprintPin, e: Event) {
       'metteur-node--running': data.status === 'running',
       'metteur-node--done': data.status === 'done',
     }"
-    style="width: 208px"
+    style="width: 240px"
   >
     <div class="metteur-node__header" :style="{ background: accent }">
       <span v-if="data.status === 'running'" class="metteur-node__live-dot" />
@@ -146,14 +152,17 @@ function onValue(pin: BlueprintPin, e: Event) {
           :key="p.id"
           class="metteur-pin"
           :class="p.kind === 'data-in' ? 'metteur-pin--data' : ''"
-          @contextmenu="pinContext?.( $event, id, p )"
+          @contextmenu="pinContext?.($event, id, p)"
         >
           <Handle
             :id="p.id"
             type="target"
             :position="Position.Left"
             class="metteur-handle"
-            :class="[handleClass(p.kind), p.kind === 'exec-in' ? execClass(p.kind, execConnected(p)) : '']"
+            :class="[
+              handleClass(p.kind),
+              p.kind === 'exec-in' ? execClass(p.kind, execConnected(p)) : '',
+            ]"
             :style="p.kind === 'data-in' ? dataPinStyle(p, connectedIn.has(p.id)) : {}"
           />
           <svg
@@ -163,28 +172,41 @@ function onValue(pin: BlueprintPin, e: Event) {
             viewBox="0 0 14 14"
             aria-hidden="true"
           >
-            <path class="metteur-exec-glyph__path" d="M2.6 1.8 L2.6 12.2 C2.6 12.8 3.2 13.05 3.7 12.7 L11.6 7.6 C12.05 7.3 12.05 6.7 11.6 6.4 L3.7 1.3 C3.2 0.95 2.6 1.2 2.6 1.8 Z" />
-          </svg>
-          <template v-if="editsValue(p)">
-            <select
-              v-if="p.choices?.length"
-              class="metteur-value nodrag"
-              :value="valueOf(p)"
-              @change="onValue(p, $event)"
-            >
-              <option v-for="c in p.choices ?? []" :key="c" :value="c">{{ c }}</option>
-            </select>
-            <input
-              v-else
-              :type="INPUT_TYPE[p.type ?? 'string'] ?? 'text'"
-              class="metteur-value nodrag"
-              :placeholder="p.name"
-              :value="valueOf(p)"
-              :checked="p.type === 'bool' ? valueOf(p) === 'true' : undefined"
-              @input="onValue(p, $event)"
+            <path
+              class="metteur-exec-glyph__path"
+              d="M2.6 1.8 L2.6 12.2 C2.6 12.8 3.2 13.05 3.7 12.7 L11.6 7.6 C12.05 7.3 12.05 6.7 11.6 6.4 L3.7 1.3 C3.2 0.95 2.6 1.2 2.6 1.8 Z"
             />
-          </template>
-          <span v-else-if="p.name" class="metteur-pin__name">{{ p.name }}</span>
+          </svg>
+          <div v-if="p.kind === 'data-in'" class="metteur-pin-field">
+            <span class="metteur-pin-label" :title="`${p.name}: ${p.type ?? 'any'}`"
+              ><span>{{ p.name }}</span
+              ><small>{{ p.type ?? 'any' }}</small></span
+            >
+            <template v-if="editsValue(p)">
+              <select
+                v-if="p.choices?.length"
+                class="metteur-value nodrag"
+                :value="valueOf(p)"
+                @change="onValue(p, $event)"
+              >
+                <option v-for="c in p.choices ?? []" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <input
+                v-else
+                :type="INPUT_TYPE[p.type ?? 'string'] ?? 'text'"
+                class="metteur-value nodrag"
+                :placeholder="p.name"
+                :aria-label="p.name"
+                :value="valueOf(p)"
+                :checked="p.type === 'bool' ? valueOf(p) === 'true' : undefined"
+                @input="onValue(p, $event)"
+              />
+            </template>
+            <span v-else-if="!connectedIn.has(p.id)" class="metteur-literal" :title="valueOf(p)">{{
+              valueOf(p) || '—'
+            }}</span>
+          </div>
+          <span v-else-if="pinName(p)" class="metteur-pin__name">{{ pinName(p) }}</span>
         </div>
       </div>
 
@@ -194,15 +216,20 @@ function onValue(pin: BlueprintPin, e: Event) {
           :key="p.id"
           class="metteur-pin metteur-pin--out"
           :class="p.kind === 'data-out' ? 'metteur-pin--data' : ''"
-          @contextmenu="pinContext?.( $event, id, p )"
+          @contextmenu="pinContext?.($event, id, p)"
         >
-          <span v-if="p.name" class="metteur-pin__name">{{ p.name }}</span>
+          <span v-if="pinName(p)" class="metteur-pin__name"
+            >{{ pinName(p) }}<small v-if="p.kind === 'data-out'"> · {{ p.type }}</small></span
+          >
           <Handle
             :id="p.id"
             type="source"
             :position="Position.Right"
             class="metteur-handle"
-            :class="[handleClass(p.kind), p.kind === 'exec-out' ? execClass(p.kind, execConnected(p)) : '']"
+            :class="[
+              handleClass(p.kind),
+              p.kind === 'exec-out' ? execClass(p.kind, execConnected(p)) : '',
+            ]"
             :style="p.kind === 'data-out' ? dataPinStyle(p, connectedOut.has(p.id)) : {}"
           />
           <svg
@@ -212,7 +239,10 @@ function onValue(pin: BlueprintPin, e: Event) {
             viewBox="0 0 14 14"
             aria-hidden="true"
           >
-            <path class="metteur-exec-glyph__path" d="M2.6 1.8 L2.6 12.2 C2.6 12.8 3.2 13.05 3.7 12.7 L11.6 7.6 C12.05 7.3 12.05 6.7 11.6 6.4 L3.7 1.3 C3.2 0.95 2.6 1.2 2.6 1.8 Z" />
+            <path
+              class="metteur-exec-glyph__path"
+              d="M2.6 1.8 L2.6 12.2 C2.6 12.8 3.2 13.05 3.7 12.7 L11.6 7.6 C12.05 7.3 12.05 6.7 11.6 6.4 L3.7 1.3 C3.2 0.95 2.6 1.2 2.6 1.8 Z"
+            />
           </svg>
         </div>
       </div>
@@ -230,7 +260,9 @@ function onValue(pin: BlueprintPin, e: Event) {
 }
 
 .metteur-node--selected {
-  box-shadow: var(--shadow-card), 0 0 0 2px var(--ring);
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 2px var(--ring);
 }
 
 .metteur-node__header {
@@ -298,6 +330,55 @@ function onValue(pin: BlueprintPin, e: Event) {
   color: var(--foreground);
   outline: none;
   transition: box-shadow 120ms ease;
+}
+.metteur-pin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+  padding: 5px 0;
+}
+.metteur-pin-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 11px;
+}
+.metteur-pin-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metteur-pin-label small,
+.metteur-pin__name small {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.metteur-pin-field .metteur-value {
+  max-width: 100%;
+  width: 100%;
+}
+.metteur-pin-field input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  align-self: flex-start;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.metteur-literal {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--foreground);
 }
 
 .metteur-value:focus {

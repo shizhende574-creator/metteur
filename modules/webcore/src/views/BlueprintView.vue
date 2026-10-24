@@ -16,6 +16,7 @@ import {
   Square,
   Undo2,
   Workflow,
+  LayoutTemplate,
 } from '@lucide/vue'
 import type {
   Node as FlowNode,
@@ -89,8 +90,21 @@ const auditOpen = ref(false)
 // Execution facts are rendered on the immutable runtime graph in Execution.
 // This canvas remains the editable draft, including while another version runs.
 
+const ownsRun = computed(() => {
+  const version = execution.current?.snapshot?.blueprint_version
+  const graph = execution.blueprint
+  const uri = version?.blueprint_uri.replaceAll('\\', '/') ?? '',
+    file = fileKey.value.replaceAll('\\', '/')
+  return (
+    !!graph &&
+    graph.id === store.uuidFor(fileKey.value) &&
+    !!version &&
+    (uri === file || uri.endsWith('/' + file))
+  )
+})
+const editorRunStatus = computed(() => (ownsRun.value ? execution.status : 'idle'))
 const statusChip = computed(() => {
-  switch (execution.status) {
+  switch (editorRunStatus.value) {
     case 'running':
       return 'bg-primary/15 text-primary'
     case 'paused':
@@ -251,6 +265,7 @@ const pendingWirePath = computed(() => {
 })
 /** Copied nodes for Ctrl+C / Ctrl+V / Ctrl+D. */
 const clipboard = ref<SelectableFlowNode[]>([])
+const clipboardEdges = ref<LocalEdge[]>([])
 /** Right-button selection marquee, in client coordinates. */
 const marquee = ref<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
 /** Bounds (client coords) of the region box-selected by the last right-drag,
@@ -261,6 +276,10 @@ const boxRect = ref<{ minX: number; minY: number; maxX: number; maxY: number } |
 let suppressMenuUntil = 0
 /** Wrapper of the canvas, the origin for the marquee overlay coordinates. */
 const flowWrap = ref<HTMLDivElement | null>(null)
+provide('bp-literal-change', () => {
+  commit()
+  dirty.value = true
+})
 
 /* Undo / redo stack                                                    */
 
@@ -1087,22 +1106,59 @@ function duplicateNode(id: string, offset = 32) {
 
 function cloneNode(src: SelectableFlowNode, offset: number): SelectableFlowNode {
   const id = uuid()
+  const data = JSON.parse(JSON.stringify(src.data ?? {})) as NonNullable<SelectableFlowNode['data']>
+  const pins = new Map<string, string>()
+  for (const pin of [...(data.inputs ?? []), ...(data.outputs ?? [])]) {
+    const old = pin.id
+    pin.id = uuid()
+    pins.set(old, pin.id)
+  }
+  data.values = Object.fromEntries(
+    Object.entries(data.values ?? {}).map(([key, value]) => [pins.get(key) ?? key, value]),
+  )
+  data.connectedIn = []
+  data.connectedOut = []
   return {
     ...src,
     id,
     position: { x: src.position.x + offset, y: src.position.y + offset },
-    data: {
-      ...src.data,
-      values: src.data?.values ? { ...src.data.values } : {},
-      filledIns: [...(src.data?.filledIns ?? [])],
-    },
+    data,
     selected: true,
   }
 }
 
 function copyNode(id: string) {
   const src = flowNodes.value.find((n) => n.id === id)
-  clipboard.value = src ? [src] : []
+  clipboard.value = src ? JSON.parse(JSON.stringify([src])) : []
+  clipboardEdges.value = []
+}
+function pasteNodes() {
+  if (!clipboard.value.length) return
+  commit()
+  const nodes = clipboard.value.map((n) => cloneNode(n, 32)),
+    ids = new Map<string, string>(),
+    pins = new Map<string, string>()
+  clipboard.value.forEach((old, index) => {
+    const copy = nodes[index]!
+    ids.set(old.id, copy.id)
+    for (const side of ['inputs', 'outputs'] as const)
+      old.data?.[side]?.forEach((p, i) => pins.set(p.id, copy.data?.[side]?.[i]?.id ?? p.id))
+  })
+  for (const node of flowNodes.value) node.selected = false
+  flowNodes.value.push(...nodes)
+  flowEdges.value.push(
+    ...clipboardEdges.value.map((edge) => ({
+      ...edge,
+      id: uuid(),
+      source: ids.get(edge.source)!,
+      target: ids.get(edge.target)!,
+      sourceHandle: pins.get(edge.sourceHandle ?? ''),
+      targetHandle: pins.get(edge.targetHandle ?? ''),
+    })),
+  )
+  selectedId.value = nodes.length === 1 ? nodes[0]!.id : null
+  selectedEdgeId.value = null
+  dirty.value = true
 }
 
 /** Rebuild a Switch node's `Case_*` outlets from its edited case list. */
@@ -1170,14 +1226,31 @@ function removeExecOutput(id: string) {
 
 /* Keyboard shortcuts                                                */
 
+function inspectorChange() {
+  commit()
+  dirty.value = true
+}
+
 function onKeydown(e: KeyboardEvent) {
   const t = e.target as HTMLElement
   if (canvasLoading.value || !flowWrap.value?.closest('[data-editor-pane]')?.contains(t)) return
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+  if (e.isComposing) return
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    void handleSave()
+    return
+  }
+  if (
+    t &&
+    (t.tagName === 'INPUT' ||
+      t.tagName === 'TEXTAREA' ||
+      t.tagName === 'SELECT' ||
+      t.isContentEditable)
+  )
+    return
 
   if (e.key === 'Escape') dismissMenu()
-
-  const mod = e.ctrlKey || e.metaKey
 
   // Undo / redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y).
   if (mod && e.key.toLowerCase() === 'z') {
@@ -1192,9 +1265,9 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
 
-  if (mod && (e.key === 's' || e.key === 'S')) {
+  if (mod && e.key === 'Enter') {
     e.preventDefault()
-    handleSave()
+    void handleRun()
     return
   }
   if (mod && (e.key === 'a' || e.key === 'A')) {
@@ -1205,14 +1278,24 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
   if (mod && (e.key === 'c' || e.key === 'C')) {
-    if (selectedId.value) {
-      copyNode(selectedId.value)
+    const selected = flowNodes.value.filter((n) => n.selected || n.id === selectedId.value)
+    if (selected.length) {
+      clipboard.value = JSON.parse(JSON.stringify(selected))
+      clipboardEdges.value = JSON.parse(
+        JSON.stringify(
+          flowEdges.value.filter(
+            (edge) =>
+              selected.some((n) => n.id === edge.source) &&
+              selected.some((n) => n.id === edge.target),
+          ),
+        ),
+      )
       e.preventDefault()
     }
     return
   }
   if (mod && (e.key === 'v' || e.key === 'V')) {
-    for (const node of clipboard.value) duplicateNode(node.id)
+    pasteNodes()
     e.preventDefault()
     return
   }
@@ -1225,6 +1308,20 @@ function onKeydown(e: KeyboardEvent) {
   }
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
+    const selected = flowNodes.value.filter((n) => n.selected || n.id === selectedId.value)
+    if (selected.length) {
+      commit()
+      const ids = new Set(selected.map((n) => n.id))
+      flowNodes.value = flowNodes.value.filter((n) => !ids.has(n.id))
+      flowEdges.value = flowEdges.value.filter(
+        (edge) => !ids.has(edge.source) && !ids.has(edge.target),
+      )
+      selectedId.value = null
+      selectedEdgeId.value = null
+      dirty.value = true
+      e.preventDefault()
+      return
+    }
     if (selectedEdgeId.value) {
       commit()
       flowEdges.value = flowEdges.value.filter((edge) => edge.id !== selectedEdgeId.value)
@@ -1285,6 +1382,9 @@ function onPaneClick() {
  *    owned by their own menus and are skipped here (their handlers run later in
  *    the bubble phase, so not preventDefault-ing keeps their menus working). */
 function onCanvasMouseDown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('input,textarea,select,button,[contenteditable="true"]'))
+    flowWrap.value?.focus({ preventScroll: true })
   if (e.button !== 2) {
     if (menu.value) dismissMenu()
     boxRect.value = null
@@ -1614,20 +1714,24 @@ function openVersionPanel() {
     <div class="flex h-11 shrink-0 items-center gap-2 border-b border-divider px-3">
       <Workflow class="h-4 w-4 text-muted-foreground" />
       <span class="text-[13px] font-medium">{{ blueprintTitle }}</span>
-      <button class="btn" type="button" @click="startTemplate">Start from template</button>
       <span v-if="dirty" class="h-1.5 w-1.5 rounded-full" style="background: var(--primary)" />
       <span v-else class="h-1.5 w-1.5 rounded-full bg-subtle" />
 
       <!-- Run state: chip + controls run the graph in place (Unreal debug). -->
-      <span v-if="execution.status !== 'idle'" class="chip ml-1" :class="statusChip">
+      <span
+        v-if="editorRunStatus !== 'idle'"
+        class="chip ml-1"
+        :class="statusChip"
+        :title="dirty ? 'Last run used a different saved version' : ''"
+      >
         <span
-          v-if="execution.status === 'running'"
+          v-if="editorRunStatus === 'running'"
           class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"
         />
-        {{ execution.status }}
+        {{ execution.running ? 'Saved version · ' : 'Last run · ' }}{{ editorRunStatus }}
       </span>
       <button
-        v-if="execution.status === 'running'"
+        v-if="editorRunStatus === 'running'"
         class="btn btn-outline ml-1"
         type="button"
         @click="execution.pause()"
@@ -1635,7 +1739,7 @@ function openVersionPanel() {
         <Pause class="h-3.5 w-3.5" /> Pause
       </button>
       <button
-        v-if="execution.status === 'paused'"
+        v-if="editorRunStatus === 'paused'"
         class="btn btn-outline ml-1"
         type="button"
         @click="execution.resume()"
@@ -1643,7 +1747,7 @@ function openVersionPanel() {
         <Play class="h-3.5 w-3.5" /> Resume
       </button>
       <button
-        v-if="execution.running"
+        v-if="ownsRun && execution.running"
         class="btn btn-danger-outline ml-1"
         type="button"
         @click="execution.cancel()"
@@ -1653,6 +1757,16 @@ function openVersionPanel() {
 
       <div class="pr-1"><!-- spacer keeps icons from hugging the edge --></div>
       <div class="ml-auto flex items-center gap-3">
+        <button
+          class="editor-tool-icon"
+          type="button"
+          title="Start from template"
+          aria-label="Start from template"
+          @click="startTemplate"
+        >
+          <LayoutTemplate class="h-4 w-4" />
+        </button>
+        <slot name="recovery-tools" />
         <button
           class="editor-tool-icon"
           type="button"
@@ -1740,6 +1854,7 @@ function openVersionPanel() {
     <div
       ref="flowWrap"
       class="relative min-w-0 flex-1"
+      tabindex="0"
       :inert="canvasLoading"
       :aria-busy="canvasLoading"
       @dragover.prevent
@@ -1821,7 +1936,8 @@ function openVersionPanel() {
         v-if="selectedNodeData && !auditOpen"
         :node="selectedNodeData"
         @close="selectedId = null"
-        @change="dirty = true"
+        @change="inspectorChange"
+        @save="handleSave"
         @recase="(cases: string[]) => selectedId && recaseNode(selectedId, cases)"
       />
     </div>

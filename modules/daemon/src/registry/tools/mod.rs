@@ -1,6 +1,7 @@
 //! Built-in tools available to blueprints and LLM agents.
 
 pub mod blueprint;
+pub mod blueprint_catalog;
 pub mod command;
 pub mod context;
 pub mod deps;

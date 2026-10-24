@@ -387,6 +387,13 @@ impl Db {
 
     /// Acknowledged side-channel state must survive a process or machine crash.
     pub fn put_durable(&self, family: &str, key: &[u8], value: &[u8]) -> DaemonResult<()> {
+        self.put_durable_notification(family,key,value,true)
+    }
+    /// Node streaming snapshots have their own event; avoid whole-workspace reloads.
+    pub(crate) fn put_output_durable(&self,key:&[u8],value:&[u8])->DaemonResult<()>{
+        self.put_durable_notification(cf::EXECUTION_STATE,key,value,false)
+    }
+    fn put_durable_notification(&self,family:&str,key:&[u8],value:&[u8],notify:bool)->DaemonResult<()> {
         let handle = self
             .inner
             .cf_handle(family)
@@ -396,7 +403,7 @@ impl Db {
         self.inner
             .put_cf_opt(handle, key, value, &options)
             .map_err(|e| DaemonError::Persistence(e.to_string()))?;
-        if family == cf::EXECUTION_STATE || family == cf::CHAT_THREADS {
+        if notify && (family == cf::EXECUTION_STATE || family == cf::CHAT_THREADS) {
             self.notify_changes();
         }
         Ok(())

@@ -10,6 +10,7 @@ pub mod interpreter;
 pub mod interrupt;
 pub mod jobs;
 pub mod nodes;
+pub mod output;
 pub mod react;
 pub mod transaction;
 pub mod tree;

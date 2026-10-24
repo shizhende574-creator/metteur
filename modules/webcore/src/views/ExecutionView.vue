@@ -21,6 +21,7 @@ import { useVersionStore } from '@/stores/version'
 import ExecutionLayout from '@/components/execution/ExecutionLayout.vue'
 import FilePickerDialog, { type FilePick } from '@/components/FilePickerDialog.vue'
 import WorkflowResult from '@/components/WorkflowResult.vue'
+import ExecutionOutput from '@/components/execution/ExecutionOutput.vue'
 const execution = useExecutionStore(),
   workspace = useWorkspaceStore(),
   tabs = useTabsStore()
@@ -142,6 +143,21 @@ watch(
 )
 const snapshot = computed(() => (selected.value ? undefined : execution.current?.snapshot))
 const runtime = computed(() => snapshot.value?.runtime)
+const outputRevision = computed(
+  () =>
+    execution.events.filter((event) => event.kind === 'node_output').at(-1)?.detail?.revision as
+      | number
+      | undefined,
+)
+const stoppedByUser = computed(() => !selected.value && execution.status === 'cancelled')
+const benignCancel = computed(
+  () =>
+    stoppedByUser.value &&
+    /^(?:ConnectError:\s*)?(?:\[[\w_-]+\]\s*)?execution interrupted: cancelled by user$/i.test(
+      execution.error.trim(),
+    ),
+)
+const visibleError = computed(() => error.value || (!benignCancel.value ? execution.error : ''))
 const live = computed(
   () =>
     execution.connected &&
@@ -164,7 +180,9 @@ const label = computed(() =>
             ? 'Awaiting confirmation'
             : execution.status === 'idle'
               ? 'Ready'
-              : execution.status,
+              : stoppedByUser.value
+                ? 'Stopped by you'
+                : execution.status,
 )
 const duration = computed(() => {
   const r = selected.value ? null : execution.current
@@ -267,7 +285,15 @@ function openSource() {
       >
         <Play :size="13" />Run
       </button>
-      <span v-if="error || execution.error" role="alert">{{ error || execution.error }}</span>
+      <button
+        v-if="visibleError"
+        class="status text-danger"
+        role="alert"
+        :title="visibleError"
+        @click="layout?.diagnostics()"
+      >
+        Run needs attention · View details
+      </button>
     </template>
     <template #tools
       ><button aria-label="Open blueprint source" :disabled="!source" @click="openSource">
@@ -291,8 +317,20 @@ function openSource() {
       </div></template
     >
     <template #supervision="{ tab }"
-      ><OversightReviews
-        v-if="tab === 'Reviews'"
+      ><ExecutionOutput
+        v-if="tab === 'Output'"
+        :run-id="selected ? null : execution.runId"
+        :connected="execution.connected && gateway.connected.value"
+        :snapshot="snapshot"
+        :blueprint="graph"
+        :revision="outputRevision"
+        @file="
+          (path) => {
+            tabs.openFile(path)
+            void router.push(fileRoute(path))
+          }
+        " /><OversightReviews
+        v-else-if="tab === 'Reviews'"
         :run-id="selected ? null : execution.runId"
         :connected="execution.connected && gateway.connected.value"
         @inspect="
@@ -386,6 +424,10 @@ function openSource() {
         <p v-else-if="!proposalTarget">Select a node to inspect its execution.</p>
       </div>
       <div v-else-if="tab === 'Execution log'" class="details">
+        <details v-if="execution.error">
+          <summary>Recorded run diagnostics</summary>
+          <pre>{{ execution.error }}</pre>
+        </details>
         <p v-if="!snapshot?.view?.root">Persisted execution details are unavailable.</p>
         <p v-for="record in snapshot?.view?.invocations" :key="record.sequence">
           <button @click="inspect(record)">

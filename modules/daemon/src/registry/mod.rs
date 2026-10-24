@@ -79,6 +79,7 @@ impl Registry {
             Arc::new(tools::replan::ReplanBlueprint),
             Arc::new(tools::snapshot::SnapshotTake),
             Arc::new(tools::blueprint::DraftBlueprint),
+            Arc::new(tools::blueprint_catalog::QueryBlueprintNodes),
             Arc::new(tools::todo::TodoWrite),
             Arc::new(tools::todo::TodoRead),
             Arc::new(tools::memory::SearchProjectMemory),
